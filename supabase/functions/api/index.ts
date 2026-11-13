@@ -38,7 +38,7 @@ const RESOLUTION: Record<string, string> = { std: "480p", hd: "720p" };
 // ---------- prompt rewrite (Burmese -> English scene + Burmese dialogue lines) ----------
 const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into a plan for the Wan 3.0 video model, which generates video with native audio and lip-synced speech.
 Return ONLY one JSON object, no markdown:
-{"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "text": "<the exact Burmese line>"}], "ambience": "<English description of the background sounds only: no speech, no music>"}
+{"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "emotion": "calm|polite|warm|happy|excited|shouting|angry|sad|scared|whisper", "text": "<the exact Burmese line>"}], "ambience": "<English description of the continuous background sound only: no speech, no music>", "effects": [{"text": "<one short English sound effect, e.g. burst of rifle gunfire>", "at": <second it starts>, "dur": <seconds, 0.5-4>}]}
 Rules for "prompt":
 - Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English. Choose camera distance to suit the story.
 - Every spoken line must appear in Burmese script, in quotes, as: <who> says naturally in native Burmese (Myanmar language) with a Yangon accent: "<text>". Use exactly the same text as in "lines", in the same order.
@@ -49,7 +49,9 @@ Rules for "prompt":
 - Dialogue length must fit the video: at most about 8 Burmese words per 5 seconds in total. Speakers finish talking at least 1 second before the video ends, then stay silent and react.
 - Only one person speaks at a time. Say who speaks first and who answers; keep the speaker's face visible while they talk.
 - Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
-- Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].`;
+- Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].
+Rules for "emotion": choose how each line must sound from the story (a battle cry is "shouting", a cheerful greeting is "happy", ordering food is "polite"). Never make a calm line dramatic.
+Rules for "effects": list the important story sounds (gunshots, explosion, door slam, car horn, glass breaking...) with the second they happen, at most 6. In "prompt", make those actions happen at those same seconds.`
 
 // remove spaces between Burmese characters (spaces make speech and mouth movement choppy)
 const MM = "\\u1000-\\u109F\\uAA60-\\uAA7F";
@@ -60,7 +62,7 @@ const userQuotedLines = (mm: string) =>
   [...String(mm).matchAll(/["“‘「]([^"”’」\n]{1,180})["”’」]/gu)].map((x) => mmJoin(x[1].trim())).filter((x) => new RegExp(`[${MM}]`).test(x));
 const silentRequested = (mm: string) => /(?:စကားမပြော|စကားမပါ|အသံမပါ|တိတ်ဆိတ်|no dialogue|no speech|silent video)/iu.test(mm);
 
-type Plan = { prompt: string; lines: { who?: string; gender?: string; age?: string; text: string }[]; ambience?: string };
+type Plan = { prompt: string; lines: { who?: string; gender?: string; age?: string; emotion?: string; text: string }[]; ambience?: string; effects?: { text: string; at: number; dur: number }[] };
 
 async function planVideo(mm: string, duration = 10): Promise<Plan> {
   const fallback: Plan = { prompt: fallbackPrompt(mm), lines: [] };
@@ -81,7 +83,9 @@ async function planVideo(mm: string, duration = 10): Promise<Plan> {
     const a = text.indexOf("{"), b = text.lastIndexOf("}");
     const p = JSON.parse(text.slice(a, b + 1));
     const lines = (Array.isArray(p.lines) ? p.lines : []).filter((l: any) => l && String(l.text ?? "").trim())
-      .map((l: any) => ({ who: l.who, gender: String(l.gender ?? "").toLowerCase(), age: String(l.age ?? "").toLowerCase(), text: mmJoin(String(l.text).trim()) }));
+      .map((l: any) => ({ who: l.who, gender: String(l.gender ?? "").toLowerCase(), age: String(l.age ?? "").toLowerCase(), emotion: String(l.emotion ?? "").toLowerCase(), text: mmJoin(String(l.text).trim()) }));
+    const effects = (Array.isArray(p.effects) ? p.effects : []).filter((e: any) => e && e.text && isFinite(Number(e.at))).slice(0, 6)
+      .map((e: any) => ({ text: String(e.text).slice(0, 120), at: Math.max(0, Math.min(Number(e.at), duration - 0.5)), dur: Math.max(0.5, Math.min(Number(e.dur) || 1.5, 4)) }));
     let prompt = mmJoin(String(p.prompt ?? "").trim());
     if (!prompt) return fallback;
     // the customer's own quoted Burmese lines always win, word for word (only inner spaces removed)
@@ -92,7 +96,7 @@ async function planVideo(mm: string, duration = 10): Promise<Plan> {
       if (missing.length) prompt += "\nExact Burmese dialogue, in this order: " + quoted.map((q, i) => `Line ${i + 1}: "${q}"`).join("; ");
     }
     if (silentRequested(mm)) lines.length = 0;
-    return { prompt, lines, ambience: p.ambience ? String(p.ambience) : undefined };
+    return { prompt, lines, ambience: p.ambience ? String(p.ambience) : undefined, effects };
   } catch (e) {
     console.error("planVideo failed:", e);
     return fallback;
@@ -142,10 +146,18 @@ function stretch(xi: Int16Array, ratio: number): Float32Array {
   const out = new Float32Array(outLen); for (let i = 0; i < outLen; i++) out[i] = ws[i] > 1e-3 ? y[i] / ws[i] : 0;
   return out;
 }
-async function tts(key: string, voice: string, text: string): Promise<Int16Array> {
+// how each line should sound: an ElevenLabs audio tag + how expressive the voice may be
+const EMOTION: Record<string, { tag: string; stability: number }> = {
+  calm: { tag: "", stability: 0.6 }, polite: { tag: "[politely] ", stability: 0.65 }, warm: { tag: "[warmly] ", stability: 0.55 },
+  happy: { tag: "[happily] ", stability: 0.45 }, excited: { tag: "[excited] ", stability: 0.4 }, shouting: { tag: "[shouting] ", stability: 0.35 },
+  angry: { tag: "[angry] ", stability: 0.4 }, sad: { tag: "[sad] ", stability: 0.5 }, scared: { tag: "[scared] ", stability: 0.4 },
+  whisper: { tag: "[whispers] ", stability: 0.55 },
+};
+async function tts(key: string, voice: string, text: string, emotion?: string): Promise<Int16Array> {
+  const e = EMOTION[emotion ?? ""] ?? EMOTION.calm;
   const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=pcm_24000`, {
     method: "POST", headers: { "xi-api-key": key, "Content-Type": "application/json" },
-    body: JSON.stringify({ text, model_id: "eleven_v4", voice_settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 } }),
+    body: JSON.stringify({ text: e.tag + text, model_id: "eleven_v4", voice_settings: { stability: e.stability, similarity_boost: 0.8, speed: 1.05 } }),
   });
   if (!r.ok) throw new Error("tts " + r.status + " " + (await r.text()).slice(0, 200));
   return toI16(new Uint8Array(await r.arrayBuffer()));
@@ -193,9 +205,10 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
   const [turnsRaw, pcms, bed] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
-    Promise.all(lines.map((l) => tts(key, voiceFor(l), l.text).then(trim))),
+    Promise.all(lines.map((l) => tts(key, voiceFor(l), l.text, l.emotion).then(trim))),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
   ]);
+  const fx = await Promise.all(((g.dialogue?.effects ?? []) as any[]).map((e) => sfxGen(key, e.text, e.dur).then((pcm) => ({ ...e, pcm })).catch(() => null)));
   const turns = turnsRaw.length ? fitTurns(turnsRaw, lines.length) : [];
   const speech = new Float32Array(n); const placed: { start: number; end: number }[] = [];
   let cursor = 0.5;
@@ -220,6 +233,9 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     const edge = Math.min(1, i / (0.3 * SR), (n - i) / (0.5 * SR));
     mix[i] = speech[i] + (bed ? (bed[i % bed.length] ?? 0) * gn * edge : 0);
   }
+  // timed story sounds (gunshots, explosions...) on top, a little softer while someone speaks
+  for (const e of fx) { if (!e?.pcm) continue; const s0 = Math.round(e.at * SR);
+    for (let k = 0; k < e.pcm.length && s0 + k < n; k++) mix[s0 + k] += e.pcm[k] * (inSp[s0 + k] ? 0.6 : 0.95); }
   return wavOf(mix);
 }
 async function eachlabs(admin: any) {
@@ -273,10 +289,80 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
   return { state: "running" };
 }
 
+// advance one running generation: wait for Wan → dub Burmese voices → merge → save
+async function step(admin: any, g: any) {
+  if (g.status !== "running" || !g.provider_request_id) return;
+
+    const age = Date.now() - new Date(g.created_at).getTime();
+    const saveFrom = async (url: string) => {
+      const vr = await fetch(url);
+      if (!vr.ok) throw new Error(`download ${vr.status}`);
+      const bytes = new Uint8Array(await vr.arrayBuffer());
+      const path = `${g.user_id}/${g.id}.mp4`;
+      const { error: ue } = await admin.storage.from("videos").upload(path, bytes, { contentType: "video/mp4", upsert: true });
+      if (ue) throw ue;
+      await admin.rpc("finish_generation", { p_id: g.id, p_ok: true, p_video_path: path });
+    };
+    try {
+      if (!g.post_stage || g.post_stage === "dubbing") {
+        // 1) wait for Wan; 2) dub Burmese voices over it
+        const src = g.post_data?.src;
+        const p = src ? { state: "done" as const, url: src } : await pollVideo(g);
+        if (p.state === "done") {
+          const lines = g.dialogue?.lines ?? [];
+          if (!lines.length) await saveFrom(p.url!);
+          else if (await admin.rpc("claim_post_stage", { p_id: g.id, p_from: null, p_to: "dubbing" }).then((r: any) => r.data)) {
+            await admin.from("generations").update({ post_data: { src: p.url } }).eq("id", g.id);
+            try {
+              const wav = await buildDubAudio(admin, g, p.url!);
+              const apath = `gen/${g.id}.wav`;
+              const { error: ae } = await admin.storage.from("audio").upload(apath, wav, { contentType: "audio/wav", upsert: true });
+              if (ae) throw ae;
+              const { data: as } = await admin.storage.from("audio").createSignedUrl(apath, 3600);
+              const sub = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
+                body: JSON.stringify({ model: "ffmpeg-api-merge-audio-video", version: "0.0.1", input: { video_url: p.url, audio_url: as!.signedUrl } }) });
+              const sj: any = await sub.json().catch(() => ({}));
+              const pid = sj.predictionID ?? sj.prediction_id ?? sj.id;
+              if (!sub.ok || !pid) throw new Error("merge submit " + sub.status + " " + JSON.stringify(sj).slice(0, 200));
+              await admin.from("generations").update({ post_stage: "merging", post_updated_at: new Date().toISOString(), post_data: { src: p.url, merge_id: pid } }).eq("id", g.id);
+            } catch (e) {
+              console.error("dubbing failed, delivering original:", e);
+              await admin.from("generations").update({ post_data: { src: p.url, dub_error: String(e).slice(0, 300) } }).eq("id", g.id);
+              await saveFrom(p.url!);
+            }
+          } else if (g.post_stage === "dubbing" && g.post_updated_at && Date.now() - new Date(g.post_updated_at).getTime() > 240000) {
+            await saveFrom(p.url!); // dubbing got stuck: give the customer the original video
+          }
+        } else if (p.state === "failed" || age > JOB_TIMEOUT_MS) {
+          await admin.rpc("finish_generation", { p_id: g.id, p_ok: false, p_error: p.error ?? "timeout" });
+        }
+      } else if (g.post_stage === "merging") {
+        const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.post_data?.merge_id}`, { headers: await eachlabs(admin) });
+        const j: any = await r.json().catch(() => ({}));
+        if ((j.status === "success" || j.status === "succeeded") && j.output) await saveFrom(Array.isArray(j.output) ? j.output[0] : j.output);
+        else if (j.status === "error" || j.status === "failed" || age > JOB_TIMEOUT_MS) await saveFrom(g.post_data.src);
+      }
+    } catch (e) {
+      console.error("status step failed:", e); // keep running; next poll retries
+    }
+  }
+
 // ---------- handler ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+
+  const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
+  // background tick (pg_cron every minute): keeps jobs moving even when the customer closed the app
+  const cronTok = req.headers.get("x-cron-token");
+  if (cronTok) {
+    const { data: want } = await admin0.rpc("get_app_secret", { p_name: "cron_token" });
+    if (!want || cronTok !== want) return json({ error: "bad token" }, 401);
+    await loadYottaKey(admin0);
+    const { data: rows } = await admin0.from("generations").select("*").eq("status", "running").order("created_at").limit(6);
+    for (const g of rows ?? []) { try { await step(admin0, g); } catch (e) { console.error("tick", g.id, e); } }
+    return json({ ok: true, n: rows?.length ?? 0 });
+  }
 
   const auth = req.headers.get("Authorization") ?? "";
   const userDb = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } } });
@@ -311,7 +397,7 @@ Deno.serve(async (req) => {
       const sub = await submitVideo(g, en, imageUrl);
       await admin.from("generations").update({
         status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
-        dialogue: plan.lines.length ? { lines: plan.lines, ambience: plan.ambience ?? null } : null,
+        dialogue: plan.lines.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [] } : null,
       }).eq("id", id);
       return json({ id });
     } catch (e) {
@@ -330,60 +416,7 @@ Deno.serve(async (req) => {
     if (g.status === "queued" && Date.now() - new Date(g.created_at).getTime() > 3 * 60 * 1000) {
       await admin.rpc("finish_generation", { p_id: g.id, p_ok: false, p_error: "never started" });
     }
-    if (g.status === "running" && g.provider_request_id) {
-      const age = Date.now() - new Date(g.created_at).getTime();
-      const saveFrom = async (url: string) => {
-        const vr = await fetch(url);
-        if (!vr.ok) throw new Error(`download ${vr.status}`);
-        const bytes = new Uint8Array(await vr.arrayBuffer());
-        const path = `${g.user_id}/${g.id}.mp4`;
-        const { error: ue } = await admin.storage.from("videos").upload(path, bytes, { contentType: "video/mp4", upsert: true });
-        if (ue) throw ue;
-        await admin.rpc("finish_generation", { p_id: g.id, p_ok: true, p_video_path: path });
-      };
-      try {
-        if (!g.post_stage || g.post_stage === "dubbing") {
-          // 1) wait for Wan; 2) dub Burmese voices over it
-          const src = g.post_data?.src;
-          const p = src ? { state: "done" as const, url: src } : await pollVideo(g);
-          if (p.state === "done") {
-            const lines = g.dialogue?.lines ?? [];
-            if (!lines.length) await saveFrom(p.url!);
-            else if (await admin.rpc("claim_post_stage", { p_id: g.id, p_from: null, p_to: "dubbing" }).then((r: any) => r.data)) {
-              await admin.from("generations").update({ post_data: { src: p.url } }).eq("id", g.id);
-              try {
-                const wav = await buildDubAudio(admin, g, p.url!);
-                const apath = `gen/${g.id}.wav`;
-                const { error: ae } = await admin.storage.from("audio").upload(apath, wav, { contentType: "audio/wav", upsert: true });
-                if (ae) throw ae;
-                const { data: as } = await admin.storage.from("audio").createSignedUrl(apath, 3600);
-                const sub = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
-                  body: JSON.stringify({ model: "ffmpeg-api-merge-audio-video", version: "0.0.1", input: { video_url: p.url, audio_url: as!.signedUrl } }) });
-                const sj: any = await sub.json().catch(() => ({}));
-                const pid = sj.predictionID ?? sj.prediction_id ?? sj.id;
-                if (!sub.ok || !pid) throw new Error("merge submit " + sub.status + " " + JSON.stringify(sj).slice(0, 200));
-                await admin.from("generations").update({ post_stage: "merging", post_updated_at: new Date().toISOString(), post_data: { src: p.url, merge_id: pid } }).eq("id", g.id);
-              } catch (e) {
-                console.error("dubbing failed, delivering original:", e);
-                await admin.from("generations").update({ post_data: { src: p.url, dub_error: String(e).slice(0, 300) } }).eq("id", g.id);
-                await saveFrom(p.url!);
-              }
-            } else if (g.post_stage === "dubbing" && g.post_updated_at && Date.now() - new Date(g.post_updated_at).getTime() > 240000) {
-              await saveFrom(p.url!); // dubbing got stuck: give the customer the original video
-            }
-          } else if (p.state === "failed" || age > JOB_TIMEOUT_MS) {
-            await admin.rpc("finish_generation", { p_id: g.id, p_ok: false, p_error: p.error ?? "timeout" });
-          }
-        } else if (g.post_stage === "merging") {
-          const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.post_data?.merge_id}`, { headers: await eachlabs(admin) });
-          const j: any = await r.json().catch(() => ({}));
-          if ((j.status === "success" || j.status === "succeeded") && j.output) await saveFrom(Array.isArray(j.output) ? j.output[0] : j.output);
-          else if (j.status === "error" || j.status === "failed" || age > JOB_TIMEOUT_MS) await saveFrom(g.post_data.src);
-        }
-      } catch (e) {
-        console.error("status step failed:", e); // keep running; next poll retries
-      }
-    }
+    await step(admin, g);
 
     const { data: fresh } = await userDb.from("generations").select("*").eq("id", body.id).single();
     let video_url: string | undefined;
