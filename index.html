@@ -127,7 +127,7 @@
 
           <label class="lbl">အရည်အသွေး</label>
           <div class="seg" id="qualSeg">
-            <button data-v="std" class="on">Standard<small>540p</small></button>
+            <button data-v="std" class="on">Standard<small>480p</small></button>
             <button data-v="hd">HD<small>720p</small></button>
           </div>
           <label class="lbl">ကြာချိန်</label>
@@ -165,7 +165,7 @@
       <section id="buyPage" class="hidden">
         <div class="card">
           <h2>Credit ဝယ်ရန်</h2>
-          <p class="muted" style="margin-top:0">Standard 10 စက္ကန့် = 30 credits (3,000 ကျပ်) · HD 10 စက္ကန့် = 35 credits (3,500 ကျပ်)</p>
+          <p class="muted" style="margin-top:0">Standard 10 စက္ကန့် = 30 credits (3,000 ကျပ်) · HD 10 စက္ကန့် = 50 credits (5,000 ကျပ်)</p>
           <div id="packs"></div>
         </div>
         <div class="card hidden" id="payCard">
@@ -222,7 +222,7 @@ const PAY_INFO = {                                   // <-- ကိုယ့် �
   kbzpay:  { name: "KBZPay",   phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
   wavepay: { name: "Wave Pay", phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
 };
-const RATE = { std: 3.0, hd: 3.5 };                  // credits per second (must match DB gen_cost)
+const RATE = { std: 3.0, hd: 5.0 };                  // credits per second (must match DB gen_cost)
 const KS_PER_CREDIT = 100;
 
 /* ================= SETUP ================= */

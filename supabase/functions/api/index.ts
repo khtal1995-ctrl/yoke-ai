@@ -30,18 +30,21 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const RESOLUTION: Record<string, string> = { std: "540p", hd: "720p" };
+const RESOLUTION: Record<string, string> = { std: "480p", hd: "720p" };
 
 // ---------- prompt rewrite (Burmese -> English scene, Burmese dialogue kept) ----------
-const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into one English prompt for the PixVerse V6 video model.
+const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into one English prompt for the Wan 3.0 video model, which generates video together with native audio and lip-synced speech.
 Rules:
-- Describe the scene, people, setting (Myanmar), camera and lighting in clear English.
-- Any spoken words must stay in Burmese script, in quotes, written as: <who> says in Burmese: "<text>".
-- If two or more people speak, say who is on the left/right and the order: first..., then...
-- Keep dialogue short (one line per speaker). If no dialogue was asked for, add none.
+- Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English.
+- Any spoken words must stay in Burmese script, in quotes, written as: <who> says slowly and clearly in native Burmese (Myanmar language) with a natural Yangon accent: "<text>".
+- Use common everyday colloquial Burmese spelling (for example write ခနလေး instead of ခဏလေး). Keep each line short and natural.
+- Dialogue length must fit the video: about 8 Burmese words per 5 seconds at most. Speakers must finish talking at least 1 second before the video ends, then stay silent and smile or react.
+- Only one person speaks at a time. If two people talk, say who speaks first and who answers, and keep the speaker's face clearly visible while they talk.
+- Describe physical actions in a clear order with direction (for example: falls straight down from the sky and lands on the street, it never rises from the ground). Objects that appear must stay consistent and never vanish.
+- Mention fitting background sounds (ambience, effects). If no dialogue was asked for, add none.
 - Output only the final prompt, no notes.`;
 
-async function rewritePrompt(mm: string): Promise<string> {
+async function rewritePrompt(mm: string, duration = 10): Promise<string> {
   if (!LLM_MODEL) return fallbackPrompt(mm);
   try {
     const r = await fetch(`${YOTTA}/api/maas/chat/completions`, {
@@ -49,7 +52,7 @@ async function rewritePrompt(mm: string): Promise<string> {
       headers: { "X-API-KEY": YOTTA_KEY, "Authorization": `Bearer ${YOTTA_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: LLM_MODEL, temperature: 0.4, max_tokens: 1500,
-        messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: mm }],
+        messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\nRequest:\n${mm}` }],
       }),
     });
     if (!r.ok) throw new Error(`llm ${r.status}`);
@@ -64,28 +67,32 @@ async function rewritePrompt(mm: string): Promise<string> {
 const fallbackPrompt = (mm: string) =>
   `A realistic scene set in Myanmar. ${mm}. Any speech is spoken in Burmese. Natural light, cinematic.`;
 
-// ---------- Yotta Gateway: PixVerse V6 ----------
-async function submitVideo(g: any, prompt: string, imageUrl?: string): Promise<string> {
+// ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
+async function submitVideo(g: any, prompt: string, imageUrl?: string): Promise<{ id: string; model: string }> {
   const isI2v = g.mode === "i2v";
   const path = isI2v ? "image-to-video" : "text-to-video";
-  const parameters: Record<string, unknown> = {
-    prompt,
-    resolution: RESOLUTION[g.quality] ?? "540p",
-    duration: g.duration,
-    generate_audio: true,
+  const tryModel = async (model: string, extra: Record<string, unknown>) => {
+    const parameters: Record<string, unknown> = {
+      prompt, resolution: RESOLUTION[g.quality] ?? "480p", duration: g.duration, generate_audio: true, ...extra,
+    };
+    if (isI2v) parameters.first_frame = imageUrl; else parameters.aspect_ratio = g.ratio;
+    const r = await fetch(`${YOTTA}/api/maas/${path}/generations`, {
+      method: "POST",
+      headers: { "X-API-KEY": YOTTA_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, parameters }),
+    });
+    const j = await r.json().catch(() => ({}));
+    const id = j?.data?.request_id ?? j?.request_id;
+    if (!r.ok || !id) throw new Error(`submit ${model} failed (${r.status}): ${JSON.stringify(j).slice(0, 300)}`);
+    return { id, model };
   };
-  if (isI2v) parameters.first_frame = imageUrl;
-  else parameters.aspect_ratio = g.ratio;
-
-  const r = await fetch(`${YOTTA}/api/maas/${path}/generations`, {
-    method: "POST",
-    headers: { "X-API-KEY": YOTTA_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: isI2v ? "pixverse-v6-i2v" : "pixverse-v6-t2v", parameters }),
-  });
-  const j = await r.json().catch(() => ({}));
-  const id = j?.data?.request_id ?? j?.request_id;
-  if (!r.ok || !id) throw new Error(`submit failed (${r.status}): ${JSON.stringify(j).slice(0, 300)}`);
-  return id;
+  try {
+    return await tryModel(isI2v ? "wan3.0-i2v" : "wan3.0-t2v", { enhance_prompt: false });
+  } catch (e) {
+    console.error("wan submit failed, falling back to pixverse:", e);
+    const res = g.quality === "hd" ? "720p" : "540p";
+    return await tryModel(isI2v ? "pixverse-v6-i2v" : "pixverse-v6-t2v", { resolution: res });
+  }
 }
 
 async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"; url?: string; error?: string }> {
@@ -133,15 +140,15 @@ Deno.serve(async (req) => {
 
     const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
     try {
-      const en = await rewritePrompt(g.prompt_mm);
+      const en = await rewritePrompt(g.prompt_mm, g.duration);
       let imageUrl: string | undefined;
       if (g.mode === "i2v") {
         const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
         if (se || !s) throw new Error("image not found");
         imageUrl = s.signedUrl;
       }
-      const reqId = await submitVideo(g, en, imageUrl);
-      await admin.from("generations").update({ status: "running", prompt_en: en, provider_request_id: reqId }).eq("id", id);
+      const sub = await submitVideo(g, en, imageUrl);
+      await admin.from("generations").update({ status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}` }).eq("id", id);
       return json({ id });
     } catch (e) {
       console.error("create failed:", e);
