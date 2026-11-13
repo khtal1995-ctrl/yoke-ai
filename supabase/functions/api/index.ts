@@ -199,16 +199,56 @@ function fitTurns(segs: { start: number; end: number; spk: string }[], n: number
   }
   return s;
 }
+// decode a 16-bit PCM WAV and resample to 24 kHz mono
+function wavTo24k(b: Uint8Array): Int16Array {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength); let o = 12, sr = 24000, ch = 1;
+  while (o + 8 <= b.length) {
+    const id = String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]), len = dv.getUint32(o + 4, true);
+    if (id === "fmt ") { ch = dv.getUint16(o + 10, true); sr = dv.getUint32(o + 12, true); }
+    if (id === "data") {
+      const n = Math.floor(Math.min(len, b.length - o - 8) / 2 / ch); const out = new Int16Array(Math.floor(n * SR / sr));
+      for (let i = 0; i < out.length; i++) { const t = i * sr / SR, k = Math.floor(t), f = t - k; let a = 0, c = 0;
+        for (let q = 0; q < ch; q++) { a += dv.getInt16(o + 8 + (k * ch + q) * 2, true); c += k + 1 < n ? dv.getInt16(o + 8 + ((k + 1) * ch + q) * 2, true) : 0; }
+        out[i] = Math.round(((1 - f) * a + f * c) / ch); }
+      return out;
+    }
+    o += 8 + len + (len & 1);
+  }
+  throw new Error("bad wav");
+}
+// run an Eachlabs utility model and wait for its output URL
+async function eachRun(admin: any, model: string, input: any, maxMs = 90000): Promise<string> {
+  const h = await eachlabs(admin);
+  const sub = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: h, body: JSON.stringify({ model, version: "0.0.1", input }) });
+  const sj: any = await sub.json().catch(() => ({})); const pid = sj.predictionID ?? sj.prediction_id ?? sj.id;
+  if (!pid) throw new Error(model + " submit " + sub.status + " " + JSON.stringify(sj).slice(0, 200));
+  for (const t0 = Date.now(); Date.now() - t0 < maxMs;) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const j: any = await (await fetch(`https://api.eachlabs.ai/v1/prediction/${pid}`, { headers: h })).json().catch(() => ({}));
+    if (j.status === "error" || j.status === "failed") throw new Error(model + " failed");
+    if ((j.status === "success" || j.status === "succeeded") && j.output) return Array.isArray(j.output) ? j.output[0] : j.output;
+  }
+  throw new Error(model + " timeout");
+}
+// Wan's own soundtrack (gunshots, footsteps, ambience...) — perfectly in time with the picture
+async function wanSoundtrack(admin: any, srcUrl: string): Promise<Int16Array | null> {
+  try {
+    const url = await eachRun(admin, "audio-extractor", { video: srcUrl, output_format: "wav", sample_rate: 48000, speech_ready_mono: true });
+    return wavTo24k(new Uint8Array(await (await fetch(url)).arrayBuffer()));
+  } catch (e) { console.error("wanSoundtrack:", e); return null; }
+}
 async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
   const lines: any[] = g.dialogue?.lines ?? [];
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
-  const [turnsRaw, pcms, bed] = await Promise.all([
+  const [turnsRaw, pcms, bed, wan] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
     Promise.all(lines.map((l) => tts(key, voiceFor(l), l.text, l.emotion).then(trim))),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
+    wanSoundtrack(admin, srcUrl),
   ]);
-  const fx = await Promise.all(((g.dialogue?.effects ?? []) as any[]).map((e) => sfxGen(key, e.text, e.dur).then((pcm) => ({ ...e, pcm })).catch(() => null)));
+  // only when Wan's own soundtrack is unavailable do we add guessed, timed effects
+  const fx = wan ? [] : await Promise.all(((g.dialogue?.effects ?? []) as any[]).map((e) => sfxGen(key, e.text, e.dur).then((pcm) => ({ ...e, pcm })).catch(() => null)));
   const turns = turnsRaw.length ? fitTurns(turnsRaw, lines.length) : [];
   const speech = new Float32Array(n); const placed: { start: number; end: number }[] = [];
   let cursor = 0.5;
@@ -223,6 +263,19 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     const s0 = Math.round(start * SR); for (let k = 0; k < out.length && s0 + k < n; k++) speech[s0 + k] += out[k];
     const end = start + out.length / SR; placed.push({ start, end }); cursor = end + 0.3;
   });
+  // Wan's soundtrack keeps every sound effect in sync; it is silenced only where Wan's (wrong) Burmese speech was
+  if (wan) {
+    const mute = new Float32Array(n).fill(1); const pad = Math.round(0.2 * SR), ramp = Math.round(0.06 * SR);
+    for (const t of turnsRaw) { const a = Math.max(0, Math.round(t.start * SR) - pad), b = Math.min(n, Math.round(t.end * SR) + pad);
+      for (let i = Math.max(0, a - ramp); i < Math.min(n, b + ramp); i++) { const d = i < a ? (a - i) / ramp : i >= b ? (i - b + 1) / ramp : 0; mute[i] = Math.min(mute[i], d); } }
+    const mix = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const w = (wan[i] ?? 0) * mute[i];
+      const fill = bed ? (bed[i % bed.length] ?? 0) * 0.55 * (1 - mute[i]) : 0; // keep the scene alive while Wan is muted
+      mix[i] = speech[i] + w + fill;
+    }
+    return wavOf(mix);
+  }
   // background bed, ducked under speech
   const mix = new Float32Array(n); const hi = 0.9, lo = 0.5, fade = Math.round(0.25 * SR);
   const inSp = new Uint8Array(n);
