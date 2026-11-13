@@ -289,6 +289,29 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
   return { state: "running" };
 }
 
+// plan the scene with Grok, then submit to Wan (runs in the background after "create" has answered)
+async function startGeneration(admin: any, id: string) {
+  const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
+  try {
+    const plan = await planVideo(g.prompt_mm, g.duration);
+    const en = plan.prompt;
+    let imageUrl: string | undefined;
+    if (g.mode === "i2v") {
+      const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
+      if (se || !s) throw new Error("image not found");
+      imageUrl = s.signedUrl;
+    }
+    const sub = await submitVideo(g, en, imageUrl);
+    await admin.from("generations").update({
+      status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
+      dialogue: plan.lines.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [] } : null,
+    }).eq("id", id);
+  } catch (e) {
+    console.error("create failed:", e);
+    await admin.rpc("finish_generation", { p_id: id, p_ok: false, p_error: String(e).slice(0, 500) });
+  }
+}
+
 // advance one running generation: wait for Wan → dub Burmese voices → merge → save
 async function step(admin: any, g: any) {
   if (g.status !== "running" || !g.provider_request_id) return;
@@ -359,6 +382,9 @@ Deno.serve(async (req) => {
     const { data: want } = await admin0.rpc("get_app_secret", { p_name: "cron_token" });
     if (!want || cronTok !== want) return json({ error: "bad token" }, 401);
     await loadYottaKey(admin0);
+    // jobs that never started (e.g. phone lost connection) → refund after 4 minutes
+    const { data: stuck } = await admin0.from("generations").select("id").eq("status", "queued").lt("created_at", new Date(Date.now() - 240000).toISOString());
+    for (const q of stuck ?? []) await admin0.rpc("finish_generation", { p_id: q.id, p_ok: false, p_error: "never started" });
     const { data: rows } = await admin0.from("generations").select("*").eq("status", "running").order("created_at").limit(6);
     for (const g of rows ?? []) { try { await step(admin0, g); } catch (e) { console.error("tick", g.id, e); } }
     return json({ ok: true, n: rows?.length ?? 0 });
@@ -384,27 +410,11 @@ Deno.serve(async (req) => {
     });
     if (error) return json({ error: error.message }, 400);
 
-    const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
-    try {
-      const plan = await planVideo(g.prompt_mm, g.duration);
-      const en = plan.prompt;
-      let imageUrl: string | undefined;
-      if (g.mode === "i2v") {
-        const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
-        if (se || !s) throw new Error("image not found");
-        imageUrl = s.signedUrl;
-      }
-      const sub = await submitVideo(g, en, imageUrl);
-      await admin.from("generations").update({
-        status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
-        dialogue: plan.lines.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [] } : null,
-      }).eq("id", id);
-      return json({ id });
-    } catch (e) {
-      console.error("create failed:", e);
-      await admin.rpc("finish_generation", { p_id: id, p_ok: false, p_error: String(e).slice(0, 500) });
-      return json({ error: "AI service error — credits refunded", id }, 502);
-    }
+    // plan + submit can take ~1 minute (Grok): answer the phone right away and keep working in the background
+    const work = startGeneration(admin, id);
+    // @ts-ignore EdgeRuntime is provided by Supabase
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else await work;
+    return json({ id });
   }
 
   // ---- status ----
