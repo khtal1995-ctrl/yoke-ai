@@ -97,7 +97,7 @@
       <input type="password" id="password" autocomplete="current-password">
       <div style="height:14px"></div>
       <button class="btn" id="authBtn">ဝင်မည်</button>
-      <p class="muted" id="signupNote" style="margin-bottom:0">အကောင့်သစ်ဆို free credit 20 ရမယ် (Standard 10 စက္ကန့် ၁ ပုဒ်စာ)</p>
+      <p class="muted" id="signupNote" style="margin-bottom:0">အကောင့်သစ်ဆို free credit 20 ရမယ် (Standard 5 စက္ကန့် ၁ ပုဒ်စာ)</p>
     </div>
   </section>
 
@@ -145,7 +145,7 @@
           </div>
           <div class="cost">
             <span class="muted">ကုန်မည့် credit</span>
-            <span><b id="costCr">20</b> credits <span class="muted">(<span id="costKs">2,000</span> ကျပ်)</span></span>
+            <span><b id="costCr">25</b> credits <span class="muted">(<span id="costKs">2,500</span> ကျပ်)</span></span>
           </div>
           <button class="btn" id="genBtn">✨ Video ဖန်တီးမည်</button>
         </div>
@@ -165,7 +165,7 @@
       <section id="buyPage" class="hidden">
         <div class="card">
           <h2>Credit ဝယ်ရန်</h2>
-          <p class="muted" style="margin-top:0">Standard 10 စက္ကန့် = 20 credits · HD 10 စက္ကန့် = 30 credits</p>
+          <p class="muted" style="margin-top:0">Standard 10 စက္ကန့် = 25 credits (2,500 ကျပ်) · HD 10 စက္ကန့် = 35 credits (3,500 ကျပ်)</p>
           <div id="packs"></div>
         </div>
         <div class="card hidden" id="payCard">
@@ -222,7 +222,7 @@ const PAY_INFO = {                                   // <-- ကိုယ့် �
   kbzpay:  { name: "KBZPay",   phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
   wavepay: { name: "Wave Pay", phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
 };
-const RATE = { std: 2, hd: 3 };                      // credits per second (must match DB gen_cost)
+const RATE = { std: 2.5, hd: 3.5 };                  // credits per second (must match DB gen_cost)
 const KS_PER_CREDIT = 100;
 
 /* ================= SETUP ================= */
@@ -319,7 +319,7 @@ function seg(id, key, num){
   });
 }
 seg("qualSeg","quality"); seg("durSeg","duration",true); seg("ratioSeg","ratio");
-const costOf = () => RATE[opt.quality] * opt.duration;
+const costOf = () => Math.ceil(RATE[opt.quality] * opt.duration);
 function updateCost(){
   const c = costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
   const enough = !profile || profile.credits >= c;
@@ -434,7 +434,7 @@ async function loadPacks(){
     const total = p.credits + p.bonus;
     return `<div class="pack ${pickedPack===p.id?"on":""}" data-pk="${p.id}">
       <div><div class="p">⚡ ${fmt(total)} credits</div>
-      <div class="muted" style="font-size:12px">Standard 10s × ${Math.floor(total/20)} ပုဒ်</div>
+      <div class="muted" style="font-size:12px">Standard 10s × ${Math.floor(total/25)} ပုဒ်</div>
       ${p.bonus?`<div class="bonus">+${p.bonus} bonus</div>`:""}</div>
       <div class="p">${fmt(p.price_ks)} ကျပ်</div></div>`; }).join("");
   document.querySelectorAll("[data-pk]").forEach(d => d.onclick = () => {
