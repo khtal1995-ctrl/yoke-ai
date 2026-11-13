@@ -33,16 +33,15 @@ const json = (body: unknown, status = 200) =>
 const RESOLUTION: Record<string, string> = { std: "480p", hd: "720p" };
 
 // ---------- prompt rewrite (Burmese -> English scene, Burmese dialogue kept) ----------
-const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into one English prompt for the Wan 3.0 video model, which generates video together with native audio and lip-synced speech.
-Rules:
-- Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English.
-- Any spoken words must stay in Burmese script, in quotes, written as: <who> says slowly and clearly in native Burmese (Myanmar language) with a natural Yangon accent: "<text>".
-- Use common everyday colloquial Burmese spelling (for example write ခနလေး instead of ခဏလေး). Keep each line short and natural.
-- Dialogue length must fit the video: about 8 Burmese words per 5 seconds at most. Speakers must finish talking at least 1 second before the video ends, then stay silent and smile or react.
-- Only one person speaks at a time. If two people talk, say who speaks first and who answers, and keep the speaker's face clearly visible while they talk.
-- Describe physical actions in a clear order with direction (for example: falls straight down from the sky and lands on the street, it never rises from the ground). Objects that appear must stay consistent and never vanish.
-- Mention fitting background sounds (ambience, effects). If no dialogue was asked for, add none.
-- Output only the final prompt, no notes.`;
+const SYSTEM_PROMPT = `You create one concise English video-generation prompt from the user's Myanmar-language request for Wan 3.0 (native video and audio).
+Non-negotiable rules:
+- Describe characters, Myanmar setting, camera, lighting, expressions and sequence of actions in clear English.
+- Copy ALL USER-QUOTED BURMESE DIALOGUE verbatim in Myanmar Unicode; preserve every word, character, and punctuation mark. NEVER correct spelling, transliterate, translate, shorten, paraphrase or invent dialogue. Even "ခဏလေး" must remain "ခဏလေး", never "ခနလေး".
+- Identify which visible person speaks each exact quoted line and the order. One person speaks at a time; the other does not move their lips.
+- Describe native everyday Myanmar Burmese pronunciation, natural Yangon conversational accent, human rhythm, Burmese sentence particles and clear articulation. Avoid an English/foreign accent and exaggerated slow speech.
+- Keep speech brief enough for the requested duration, but NEVER change the user's exact words to fit. Do not add a narrator, subtitles or singing. Background ambience must not cover speech.
+- If the user requests no dialogue or has not asked for speech, never invent speech.
+- Make actions and object positions physically consistent. Output only the final prompt.`;
 
 async function rewritePrompt(mm: string, duration = 10): Promise<string> {
   if (!LLM_MODEL) return fallbackPrompt(mm);
@@ -66,6 +65,45 @@ async function rewritePrompt(mm: string, duration = 10): Promise<string> {
 }
 const fallbackPrompt = (mm: string) =>
   `A realistic scene set in Myanmar. ${mm}. Any speech is spoken in Burmese. Natural light, cinematic.`;
+
+
+// ---------- preserve exact Myanmar dialogue and native voice guidance ----------
+// Pure post-processing: no changes to model selection, credits, API calls or storage.
+const NATIVE_BURMESE_DIRECTION =
+  "Audio: authentic Myanmar Burmese spoken by a native Yangon speaker, clear Myanmar consonants " +
+  "and vowels, relaxed conversational pace, natural sentence-ending particles, accurate expressive timing, " +
+  "no foreign or English accent, no invented narration, and no subtitles. " +
+  "Only the current speaker moves their lips. Keep speech distinct from background noise.";
+
+function originalMyanmarQuotedLines(input: string): string[] {
+  return [...input.matchAll(/["“‘]([^"”’\n]{1,180})["”’]/gu)]
+    .map(x => x[1])
+    .filter(x => /[\u1000-\u109F\uAA60-\uAA7F]/u.test(x));
+}
+
+function prepareNativeBurmesePrompt(rewritten: string, original: string): string {
+  const exactLines = originalMyanmarQuotedLines(original);
+  const deliberatelySilent = /(?:စကားမပြော|စကားမပါ|အသံမပါ|တိတ်ဆိတ်|no dialogue|no speech|silent video)/iu.test(original);
+  const askedForSpeech = !deliberatelySilent &&
+    (exactLines.length > 0 || /(?:လို့\s*(?:ပြော|မေး|ဖြေ)|ပြောတယ်|ပြောပါ|စကားပြော|မြန်မာလို|dialogue|says|speaks|voiceover)/iu.test(original));
+
+  // If the rewrite altered even one original quote, fall back to the user's original scene
+  // rather than sending two conflicting versions of the dialogue to the video model.
+  let scene = exactLines.every(line => rewritten.normalize("NFC").includes(line.normalize("NFC")))
+    ? rewritten : fallbackPrompt(original);
+
+  if (!askedForSpeech) return scene + "\nNo spoken dialogue, speech or narrator; do not invent voices.";
+
+  const exactText = exactLines.length
+    ? "\nExact Myanmar dialogue (copy verbatim, in this order): " +
+      exactLines.map((line, i) => "Line " + (i + 1) + ': "' + line + '"').join("; ")
+    : "";
+  let result = scene + "\n" + NATIVE_BURMESE_DIRECTION + exactText;
+  if (result.length > 5000) {
+    result = fallbackPrompt(original) + "\n" + NATIVE_BURMESE_DIRECTION + exactText;
+  }
+  return result;
+}
 
 // ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
 async function submitVideo(g: any, prompt: string, imageUrl?: string): Promise<{ id: string; model: string }> {
@@ -140,7 +178,7 @@ Deno.serve(async (req) => {
 
     const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
     try {
-      const en = await rewritePrompt(g.prompt_mm, g.duration);
+      const en = prepareNativeBurmesePrompt(await rewritePrompt(g.prompt_mm, g.duration), g.prompt_mm);
       let imageUrl: string | undefined;
       if (g.mode === "i2v") {
         const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
