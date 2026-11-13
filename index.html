@@ -434,7 +434,7 @@ async function loadPacks(){
     const total = p.credits + p.bonus;
     return `<div class="pack ${pickedPack===p.id?"on":""}" data-pk="${p.id}">
       <div><div class="p">⚡ ${fmt(total)} credits</div>
-      <div class="muted" style="font-size:12px">Standard 10s × ${Math.floor(total/25)} ပုဒ်</div>
+      <div class="muted" style="font-size:12px">Standard 10s × ${Math.floor(total/30)} ပုဒ်</div>
       ${p.bonus?`<div class="bonus">+${p.bonus} bonus</div>`:""}</div>
       <div class="p">${fmt(p.price_ks)} ကျပ်</div></div>`; }).join("");
   document.querySelectorAll("[data-pk]").forEach(d => d.onclick = () => {
