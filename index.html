@@ -125,11 +125,6 @@
           <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
           <div class="tip">💡 စကားပြောတဲ့သူ ၁–၂ ယောက်ထားပြီး တစ်ယောက် တစ်ခွန်းစီ တိုတိုရေးရင် ပိုကောင်းပါတယ်။ အမျိုးသမီး/အမျိုးသား အသံကို AI က ဇာတ်ကောင်ကြည့်ပြီး ရွေးပေးပါတယ်။</div>
 
-          <label class="lbl">အရည်အသွေး</label>
-          <div class="seg" id="qualSeg">
-            <button data-v="std" class="on">Standard<small>480p</small></button>
-            <button data-v="hd">HD<small>720p</small></button>
-          </div>
           <label class="lbl">ကြာချိန်</label>
           <div class="seg" id="durSeg">
             <button data-v="5">5 စက္ကန့်</button>
@@ -165,7 +160,7 @@
       <section id="buyPage" class="hidden">
         <div class="card">
           <h2>Credit ဝယ်ရန်</h2>
-          <p class="muted" style="margin-top:0">Standard 10 စက္ကန့် = 30 credits (3,000 ကျပ်) · HD 10 စက္ကန့် = 50 credits (5,000 ကျပ်)</p>
+          <p class="muted" style="margin-top:0">Video 10 စက္ကန့် = 30 credits (3,000 ကျပ်) · 5 စက္ကန့် = 15 credits (1,500 ကျပ်)</p>
           <div id="packs"></div>
         </div>
         <div class="card hidden" id="payCard">
@@ -318,7 +313,7 @@ function seg(id, key, num){
     opt[key] = num ? Number(b.dataset.v) : b.dataset.v; updateCost();
   });
 }
-seg("qualSeg","quality"); seg("durSeg","duration",true); seg("ratioSeg","ratio");
+seg("durSeg","duration",true); seg("ratioSeg","ratio");
 const costOf = () => Math.ceil(RATE[opt.quality] * opt.duration);
 function updateCost(){
   const c = costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
@@ -415,7 +410,7 @@ async function loadVideos(){
   $("vlist").innerHTML = data.map(g => `
     <div class="vitem">
       <span class="badge ${g.status}">${ST[g.status]}</span>
-      <span class="muted" style="font-size:12px"> · ${g.quality==="hd"?"HD":"Std"} ${g.duration}s · ${new Date(g.created_at).toLocaleString()}</span>
+      <span class="muted" style="font-size:12px"> · ${g.duration}s · ${new Date(g.created_at).toLocaleString()}</span>
       <div class="p">${esc(g.prompt_mm)}</div>
       ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g) : ""}
       ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
@@ -434,7 +429,7 @@ async function loadPacks(){
     const total = p.credits + p.bonus;
     return `<div class="pack ${pickedPack===p.id?"on":""}" data-pk="${p.id}">
       <div><div class="p">⚡ ${fmt(total)} credits</div>
-      <div class="muted" style="font-size:12px">Standard 10s × ${Math.floor(total/30)} ပုဒ်</div>
+      <div class="muted" style="font-size:12px">10s video × ${Math.floor(total/30)} ပုဒ်</div>
       ${p.bonus?`<div class="bonus">+${p.bonus} bonus</div>`:""}</div>
       <div class="p">${fmt(p.price_ks)} ကျပ်</div></div>`; }).join("");
   document.querySelectorAll("[data-pk]").forEach(d => d.onclick = () => {
