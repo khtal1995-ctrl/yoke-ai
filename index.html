@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yoke AI — မြန်မာ AI Video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{--bg:#0d0d14;--card:#171723;--card2:#1f1f2e;--line:#2a2a3c;--text:#f1f1f6;--muted:#9a9ab0;
+    --accent:#7c5cff;--accent2:#22d3ee;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans Myanmar",system-ui,sans-serif;line-height:1.7}
+  button,input,textarea,select{font:inherit;color:inherit}
+  .app{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:90px}
+  header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;position:sticky;top:0;
+    background:rgba(13,13,20,.94);backdrop-filter:blur(8px);z-index:5;border-bottom:1px solid var(--line)}
+  .logo{font-weight:700;font-size:20px}.logo span{background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .chip{display:flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--line);
+    padding:6px 12px;border-radius:999px;font-weight:600;cursor:pointer}.chip b{color:var(--accent2)}
+  main{padding:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+  h2{font-size:17px;margin:0 0 10px}.muted{color:var(--muted);font-size:13.5px}
+  .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .tab{padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card2);text-align:center;cursor:pointer;font-weight:600}
+  .tab.on{border-color:var(--accent);background:rgba(124,92,255,.15)}
+  textarea,input[type=text],input[type=tel],input[type=password],select{width:100%;background:var(--card2);
+    border:1px solid var(--line);border-radius:12px;padding:12px;resize:vertical}
+  textarea{min-height:110px}
+  label.lbl{display:block;font-size:13.5px;color:var(--muted);margin:12px 0 6px}
+  .seg{display:flex;gap:8px;flex-wrap:wrap}
+  .seg button{flex:1;min-width:70px;padding:9px 6px;border-radius:10px;border:1px solid var(--line);background:var(--card2);cursor:pointer;font-size:14px}
+  .seg button.on{border-color:var(--accent);background:rgba(124,92,255,.15);font-weight:600}
+  .seg small{display:block;color:var(--muted);font-size:11.5px}
+  .btn{width:100%;padding:14px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:16px;color:#fff;
+    background:linear-gradient(90deg,var(--accent),#5b8cff)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:var(--card2);border:1px solid var(--line)}
+  .btn.sm{width:auto;padding:8px 14px;font-size:14px;border-radius:10px}
+  .btn.ok{background:var(--ok)}.btn.bad{background:var(--bad)}
+  .cost{display:flex;justify-content:space-between;align-items:center;margin:14px 0 10px;font-size:14px}.cost b{font-size:16px}
+  .drop{display:block;border:1.5px dashed var(--line);border-radius:12px;padding:18px;text-align:center;cursor:pointer;color:var(--muted)}
+  .drop img{max-width:100%;max-height:200px;border-radius:10px;display:block;margin:0 auto}
+  .hidden{display:none!important}
+  .tip{font-size:12.5px;color:var(--muted);background:var(--card2);border-radius:10px;padding:8px 10px;margin-top:8px}
+  .status{padding:10px 12px;border-radius:10px;font-size:14px;margin-top:10px}
+  .status.pending{background:rgba(245,158,11,.12);color:var(--warn)}
+  .status.ok{background:rgba(34,197,94,.12);color:var(--ok)}
+  .status.bad{background:rgba(239,68,68,.12);color:var(--bad)}
+  video{width:100%;border-radius:12px;background:#000;display:block}
+  .vitem{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
+  .vitem .p{font-size:13.5px;margin:6px 0}
+  .badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:6px;background:var(--line)}
+  .badge.running,.badge.queued{background:rgba(124,92,255,.2);color:#c4b5fd}
+  .badge.succeeded,.badge.approved{background:rgba(34,197,94,.15);color:var(--ok)}
+  .badge.failed,.badge.rejected{background:rgba(239,68,68,.15);color:var(--bad)}
+  .badge.pending{background:rgba(245,158,11,.15);color:var(--warn)}
+  .pack{display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--line);
+    border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--card2)}
+  .pack.on{border-color:var(--accent);background:rgba(124,92,255,.15)}
+  .pack .p{font-weight:700}.pack .bonus{color:var(--ok);font-size:12px}
+  .pay{background:var(--card2);border-radius:12px;padding:12px;margin:10px 0;font-size:14px}.pay b{color:var(--accent2)}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .row:last-child{border-bottom:none}
+  nav{position:fixed;bottom:0;left:0;right:0;background:rgba(13,13,20,.97);border-top:1px solid var(--line);
+    display:flex;justify-content:center;z-index:6;padding-bottom:env(safe-area-inset-bottom)}
+  nav .in{display:flex;max-width:480px;width:100%}
+  nav button{flex:1;background:none;border:none;padding:10px 4px 12px;cursor:pointer;color:var(--muted);font-size:12px}
+  nav button .ic{display:block;font-size:20px;line-height:1.2}nav button.on{color:var(--text)}
+  .toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);background:#24243a;border:1px solid var(--line);
+    padding:10px 16px;border-radius:12px;z-index:20;font-size:14px;max-width:90%;transition:opacity .3s}
+  .login{padding:36px 18px;text-align:center}.login h1{font-size:26px;margin:10px 0}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .slip{max-width:100%;max-height:260px;border-radius:10px;margin-top:8px;display:block}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== LOGIN ===== -->
+  <section id="loginView" class="login hidden">
+    <div class="logo" style="font-size:34px"><span>Yoke AI</span></div>
+    <h1>စာရိုက်ရုံနဲ့ Video ရမယ်</h1>
+    <p class="muted">မြန်မာလို ရေး → AI က မြန်မာစကားပြော video ဖန်တီးပေး</p>
+    <div class="card" style="text-align:left;margin-top:20px">
+      <div class="tabs">
+        <div class="tab on" data-auth="login">ဝင်မည်</div>
+        <div class="tab" data-auth="signup">အကောင့်သစ်</div>
+      </div>
+      <label class="lbl">ဖုန်းနံပါတ်</label>
+      <input type="tel" id="phone" placeholder="09xxxxxxxxx" inputmode="tel" autocomplete="tel">
+      <label class="lbl">Password (အနည်းဆုံး ၆ လုံး)</label>
+      <input type="password" id="password" autocomplete="current-password">
+      <div style="height:14px"></div>
+      <button class="btn" id="authBtn">ဝင်မည်</button>
+      <p class="muted" id="signupNote" style="margin-bottom:0">အကောင့်သစ်ဆို free credit 20 ရမယ် (Standard 10 စက္ကန့် ၁ ပုဒ်စာ)</p>
+    </div>
+  </section>
+
+  <!-- ===== MAIN ===== -->
+  <div id="mainView" class="hidden">
+    <header>
+      <div class="logo"><span>Yoke AI</span></div>
+      <div class="chip" id="creditChip">⚡ <b id="credits">0</b> credits</div>
+    </header>
+
+    <main>
+      <!-- CREATE -->
+      <section id="createPage">
+        <div class="card">
+          <div class="tabs">
+            <div class="tab on" data-mode="t2v">✍️ စာ → Video</div>
+            <div class="tab" data-mode="i2v">🖼️ ပုံ → Video</div>
+          </div>
+          <div id="imageBox" class="hidden">
+            <label class="lbl">ပုံတင်ပါ (video ရဲ့ ပထမဆုံး မြင်ကွင်း ဖြစ်မယ်)</label>
+            <label class="drop"><input type="file" id="imgInput" accept="image/jpeg,image/png,image/webp" class="hidden">
+              <span id="imgTxt">📷 နှိပ်ပြီး ပုံရွေးပါ</span><img id="imgPrev" class="hidden" alt=""></label>
+          </div>
+          <label class="lbl">ဘာ video လိုချင်လဲ — ပြောစေချင်တဲ့ စကားပါ ထည့်ရေးလို့ရ</label>
+          <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
+          <div class="tip">💡 စကားပြောတဲ့သူ ၁–၂ ယောက်ထားပြီး တစ်ယောက် တစ်ခွန်းစီ တိုတိုရေးရင် ပိုကောင်းပါတယ်။ အမျိုးသမီး/အမျိုးသား အသံကို AI က ဇာတ်ကောင်ကြည့်ပြီး ရွေးပေးပါတယ်။</div>
+
+          <label class="lbl">အရည်အသွေး</label>
+          <div class="seg" id="qualSeg">
+            <button data-v="std" class="on">Standard<small>540p</small></button>
+            <button data-v="hd">HD<small>720p</small></button>
+          </div>
+          <label class="lbl">ကြာချိန်</label>
+          <div class="seg" id="durSeg">
+            <button data-v="5">5 စက္ကန့်</button>
+            <button data-v="10" class="on">10 စက္ကန့်</button>
+          </div>
+          <div id="ratioBox">
+            <label class="lbl">အရွယ်အစား</label>
+            <div class="seg" id="ratioSeg">
+              <button data-v="9:16" class="on">9:16<small>TikTok</small></button>
+              <button data-v="16:9">16:9<small>YouTube</small></button>
+              <button data-v="1:1">1:1<small>Facebook</small></button>
+            </div>
+          </div>
+          <div class="cost">
+            <span class="muted">ကုန်မည့် credit</span>
+            <span><b id="costCr">20</b> credits <span class="muted">(<span id="costKs">2,000</span> ကျပ်)</span></span>
+          </div>
+          <button class="btn" id="genBtn">✨ Video ဖန်တီးမည်</button>
+        </div>
+
+        <div class="card hidden" id="jobCard">
+          <h2 id="jobTitle"></h2>
+          <div id="jobBody"></div>
+        </div>
+      </section>
+
+      <!-- VIDEOS -->
+      <section id="videosPage" class="hidden">
+        <div class="card"><h2>ကျွန်ုပ်၏ Video များ</h2><div id="vlist"></div></div>
+      </section>
+
+      <!-- BUY -->
+      <section id="buyPage" class="hidden">
+        <div class="card">
+          <h2>Credit ဝယ်ရန်</h2>
+          <p class="muted" style="margin-top:0">Standard 10 စက္ကန့် = 20 credits · HD 10 စက္ကန့် = 30 credits</p>
+          <div id="packs"></div>
+        </div>
+        <div class="card hidden" id="payCard">
+          <h2>ငွေလွှဲရန်</h2>
+          <div class="seg" id="paySeg">
+            <button data-v="kbzpay" class="on">KBZPay</button>
+            <button data-v="wavepay">Wave Pay</button>
+          </div>
+          <div class="pay" id="payInfo"></div>
+          <label class="lbl">ငွေလွှဲ screenshot</label>
+          <label class="drop"><input type="file" id="slipInput" accept="image/*" class="hidden">
+            <span id="slipTxt">📎 Screenshot ရွေးပါ</span><img id="slipPrev" class="hidden" alt=""></label>
+          <label class="lbl">Transaction ID (screenshot ထဲက နံပါတ်)</label>
+          <input type="text" id="txid" placeholder="ဥပမာ 0123456789" inputmode="numeric">
+          <div style="height:12px"></div>
+          <button class="btn" id="submitPay">ပို့မည်</button>
+        </div>
+        <div class="card"><h2>ငွေလွှဲ မှတ်တမ်း</h2><div id="mytopups"></div></div>
+      </section>
+
+      <!-- ACCOUNT -->
+      <section id="mePage" class="hidden">
+        <div class="card">
+          <h2>အကောင့်</h2>
+          <div class="row"><span class="muted">ဖုန်း</span><span id="mePhone"></span></div>
+          <div class="row"><span class="muted">ကျန် credit</span><span id="meCredits"></span></div>
+        </div>
+        <div class="card"><h2>Credit မှတ်တမ်း</h2><div id="ledger"></div></div>
+        <button class="btn ghost" id="logoutBtn">ထွက်မည်</button>
+      </section>
+
+      <!-- ADMIN -->
+      <section id="adminPage" class="hidden">
+        <div class="card"><h2>အတည်ပြုရန် ငွေလွှဲများ</h2><div id="adminList"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <nav id="nav" class="hidden"><div class="in">
+    <button data-p="createPage" class="on"><span class="ic">✨</span>ဖန်တီး</button>
+    <button data-p="videosPage"><span class="ic">🎬</span>Video များ</button>
+    <button data-p="buyPage"><span class="ic">⚡</span>Credit ဝယ်</button>
+    <button data-p="mePage"><span class="ic">👤</span>အကောင့်</button>
+    <button data-p="adminPage" id="adminNav" class="hidden"><span class="ic">🛡️</span>Admin</button>
+  </div></nav>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const SUPABASE_URL = "https://isceklnjifckepgumale.supabase.co";
+const SUPABASE_KEY = "sb_publishable_BJk473xIoTD4BCpJyTSSSw_WJPNBfe-";
+const EMAIL_DOMAIN = "users.yokeai.app";            // phone -> login id (no emails are sent)
+const PAY_INFO = {                                   // <-- ကိုယ့် ငွေလက်ခံ နံပါတ် ပြင်ပါ
+  kbzpay:  { name: "KBZPay",   phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
+  wavepay: { name: "Wave Pay", phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
+};
+const RATE = { std: 2, hd: 3 };                      // credits per second (must match DB gen_cost)
+const KS_PER_CREDIT = 100;
+
+/* ================= SETUP ================= */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const fmt = n => Number(n).toLocaleString("en-US");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let me = null, profile = null;
+
+function toast(msg){
+  const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity=0; setTimeout(()=>t.remove(),300)},2600);
+}
+const ERR = [
+  [/insufficient credits/i, "Credit မလောက်ပါ"],
+  [/too many running/i, "Video ၂ ပုဒ် ဖန်တီးနေဆဲပါ၊ ပြီးမှ ထပ်လုပ်ပါ"],
+  [/too many pending/i, "အတည်မပြုရသေး ငွေလွှဲ ၃ ခု ရှိနေပါပြီ"],
+  [/not configured/i, "AI ဝန်ဆောင်မှု မချိတ်ရသေးပါ (admin ကို ဆက်သွယ်ပါ)"],
+  [/duplicate key|topups_txid_unique/i, "ဒီ Transaction ID ကို သုံးပြီးသားပါ"],
+  [/Invalid login credentials/i, "ဖုန်းနံပါတ် သို့ password မှားနေပါတယ်"],
+  [/already registered|already been registered/i, "ဒီဖုန်းနဲ့ အကောင့်ရှိပြီးသားပါ — ဝင်မည် ကို နှိပ်ပါ"],
+  [/refunded/i, "AI ဘက်က အမှားဖြစ်လို့ credit ပြန်အမ်းပြီးပါပြီ"],
+];
+const msgOf = e => { const m = e?.message || e?.error || String(e); for (const [r,t] of ERR) if (r.test(m)) return t; return "အမှား: " + m; };
+
+/* ================= AUTH ================= */
+let authMode = "login";
+document.querySelectorAll("[data-auth]").forEach(t => t.onclick = () => {
+  authMode = t.dataset.auth;
+  document.querySelectorAll("[data-auth]").forEach(x => x.classList.toggle("on", x === t));
+  $("authBtn").textContent = authMode === "login" ? "ဝင်မည်" : "အကောင့်ဖွင့်မည်";
+});
+const normPhone = p => { p = p.replace(/[\s-]/g,""); if (p.startsWith("+959")) p = "09" + p.slice(4); return p; };
+$("authBtn").onclick = async () => {
+  const phone = normPhone($("phone").value), pw = $("password").value;
+  if (!/^09\d{7,10}$/.test(phone)) return toast("ဖုန်းနံပါတ် မှန်အောင် ရိုက်ပါ (09…)");
+  if (pw.length < 6) return toast("Password အနည်းဆုံး ၆ လုံး");
+  $("authBtn").disabled = true;
+  const email = `${phone}@${EMAIL_DOMAIN}`;
+  const res = authMode === "login"
+    ? await sb.auth.signInWithPassword({ email, password: pw })
+    : await sb.auth.signUp({ email, password: pw, options: { data: { phone } } });
+  $("authBtn").disabled = false;
+  if (res.error) return toast(msgOf(res.error));
+  if (!res.data.session) return toast("အကောင့်ဖွင့်ပြီး — ဝင်မည် ကို နှိပ်ပါ");
+};
+$("logoutBtn").onclick = () => sb.auth.signOut();
+
+sb.auth.onAuthStateChange((_e, session) => {
+  me = session?.user ?? null;
+  $("loginView").classList.toggle("hidden", !!me);
+  $("mainView").classList.toggle("hidden", !me);
+  $("nav").classList.toggle("hidden", !me);
+  if (me) { loadProfile(); resumeJobs(); }
+});
+
+async function loadProfile(){
+  const { data } = await sb.from("profiles").select("*").eq("id", me.id).single();
+  if (!data) return;
+  profile = data;
+  $("credits").textContent = fmt(data.credits);
+  $("mePhone").textContent = data.phone ?? "";
+  $("meCredits").textContent = fmt(data.credits);
+  $("adminNav").classList.toggle("hidden", !data.is_admin);
+  updateCost();
+}
+
+/* ================= NAV ================= */
+const PAGES = ["createPage","videosPage","buyPage","mePage","adminPage"];
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => go(b.dataset.p));
+$("creditChip").onclick = () => go("buyPage");
+function go(p){
+  PAGES.forEach(x => $(x).classList.toggle("hidden", x !== p));
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.p === p));
+  scrollTo(0,0);
+  if (p === "videosPage") loadVideos();
+  if (p === "buyPage") { loadPacks(); loadMyTopups(); }
+  if (p === "mePage") { loadProfile(); loadLedger(); }
+  if (p === "adminPage") loadAdmin();
+}
+
+/* ================= CREATE ================= */
+const opt = { mode:"t2v", quality:"std", duration:10, ratio:"9:16", imageFile:null };
+document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
+  opt.mode = t.dataset.mode;
+  document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x === t));
+  $("imageBox").classList.toggle("hidden", opt.mode !== "i2v");
+  $("ratioBox").classList.toggle("hidden", opt.mode === "i2v");   // i2v follows the image shape
+});
+function seg(id, key, num){
+  document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
+    document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b));
+    opt[key] = num ? Number(b.dataset.v) : b.dataset.v; updateCost();
+  });
+}
+seg("qualSeg","quality"); seg("durSeg","duration",true); seg("ratioSeg","ratio");
+const costOf = () => RATE[opt.quality] * opt.duration;
+function updateCost(){
+  const c = costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
+  const enough = !profile || profile.credits >= c;
+  $("genBtn").textContent = enough ? "✨ Video ဖန်တီးမည်" : "⚡ Credit မလောက် — ဝယ်ရန်";
+}
+function preview(input, img, txt, cb){
+  input.onchange = () => { const f = input.files[0]; if (!f) return;
+    if (f.size > 10*1024*1024) { toast("ဖိုင် 10MB ထက် မကျော်ရ"); input.value=""; return; }
+    img.src = URL.createObjectURL(f); img.classList.remove("hidden"); txt.classList.add("hidden"); cb && cb(f); };
+}
+preview($("imgInput"), $("imgPrev"), $("imgTxt"), f => opt.imageFile = f);
+
+async function uploadTo(bucket, file){
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g,"");
+  const path = `${me.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+  const { error } = await sb.storage.from(bucket).upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  return path;
+}
+
+$("genBtn").onclick = async () => {
+  const prompt = $("prompt").value.trim();
+  if (profile && profile.credits < costOf()) return go("buyPage");
+  if (!prompt) return toast("ဘာ video လိုချင်လဲ အရင်ရေးပါ");
+  if (opt.mode === "i2v" && !opt.imageFile) return toast("ပုံ အရင်တင်ပါ");
+  $("genBtn").disabled = true;
+  showJob("⏳ စတင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>Prompt ကို AI အတွက် ပြင်ရေးပြီး ပို့နေပါတယ်</p>`);
+  try {
+    let image_path = null;
+    if (opt.mode === "i2v") image_path = await uploadTo("inputs", opt.imageFile);
+    const { data, error } = await sb.functions.invoke("api", { body: {
+      action:"create", mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, image_path } });
+    if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
+    loadProfile();
+    watchJob(data.id, true);
+  } catch (e) {
+    showJob("⚠️ မစတင်နိုင်ပါ", `<div class="status bad">${esc(msgOf(e))}</div>`);
+    loadProfile();
+  } finally { $("genBtn").disabled = false; }
+};
+
+function showJob(title, html){
+  $("jobCard").classList.remove("hidden"); $("jobTitle").textContent = title; $("jobBody").innerHTML = html;
+  $("jobCard").scrollIntoView({ behavior:"smooth", block:"nearest" });
+}
+
+/* ================= JOB POLLING ================= */
+const watching = new Set();
+async function watchJob(id, showOnCreate){
+  if (watching.has(id)) return; watching.add(id);
+  const started = Date.now();
+  while (true) {
+    const { data, error } = await sb.functions.invoke("api", { body: { action:"status", id } });
+    if (!error && data?.generation) {
+      const g = data.generation;
+      if (showOnCreate) {
+        if (g.status === "succeeded") {
+          showJob("✅ ပြီးပါပြီ", videoHtml(data.video_url, g));
+        } else if (g.status === "failed") {
+          showJob("⚠️ မအောင်မြင်ပါ", `<div class="status bad">AI က video မထုတ်နိုင်ပါ။ ${g.cost} credits ပြန်ထည့်ပေးပြီးပါပြီ။ Prompt ပြင်ပြီး ထပ်စမ်းပါ။</div>`);
+        } else {
+          const s = Math.round((Date.now()-started)/1000);
+          showJob("🎬 ဖန်တီးနေပါတယ်…", `<p class="muted"><span class="spin"></span>ပုံမှန် ၁–၃ မိနစ် ကြာပါတယ် (${s}s)။ ဒီစာမျက်နှာ ပိတ်ထားလည်း ရပါတယ် — "Video များ" မှာ ပြန်ကြည့်လို့ရမယ်။</p>`);
+        }
+      }
+      if (g.status === "succeeded" || g.status === "failed") { watching.delete(id); loadProfile(); if (!$("videosPage").classList.contains("hidden")) loadVideos(); return; }
+    }
+    await new Promise(r => setTimeout(r, 6000));
+  }
+}
+async function resumeJobs(){
+  const { data } = await sb.from("generations").select("id").in("status", ["queued","running"]);
+  (data || []).forEach(g => watchJob(g.id, false));
+}
+function videoHtml(url, g){
+  if (!url) return `<p class="muted">Video ဖိုင် ပြင်ဆင်နေပါတယ်…</p>`;
+  return `<video src="${esc(url)}" controls playsinline preload="metadata"></video>
+    <a class="btn ghost" style="display:block;text-align:center;margin-top:10px;text-decoration:none"
+       href="${esc(url)}" download="yoke-${esc(g.id.slice(0,8))}.mp4" target="_blank" rel="noopener">⬇️ Download</a>`;
+}
+
+/* ================= VIDEOS ================= */
+const ST = { queued:"စောင့်ဆိုင်း", running:"ဖန်တီးနေ", succeeded:"ပြီးပြီ", failed:"မအောင်မြင်" };
+async function loadVideos(){
+  const { data } = await sb.from("generations").select("*").order("created_at",{ascending:false}).limit(30);
+  if (!data?.length) { $("vlist").innerHTML = `<p class="muted">Video မရှိသေးပါ။</p>`; return; }
+  const paths = data.filter(g => g.status==="succeeded" && g.video_path).map(g => g.video_path);
+  const urls = {};
+  if (paths.length) {
+    const { data: s } = await sb.storage.from("videos").createSignedUrls(paths, 3600);
+    (s||[]).forEach(x => { if (x.signedUrl) urls[x.path] = x.signedUrl; });
+  }
+  $("vlist").innerHTML = data.map(g => `
+    <div class="vitem">
+      <span class="badge ${g.status}">${ST[g.status]}</span>
+      <span class="muted" style="font-size:12px"> · ${g.quality==="hd"?"HD":"Std"} ${g.duration}s · ${new Date(g.created_at).toLocaleString()}</span>
+      <div class="p">${esc(g.prompt_mm)}</div>
+      ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g) : ""}
+      ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
+    </div>`).join("");
+  data.filter(g => g.status==="queued"||g.status==="running").forEach(g => watchJob(g.id,false));
+}
+
+/* ================= BUY ================= */
+let packs = [], pickedPack = null, payMethod = "kbzpay", slipFile = null;
+seg("paySeg","_pay"); document.querySelectorAll("#paySeg button").forEach(b => b.addEventListener("click", () => { payMethod = b.dataset.v; renderPayInfo(); }));
+preview($("slipInput"), $("slipPrev"), $("slipTxt"), f => slipFile = f);
+async function loadPacks(){
+  const { data } = await sb.from("credit_packages").select("*").order("sort");
+  packs = data || [];
+  $("packs").innerHTML = packs.map(p => {
+    const total = p.credits + p.bonus;
+    return `<div class="pack ${pickedPack===p.id?"on":""}" data-pk="${p.id}">
+      <div><div class="p">⚡ ${fmt(total)} credits</div>
+      <div class="muted" style="font-size:12px">Standard 10s × ${Math.floor(total/20)} ပုဒ်</div>
+      ${p.bonus?`<div class="bonus">+${p.bonus} bonus</div>`:""}</div>
+      <div class="p">${fmt(p.price_ks)} ကျပ်</div></div>`; }).join("");
+  document.querySelectorAll("[data-pk]").forEach(d => d.onclick = () => {
+    pickedPack = Number(d.dataset.pk); loadPacks(); $("payCard").classList.remove("hidden"); renderPayInfo();
+    $("payCard").scrollIntoView({ behavior:"smooth" }); });
+}
+function renderPayInfo(){
+  const p = packs.find(x => x.id === pickedPack); const i = PAY_INFO[payMethod];
+  if (!p) return;
+  $("payInfo").innerHTML = `${esc(i.name)} သို့ <b>${fmt(p.price_ks)}</b> ကျပ် လွှဲပါ<br>ဖုန်း: <b>${esc(i.phone)}</b><br>အမည်: <b>${esc(i.holder)}</b>`;
+}
+$("submitPay").onclick = async () => {
+  const txid = $("txid").value.trim();
+  if (!pickedPack) return toast("Package ရွေးပါ");
+  if (!slipFile) return toast("ငွေလွှဲ screenshot တင်ပါ");
+  if (!/^[0-9A-Za-z]{4,40}$/.test(txid)) return toast("Transaction ID မှန်အောင် ရိုက်ပါ");
+  $("submitPay").disabled = true;
+  try {
+    const slip_path = await uploadTo("slips", slipFile);
+    const { error } = await sb.rpc("submit_topup", { p_package_id: pickedPack, p_pay_method: payMethod, p_txid: txid, p_slip_path: slip_path });
+    if (error) throw error;
+    toast("ပို့ပြီးပါပြီ — admin စစ်ပြီးတာနဲ့ credit ဝင်ပါမယ်");
+    $("txid").value=""; slipFile=null; $("slipPrev").classList.add("hidden"); $("slipTxt").classList.remove("hidden");
+    $("payCard").classList.add("hidden"); pickedPack=null; loadPacks(); loadMyTopups();
+  } catch (e) { toast(msgOf(e)); }
+  finally { $("submitPay").disabled = false; }
+};
+const TST = { pending:"စစ်ဆေးနေ", approved:"credit ဝင်ပြီ", rejected:"ငြင်းပယ်" };
+async function loadMyTopups(){
+  const { data } = await sb.from("topups").select("*").eq("user_id", me.id).order("created_at",{ascending:false}).limit(20);
+  $("mytopups").innerHTML = data?.length ? data.map(t => `<div class="row">
+    <span>${fmt(t.price_ks)} ကျပ် → ${fmt(t.credits)} cr<br><span class="muted" style="font-size:12px">${new Date(t.created_at).toLocaleString()}${t.admin_note?" · "+esc(t.admin_note):""}</span></span>
+    <span class="badge ${t.status}">${TST[t.status]}</span></div>`).join("") : `<p class="muted">မရှိသေးပါ</p>`;
+}
+
+/* ================= ACCOUNT ================= */
+async function loadLedger(){
+  const { data } = await sb.from("credit_ledger").select("*").eq("user_id", me.id).order("created_at",{ascending:false}).limit(40);
+  $("ledger").innerHTML = data?.length ? data.map(l => `<div class="row">
+    <span>${esc(l.reason)}<br><span class="muted" style="font-size:12px">${new Date(l.created_at).toLocaleString()}</span></span>
+    <span style="color:${l.delta>0?"var(--ok)":"var(--bad)"};font-weight:600">${l.delta>0?"+":""}${l.delta}</span></div>`).join("")
+    : `<p class="muted">မှတ်တမ်း မရှိသေးပါ</p>`;
+}
+
+/* ================= ADMIN ================= */
+async function loadAdmin(){
+  if (!profile?.is_admin) return;
+  const { data } = await sb.from("topups").select("*, profiles!topups_user_id_fkey(phone)").eq("status","pending").order("created_at");
+  if (!data?.length) { $("adminList").innerHTML = `<p class="muted">စစ်စရာ မရှိပါ 🎉</p>`; return; }
+  const { data: s } = await sb.storage.from("slips").createSignedUrls(data.map(t => t.slip_path), 3600);
+  const url = {}; (s||[]).forEach(x => url[x.path] = x.signedUrl);
+  $("adminList").innerHTML = data.map(t => `<div class="vitem">
+    <div><b>${fmt(t.price_ks)} ကျပ်</b> → ${fmt(t.credits)} credits · ${esc(PAY_INFO[t.pay_method]?.name || t.pay_method)}</div>
+    <div class="muted" style="font-size:13px">ဖုန်း: ${esc(t.profiles?.phone)} · TxID: <b>${esc(t.txid)}</b><br>${new Date(t.created_at).toLocaleString()}</div>
+    ${url[t.slip_path] ? `<a href="${esc(url[t.slip_path])}" target="_blank" rel="noopener"><img class="slip" src="${esc(url[t.slip_path])}" alt="slip"></a>` : ""}
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn sm ok" data-ok="${t.id}">✅ အတည်ပြု</button>
+      <button class="btn sm bad" data-no="${t.id}">✖ ငြင်း</button>
+    </div></div>`).join("");
+  document.querySelectorAll("[data-ok]").forEach(b => b.onclick = () => review(b.dataset.ok, true));
+  document.querySelectorAll("[data-no]").forEach(b => b.onclick = () => review(b.dataset.no, false));
+}
+async function review(id, ok){
+  const note = ok ? null : "ငွေလွှဲ မတွေ့ပါ / မကိုက်ညီပါ";
+  const { error } = await sb.rpc("review_topup", { p_id: id, p_approve: ok, p_note: note });
+  toast(error ? msgOf(error) : ok ? "Credit ထည့်ပြီး" : "ငြင်းပယ်ပြီး");
+  loadAdmin();
+}
+
+updateCost();
+sb.auth.getSession().then(({ data }) => { if (!data.session) $("loginView").classList.remove("hidden"); });
+</script>
+</body>
+</html>
