@@ -5,7 +5,10 @@
 //
 // Secrets (Supabase → Edge Functions → Secrets):
 //   YOTTA_API_KEY   required — Yotta Labs AI Gateway key
-//   LLM_MODEL       optional — chat model on Yotta Gateway used to rewrite prompts
+//   LLM_MODEL       optional — chat model on Yotta Gateway used to plan prompts + Burmese lines
+// Vault secrets: yotta_api_key, elevenlabs_api_key (TTS, SFX, speech timing), eachlabs_api_key (audio/video merge)
+// Dialogue videos: Wan 3.0 makes picture + lip movement; its speech is replaced by native Burmese voices
+// placed on Wan's own speaking times, mixed with background sound, then merged (stages: dubbing → merging).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -32,77 +35,196 @@ const json = (body: unknown, status = 200) =>
 
 const RESOLUTION: Record<string, string> = { std: "480p", hd: "720p" };
 
-// ---------- prompt rewrite (Burmese -> English scene, Burmese dialogue kept) ----------
-const SYSTEM_PROMPT = `You create one concise English video-generation prompt from the user's Myanmar-language request for Wan 3.0 (native video and audio).
-Non-negotiable rules:
-- Describe characters, Myanmar setting, camera, lighting, expressions and sequence of actions in clear English.
-- Copy ALL USER-QUOTED BURMESE DIALOGUE verbatim in Myanmar Unicode; preserve every word, character, and punctuation mark. NEVER correct spelling, transliterate, translate, shorten, paraphrase or invent dialogue. Even "ခဏလေး" must remain "ခဏလေး", never "ခနလေး".
-- Identify which visible person speaks each exact quoted line and the order. One person speaks at a time; the other does not move their lips.
-- Describe native everyday Myanmar Burmese pronunciation, natural Yangon conversational accent, human rhythm, Burmese sentence particles and clear articulation. Avoid an English/foreign accent and exaggerated slow speech.
-- Keep speech brief enough for the requested duration, but NEVER change the user's exact words to fit. Do not add a narrator, subtitles or singing. Background ambience must not cover speech.
-- If the user requests no dialogue or has not asked for speech, never invent speech.
-- Make actions and object positions physically consistent. Output only the final prompt.`;
+// ---------- prompt rewrite (Burmese -> English scene + Burmese dialogue lines) ----------
+const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into a plan for the Wan 3.0 video model, which generates video with native audio and lip-synced speech.
+Return ONLY one JSON object, no markdown:
+{"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "text": "<the exact Burmese line>"}], "ambience": "<English description of the background sounds only: no speech, no music>"}
+Rules for "prompt":
+- Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English. Choose camera distance to suit the story.
+- Every spoken line must appear in Burmese script, in quotes, as: <who> says naturally in native Burmese (Myanmar language) with a Yangon accent: "<text>". Use exactly the same text as in "lines", in the same order.
+- Write Burmese the way people actually speak, as one flowing phrase: NEVER put spaces between Burmese words. Use only ၊ or ။ where a speaker naturally pauses for breath.
+- If the user wrote dialogue in quotes, use those words EXACTLY (same words, same spelling, same order); never correct, translate, shorten or paraphrase them. Only remove spaces between Burmese words.
+- If the user did not quote dialogue, write short, polite, natural lines for the situation in common everyday colloquial Burmese spelling (for example ခနလေး, တခွက်, တပွဲ), matching real Myanmar customs.
+- If the user asks for no speech or a silent video, never invent speech.
+- Dialogue length must fit the video: at most about 8 Burmese words per 5 seconds in total. Speakers finish talking at least 1 second before the video ends, then stay silent and react.
+- Only one person speaks at a time. Say who speaks first and who answers; keep the speaker's face visible while they talk.
+- Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
+- Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].`;
 
-async function rewritePrompt(mm: string, duration = 10): Promise<string> {
-  if (!LLM_MODEL) return fallbackPrompt(mm);
+// remove spaces between Burmese characters (spaces make speech and mouth movement choppy)
+const MM = "\\u1000-\\u109F\\uAA60-\\uAA7F";
+const mmJoin = (s: string) => String(s ?? "").replace(new RegExp(`([${MM}])[ \\u00A0\\u200B]+(?=[${MM}])`, "g"), "$1");
+
+// Burmese lines the customer wrote inside quotes
+const userQuotedLines = (mm: string) =>
+  [...String(mm).matchAll(/["“‘「]([^"”’」\n]{1,180})["”’」]/gu)].map((x) => mmJoin(x[1].trim())).filter((x) => new RegExp(`[${MM}]`).test(x));
+const silentRequested = (mm: string) => /(?:စကားမပြော|စကားမပါ|အသံမပါ|တိတ်ဆိတ်|no dialogue|no speech|silent video)/iu.test(mm);
+
+type Plan = { prompt: string; lines: { who?: string; gender?: string; age?: string; text: string }[]; ambience?: string };
+
+async function planVideo(mm: string, duration = 10): Promise<Plan> {
+  const fallback: Plan = { prompt: fallbackPrompt(mm), lines: [] };
+  if (!LLM_MODEL) return fallback;
   try {
     const r = await fetch(`${YOTTA}/api/maas/chat/completions`, {
       method: "POST",
       headers: { "X-API-KEY": YOTTA_KEY, "Authorization": `Bearer ${YOTTA_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: LLM_MODEL, temperature: 0.4, max_tokens: 1500,
+        model: LLM_MODEL, temperature: 0.4, max_tokens: 2000,
         messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\nRequest:\n${mm}` }],
       }),
     });
     if (!r.ok) throw new Error(`llm ${r.status}`);
     const j = await r.json();
-    const text = j?.choices?.[0]?.message?.content?.trim();
-    return text || fallbackPrompt(mm);
+    let text: string = j?.choices?.[0]?.message?.content?.trim() ?? "";
+    text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    const a = text.indexOf("{"), b = text.lastIndexOf("}");
+    const p = JSON.parse(text.slice(a, b + 1));
+    const lines = (Array.isArray(p.lines) ? p.lines : []).filter((l: any) => l && String(l.text ?? "").trim())
+      .map((l: any) => ({ who: l.who, gender: String(l.gender ?? "").toLowerCase(), age: String(l.age ?? "").toLowerCase(), text: mmJoin(String(l.text).trim()) }));
+    let prompt = mmJoin(String(p.prompt ?? "").trim());
+    if (!prompt) return fallback;
+    // the customer's own quoted Burmese lines always win, word for word (only inner spaces removed)
+    const quoted = userQuotedLines(mm);
+    if (quoted.length && quoted.length === lines.length) {
+      quoted.forEach((q, i) => { if (!prompt.includes(q)) prompt = prompt.replace(lines[i].text, q); lines[i].text = q; });
+      const missing = quoted.filter((q) => !prompt.includes(q));
+      if (missing.length) prompt += "\nExact Burmese dialogue, in this order: " + quoted.map((q, i) => `Line ${i + 1}: "${q}"`).join("; ");
+    }
+    if (silentRequested(mm)) lines.length = 0;
+    return { prompt, lines, ambience: p.ambience ? String(p.ambience) : undefined };
   } catch (e) {
-    console.error("rewritePrompt failed:", e);
-    return fallbackPrompt(mm);
+    console.error("planVideo failed:", e);
+    return fallback;
   }
 }
 const fallbackPrompt = (mm: string) =>
-  `A realistic scene set in Myanmar. ${mm}. Any speech is spoken in Burmese. Natural light, cinematic.`;
+  `A realistic scene set in Myanmar. ${mmJoin(mm)}. Any speech is spoken in Burmese. Natural light, cinematic.`;
 
-
-// ---------- preserve exact Myanmar dialogue and native voice guidance ----------
-// Pure post-processing: no changes to model selection, credits, API calls or storage.
-const NATIVE_BURMESE_DIRECTION =
-  "Audio: authentic Myanmar Burmese spoken by a native Yangon speaker, clear Myanmar consonants " +
-  "and vowels, relaxed conversational pace, natural sentence-ending particles, accurate expressive timing, " +
-  "no foreign or English accent, no invented narration, and no subtitles. " +
-  "Only the current speaker moves their lips. Keep speech distinct from background noise.";
-
-function originalMyanmarQuotedLines(input: string): string[] {
-  return [...input.matchAll(/["“‘]([^"”’\n]{1,180})["”’]/gu)]
-    .map(x => x[1])
-    .filter(x => /[\u1000-\u109F\uAA60-\uAA7F]/u.test(x));
+// ---------- Burmese dubbing: keep Wan's picture + mouth timing, replace its speech with native Burmese voices ----------
+const SR = 24000;
+const VOICES: Record<string, string> = {
+  male: "eZUdq4hHF9YhlUfu5DFe",   // Yan — native Burmese young male
+  female: "NBISYoQ4SVxq8eZxoHlV", // Su — native Burmese young female
+};
+const voiceFor = (l: any) => VOICES[l.gender === "female" ? "female" : "male"];
+const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
+function wavOf(mix: Float32Array): Uint8Array {
+  const n = mix.length; const buf = new Uint8Array(44 + n * 2); const dv = new DataView(buf.buffer);
+  const w = (o: number, s: string) => { for (let i = 0; i < s.length; i++) buf[o + i] = s.charCodeAt(i); };
+  w(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, n * 2, true);
+  let peak = 1; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(mix[i]));
+  const norm = peak > 30000 ? 30000 / peak : 1;
+  for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.round(mix[i] * norm), true);
+  return buf;
 }
-
-function prepareNativeBurmesePrompt(rewritten: string, original: string): string {
-  const exactLines = originalMyanmarQuotedLines(original);
-  const deliberatelySilent = /(?:စကားမပြော|စကားမပါ|အသံမပါ|တိတ်ဆိတ်|no dialogue|no speech|silent video)/iu.test(original);
-  const askedForSpeech = !deliberatelySilent &&
-    (exactLines.length > 0 || /(?:လို့\s*(?:ပြော|မေး|ဖြေ)|ပြောတယ်|ပြောပါ|စကားပြော|မြန်မာလို|dialogue|says|speaks|voiceover)/iu.test(original));
-
-  // If the rewrite altered even one original quote, fall back to the user's original scene
-  // rather than sending two conflicting versions of the dialogue to the video model.
-  let scene = exactLines.every(line => rewritten.normalize("NFC").includes(line.normalize("NFC")))
-    ? rewritten : fallbackPrompt(original);
-
-  if (!askedForSpeech) return scene + "\nNo spoken dialogue, speech or narrator; do not invent voices.";
-
-  const exactText = exactLines.length
-    ? "\nExact Myanmar dialogue (copy verbatim, in this order): " +
-      exactLines.map((line, i) => "Line " + (i + 1) + ': "' + line + '"').join("; ")
-    : "";
-  let result = scene + "\n" + NATIVE_BURMESE_DIRECTION + exactText;
-  if (result.length > 5000) {
-    result = fallbackPrompt(original) + "\n" + NATIVE_BURMESE_DIRECTION + exactText;
+function trim(x: Int16Array): Int16Array {
+  let peak = 1; for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
+  const th = peak * 0.04, m = Math.round(0.03 * SR); let a = 0, b = x.length - 1;
+  while (a < b && Math.abs(x[a]) < th) a++; while (b > a && Math.abs(x[b]) < th) b--;
+  return x.slice(Math.max(0, a - m), Math.min(x.length, b + m));
+}
+// WSOLA time-stretch (pitch unchanged); ratio = output length / input length
+function stretch(xi: Int16Array, ratio: number): Float32Array {
+  const x = Float32Array.from(xi); const N = 768, Hs = N / 2, tol = 192, Ha = Hs / ratio;
+  const outLen = Math.round(x.length * ratio); const y = new Float32Array(outLen + N); const ws = new Float32Array(outLen + N);
+  const win = new Float32Array(N); for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N);
+  let prev = 0;
+  for (let k = 0; k * Hs < outLen; k++) {
+    const nominal = Math.round(k * Ha); let best = nominal;
+    if (k > 0) { const nat = prev + Hs; let bestC = -Infinity;
+      for (let d = -tol; d <= tol; d += 4) { const p = nominal + d; if (p < 0 || p + N > x.length) continue;
+        let c = 0; for (let i = 0; i < N; i += 2) c += x[p + i] * (x[nat + i] ?? 0); if (c > bestC) { bestC = c; best = p; } } }
+    best = Math.max(0, Math.min(best, x.length - N)); prev = best;
+    const o = k * Hs; for (let i = 0; i < N && best + i < x.length; i++) { y[o + i] += x[best + i] * win[i]; ws[o + i] += win[i]; }
   }
-  return result;
+  const out = new Float32Array(outLen); for (let i = 0; i < outLen; i++) out[i] = ws[i] > 1e-3 ? y[i] / ws[i] : 0;
+  return out;
+}
+async function tts(key: string, voice: string, text: string): Promise<Int16Array> {
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=pcm_24000`, {
+    method: "POST", headers: { "xi-api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ text, model_id: "eleven_v4", voice_settings: { stability: 0.6, similarity_boost: 0.8, speed: 1.05 } }),
+  });
+  if (!r.ok) throw new Error("tts " + r.status + " " + (await r.text()).slice(0, 200));
+  return toI16(new Uint8Array(await r.arrayBuffer()));
+}
+async function sfxGen(key: string, text: string, sec: number): Promise<Int16Array | null> {
+  const r = await fetch(`https://api.elevenlabs.io/v1/sound-generation?output_format=pcm_24000`, {
+    method: "POST", headers: { "xi-api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ text, duration_seconds: Math.min(Math.max(sec, 0.5), 22), prompt_influence: 0.5 }),
+  });
+  return r.ok ? toI16(new Uint8Array(await r.arrayBuffer())) : null;
+}
+// when does each speaker talk in Wan's own audio? (ElevenLabs Scribe, word timings + speakers)
+async function speechTurns(key: string, url: string, speakers: number): Promise<{ start: number; end: number; spk: string }[]> {
+  const fd = new FormData(); fd.append("model_id", "scribe_v1"); fd.append("cloud_storage_url", url);
+  fd.append("diarize", "true"); fd.append("timestamps_granularity", "word"); fd.append("tag_audio_events", "false");
+  if (speakers > 0) fd.append("num_speakers", String(Math.min(speakers, 8)));
+  const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": key }, body: fd });
+  if (!r.ok) throw new Error("stt " + r.status + " " + (await r.text()).slice(0, 200));
+  const j: any = await r.json();
+  const segs: { start: number; end: number; spk: string }[] = [];
+  for (const w of (j.words ?? []).filter((w: any) => w.type === "word")) {
+    const last = segs[segs.length - 1];
+    if (last && last.spk === w.speaker_id && w.start - last.end < 0.45) last.end = w.end;
+    else segs.push({ start: w.start, end: w.end, spk: w.speaker_id });
+  }
+  return segs;
+}
+// make exactly n speaking windows: merge the closest neighbours (same speaker first) or split the longest
+function fitTurns(segs: { start: number; end: number; spk: string }[], n: number) {
+  const s = segs.map((x) => ({ ...x }));
+  while (s.length > n) {
+    let bi = 0, bv = Infinity;
+    for (let i = 0; i + 1 < s.length; i++) { const v = s[i + 1].start - s[i].end + (s[i].spk === s[i + 1].spk ? 0 : 1); if (v < bv) { bv = v; bi = i; } }
+    s[bi].end = s[bi + 1].end; s.splice(bi + 1, 1);
+  }
+  while (s.length > 0 && s.length < n) {
+    let bi = 0; for (let i = 1; i < s.length; i++) if (s[i].end - s[i].start > s[bi].end - s[bi].start) bi = i;
+    const m = (s[bi].start + s[bi].end) / 2; s.splice(bi + 1, 0, { start: m + 0.1, end: s[bi].end, spk: s[bi].spk }); s[bi].end = m - 0.1;
+  }
+  return s;
+}
+async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
+  const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
+  const lines: any[] = g.dialogue?.lines ?? [];
+  const total = Number(g.duration) || 10; const n = Math.round(total * SR);
+  const [turnsRaw, pcms, bed] = await Promise.all([
+    speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
+    Promise.all(lines.map((l) => tts(key, voiceFor(l), l.text).then(trim))),
+    g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
+  ]);
+  const turns = turnsRaw.length ? fitTurns(turnsRaw, lines.length) : [];
+  const speech = new Float32Array(n); const placed: { start: number; end: number }[] = [];
+  let cursor = 0.5;
+  pcms.forEach((pcm, i) => {
+    let out: Int16Array | Float32Array = pcm; let start: number;
+    if (turns[i]) {
+      const win = turns[i].end - turns[i].start + 0.15;
+      const ratio = Math.min(1, Math.max(0.72, (win * SR) / pcm.length));
+      if (ratio < 0.995) out = stretch(pcm, ratio);
+      start = Math.max(0, turns[i].start - 0.05);
+    } else { start = cursor; }
+    const s0 = Math.round(start * SR); for (let k = 0; k < out.length && s0 + k < n; k++) speech[s0 + k] += out[k];
+    const end = start + out.length / SR; placed.push({ start, end }); cursor = end + 0.3;
+  });
+  // background bed, ducked under speech
+  const mix = new Float32Array(n); const hi = 0.9, lo = 0.5, fade = Math.round(0.25 * SR);
+  const inSp = new Uint8Array(n);
+  for (const t of placed) { const a = Math.max(0, Math.round(t.start * SR) - fade), b = Math.min(n, Math.round(t.end * SR) + fade); for (let i = a; i < b; i++) inSp[i] = 1; }
+  let gn = hi; const step = (hi - lo) / fade;
+  for (let i = 0; i < n; i++) {
+    const tg = inSp[i] ? lo : hi; gn = gn > tg ? Math.max(tg, gn - step) : Math.min(tg, gn + step);
+    const edge = Math.min(1, i / (0.3 * SR), (n - i) / (0.5 * SR));
+    mix[i] = speech[i] + (bed ? (bed[i % bed.length] ?? 0) * gn * edge : 0);
+  }
+  return wavOf(mix);
+}
+async function eachlabs(admin: any) {
+  const { data: k } = await admin.rpc("get_app_secret", { p_name: "eachlabs_api_key" });
+  return { "Content-Type": "application/json", Authorization: `Bearer ${k}`, "X-API-Key": k };
 }
 
 // ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
@@ -178,7 +300,8 @@ Deno.serve(async (req) => {
 
     const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
     try {
-      const en = prepareNativeBurmesePrompt(await rewritePrompt(g.prompt_mm, g.duration), g.prompt_mm);
+      const plan = await planVideo(g.prompt_mm, g.duration);
+      const en = plan.prompt;
       let imageUrl: string | undefined;
       if (g.mode === "i2v") {
         const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
@@ -186,7 +309,10 @@ Deno.serve(async (req) => {
         imageUrl = s.signedUrl;
       }
       const sub = await submitVideo(g, en, imageUrl);
-      await admin.from("generations").update({ status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}` }).eq("id", id);
+      await admin.from("generations").update({
+        status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
+        dialogue: plan.lines.length ? { lines: plan.lines, ambience: plan.ambience ?? null } : null,
+      }).eq("id", id);
       return json({ id });
     } catch (e) {
       console.error("create failed:", e);
@@ -206,21 +332,56 @@ Deno.serve(async (req) => {
     }
     if (g.status === "running" && g.provider_request_id) {
       const age = Date.now() - new Date(g.created_at).getTime();
-      const p = await pollVideo(g);
-      if (p.state === "done") {
-        try {
-          const vr = await fetch(p.url!);
-          if (!vr.ok) throw new Error(`download ${vr.status}`);
-          const bytes = new Uint8Array(await vr.arrayBuffer());
-          const path = `${g.user_id}/${g.id}.mp4`;
-          const { error: ue } = await admin.storage.from("videos").upload(path, bytes, { contentType: "video/mp4", upsert: true });
-          if (ue) throw ue;
-          await admin.rpc("finish_generation", { p_id: g.id, p_ok: true, p_video_path: path });
-        } catch (e) {
-          console.error("save failed:", e); // keep running; next poll retries
+      const saveFrom = async (url: string) => {
+        const vr = await fetch(url);
+        if (!vr.ok) throw new Error(`download ${vr.status}`);
+        const bytes = new Uint8Array(await vr.arrayBuffer());
+        const path = `${g.user_id}/${g.id}.mp4`;
+        const { error: ue } = await admin.storage.from("videos").upload(path, bytes, { contentType: "video/mp4", upsert: true });
+        if (ue) throw ue;
+        await admin.rpc("finish_generation", { p_id: g.id, p_ok: true, p_video_path: path });
+      };
+      try {
+        if (!g.post_stage || g.post_stage === "dubbing") {
+          // 1) wait for Wan; 2) dub Burmese voices over it
+          const src = g.post_data?.src;
+          const p = src ? { state: "done" as const, url: src } : await pollVideo(g);
+          if (p.state === "done") {
+            const lines = g.dialogue?.lines ?? [];
+            if (!lines.length) await saveFrom(p.url!);
+            else if (await admin.rpc("claim_post_stage", { p_id: g.id, p_from: null, p_to: "dubbing" }).then((r: any) => r.data)) {
+              await admin.from("generations").update({ post_data: { src: p.url } }).eq("id", g.id);
+              try {
+                const wav = await buildDubAudio(admin, g, p.url!);
+                const apath = `gen/${g.id}.wav`;
+                const { error: ae } = await admin.storage.from("audio").upload(apath, wav, { contentType: "audio/wav", upsert: true });
+                if (ae) throw ae;
+                const { data: as } = await admin.storage.from("audio").createSignedUrl(apath, 3600);
+                const sub = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
+                  body: JSON.stringify({ model: "ffmpeg-api-merge-audio-video", version: "0.0.1", input: { video_url: p.url, audio_url: as!.signedUrl } }) });
+                const sj: any = await sub.json().catch(() => ({}));
+                const pid = sj.predictionID ?? sj.prediction_id ?? sj.id;
+                if (!sub.ok || !pid) throw new Error("merge submit " + sub.status + " " + JSON.stringify(sj).slice(0, 200));
+                await admin.from("generations").update({ post_stage: "merging", post_updated_at: new Date().toISOString(), post_data: { src: p.url, merge_id: pid } }).eq("id", g.id);
+              } catch (e) {
+                console.error("dubbing failed, delivering original:", e);
+                await admin.from("generations").update({ post_data: { src: p.url, dub_error: String(e).slice(0, 300) } }).eq("id", g.id);
+                await saveFrom(p.url!);
+              }
+            } else if (g.post_stage === "dubbing" && g.post_updated_at && Date.now() - new Date(g.post_updated_at).getTime() > 240000) {
+              await saveFrom(p.url!); // dubbing got stuck: give the customer the original video
+            }
+          } else if (p.state === "failed" || age > JOB_TIMEOUT_MS) {
+            await admin.rpc("finish_generation", { p_id: g.id, p_ok: false, p_error: p.error ?? "timeout" });
+          }
+        } else if (g.post_stage === "merging") {
+          const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.post_data?.merge_id}`, { headers: await eachlabs(admin) });
+          const j: any = await r.json().catch(() => ({}));
+          if ((j.status === "success" || j.status === "succeeded") && j.output) await saveFrom(Array.isArray(j.output) ? j.output[0] : j.output);
+          else if (j.status === "error" || j.status === "failed" || age > JOB_TIMEOUT_MS) await saveFrom(g.post_data.src);
         }
-      } else if (p.state === "failed" || age > JOB_TIMEOUT_MS) {
-        await admin.rpc("finish_generation", { p_id: g.id, p_ok: false, p_error: p.error ?? "timeout" });
+      } catch (e) {
+        console.error("status step failed:", e); // keep running; next poll retries
       }
     }
 
