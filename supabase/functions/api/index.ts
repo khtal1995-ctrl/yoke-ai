@@ -59,14 +59,12 @@ async function runPlan(admin: any, id: string) {
 
 // ---------- Burmese dubbing: keep Wan's picture + mouth timing, replace its speech with native Burmese voices ----------
 const SR = 24000;
-const VOICES: Record<string, string> = {
-  male: "eZUdq4hHF9YhlUfu5DFe",   // Yan — native Burmese young male
-  female: "NBISYoQ4SVxq8eZxoHlV", // Su — native Burmese young female
-};
-// men speak with native Burmese voices directly (no voice change): young men use the owner's own cloned voice,
-// older men (and a second young man) use Yan, so two men in one video never sound the same
-const MALE_YOUNG = "B5MB163SdECMmHySTkLK"; // Yoke Male 1 — owner's own voice, cloned with his consent
-const MALE_OLDER = "eZUdq4hHF9YhlUfu5DFe"; // Yan
+// each character gets a native Burmese voice of their own (cloned with the speakers' consent):
+// the first young man / woman get the main voices, a second (or older) man / woman gets the second voice
+const MALE_YOUNG = "B5MB163SdECMmHySTkLK"; // Yoke Male 1 — owner's own voice
+const MALE_OLDER = "d4WXuYHO9Ot8KDdiOwIg"; // Yoke main character male (replaces Yan; also used for older men until an older voice exists)
+const FEMALE_MAIN = "NBISYoQ4SVxq8eZxoHlV"; // Su
+const FEMALE_2 = "12GZ6E7rJLrs85C6m4J6"; // Yoke main character female
 const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
 function wavOf(mix: Float32Array): Uint8Array {
   const n = mix.length; const buf = new Uint8Array(44 + n * 2); const dv = new DataView(buf.buffer);
@@ -247,14 +245,13 @@ const spokenNumbers = (t: string) => t.replace(/[0-9\u1040-\u1049]+/g, (m) => {
   const n = Number([...m].map((c) => { const k = c.charCodeAt(0); return k >= 0x1040 ? String(k - 0x1040) : c; }).join(""));
   return n <= 99999 ? mmNumber(n) : m;
 });
-async function voiceLine(key: string, l0: any, maleVoice = MALE_YOUNG): Promise<Int16Array> {
+async function voiceLine(key: string, l0: any, voice: string): Promise<Int16Array> {
   const l = { ...l0, text: spokenNumbers(String(l0.text)) };
-  const voice = l.gender === "female" ? VOICES.female : maleVoice;
   // check the words came out right; one more try if not, keep the clearer take
   let best: Int16Array | null = null, bestScore = -1;
   for (let t = 0; t < 2; t++) {
     const out = trim(await tts(key, voice, l.text, l.emotion, voice === MALE_YOUNG ? 0.1 : 0));
-    if (l.gender === "female") return levelVoice(out, l.emotion);
+    if (voice === FEMALE_MAIN) return levelVoice(out, l.emotion); // Su is a library voice: always clear
     const score = similar(await heard(key, out), l.text);
     if (score > bestScore) { best = out; bestScore = score; }
     if (score >= 0.8) break;
@@ -282,12 +279,13 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     const l = lines[i]; let emotion = l.emotion;
     if (med > 0 && energy[i] > 0 && known.length >= 2) { const r = energy[i] / med; emotion = shiftEmotion(emotion, r < 0.65 ? -1 : r > 1.5 ? 1 : 0); }
     const who = String(l.who ?? "man").toLowerCase();
-    if (l.gender !== "female" && !cast.has(who)) {
-      const older = /middle|old/.test(String(l.age ?? "")) || /uncle|father|dad|grand|old|elder|boss/.test(who);
-      const youngTaken = [...cast.values()].includes(MALE_YOUNG);
-      cast.set(who, older || youngTaken ? MALE_OLDER : MALE_YOUNG);
+    if (!cast.has(who)) {
+      const female = l.gender === "female";
+      const older = /middle|old/.test(String(l.age ?? "")) || /uncle|aunt|father|mother|dad|mom|grand|old|elder|boss/.test(who);
+      const [main, second] = female ? [FEMALE_MAIN, FEMALE_2] : [MALE_YOUNG, MALE_OLDER];
+      cast.set(who, older || [...cast.values()].includes(main) ? second : main);
     }
-    pcms.push(await voiceLine(key, { ...l, emotion }, cast.get(who) ?? MALE_YOUNG));
+    pcms.push(await voiceLine(key, { ...l, emotion }, cast.get(who)!));
   }
   // only when Wan's own soundtrack is unavailable do we add guessed, timed effects
   const fx = wan ? [] : await Promise.all(((g.dialogue?.effects ?? []) as any[]).map((e) => sfxGen(key, e.text, e.dur).then((pcm) => ({ ...e, pcm })).catch(() => null)));
