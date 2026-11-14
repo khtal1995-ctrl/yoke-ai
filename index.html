@@ -201,6 +201,17 @@
       <!-- ADMIN -->
       <section id="adminPage" class="hidden">
         <div class="card"><h2>အတည်ပြုရန် ငွေလွှဲများ</h2><div id="adminList"></div></div>
+        <div class="card"><h2>🎭 Face swap (စမ်းသပ်)</h2>
+          <label class="lbl">ဇာတ်ဝင်ခန်း video (၁၀ စက္ကန့်လောက် — ရှည်လေ ဈေးကြီးလေ)</label>
+          <input type="file" id="fsVideo" accept="video/mp4,video/quicktime,video/*">
+          <div class="muted" id="fsInfo" style="font-size:13px;margin:4px 0"></div>
+          <label class="lbl">ထည့်မယ့် လူပုံ (ကိုယ့်ပုံ ဒါမှမဟုတ် ခွင့်ပြုချက် ရထားသူ)</label>
+          <input type="file" id="fsFace" accept="image/jpeg,image/png,image/webp">
+          <label class="lbl">ဘယ်သူ့ကို လဲမလဲ (အင်္ဂလိပ်လို ရေးရင် ပိုမှန်)</label>
+          <input type="text" id="fsTarget" placeholder="e.g. the main young man with short black hair">
+          <button class="btn" id="fsBtn" style="margin-top:10px">🎭 Face swap လုပ်မည်</button>
+          <div id="fsOut" style="margin-top:10px"></div>
+        </div>
       </section>
     </main>
   </div>
@@ -544,6 +555,39 @@ async function review(id, ok){
   toast(error ? msgOf(error) : ok ? "Credit ထည့်ပြီး" : "ငြင်းပယ်ပြီး");
   loadAdmin();
 }
+
+/* ================= FACE SWAP (admin test) ================= */
+let fsSeconds = null;
+$("fsVideo").onchange = () => {
+  const f = $("fsVideo").files[0]; fsSeconds = null; $("fsInfo").textContent = "";
+  if (!f) return;
+  const v = document.createElement("video"); v.preload = "metadata";
+  v.onloadedmetadata = () => { fsSeconds = v.duration; URL.revokeObjectURL(v.src);
+    $("fsInfo").textContent = `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ~${fmt(Math.round(fsSeconds * 0.03 * 4500))} ကျပ်`; };
+  v.src = URL.createObjectURL(f);
+};
+$("fsBtn").onclick = async () => {
+  const vf = $("fsVideo").files[0], ff = $("fsFace").files[0];
+  if (!vf || !ff) return toast("Video နဲ့ ပုံ ရွေးပါ");
+  if (vf.size > 50 * 1024 * 1024) return toast("Video 50MB ထက် မကြီးရပါ");
+  $("fsBtn").disabled = true;
+  $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>တင်နေပါတယ်…</p>`;
+  try {
+    const [video_path, face_path] = await Promise.all([uploadTo("inputs", vf), uploadTo("inputs", ff)]);
+    const { data, error } = await sb.functions.invoke("faceswap", { body: { action:"create", video_path, face_path, target: $("fsTarget").value, seconds: fsSeconds } });
+    if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
+    $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>လဲနေပါတယ်… (၂–၅ မိနစ်)</p>`;
+    const poll = async () => {
+      const { data: st } = await sb.functions.invoke("faceswap", { body: { action:"status", id: data.id } });
+      if (st?.status === "done") { $("fsOut").innerHTML = `<video src="${esc(st.url)}" controls playsinline style="width:100%;border-radius:12px"></video><a class="btn sm" href="${esc(st.url)}" target="_blank" rel="noopener" style="margin-top:8px">⬇️ ဒေါင်းလုဒ်</a>`; $("fsBtn").disabled = false; return; }
+      if (st?.status === "failed") { $("fsOut").innerHTML = `<div class="status bad">${esc(st.error || "မအောင်မြင်ပါ")}</div>`; $("fsBtn").disabled = false; return; }
+      setTimeout(poll, 10000);
+    };
+    setTimeout(poll, 15000);
+  } catch (e) {
+    $("fsOut").innerHTML = `<div class="status bad">${esc(msgOf(e))}</div>`; $("fsBtn").disabled = false;
+  }
+};
 
 updateCost();
 sb.auth.getSession().then(({ data }) => { if (!data.session) $("loginView").classList.remove("hidden"); });
