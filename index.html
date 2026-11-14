@@ -564,7 +564,11 @@ async function review(id, ok){
 /* ================= FACE SWAP (admin test) ================= */
 let fsSeconds = null, fsEngine = "pixverse";
 const fsRate = () => fsEngine === "pixverse" ? 0.045 : 0.03;
-const fsShowCost = () => { if (fsSeconds) $("fsInfo").textContent = `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ~${fmt(Math.round(fsSeconds * fsRate() * 4500))} ကျပ်`; };
+const FS_MAX = 30; // the face swap AIs accept at most 30 seconds
+const fsShowCost = () => { if (!fsSeconds) return;
+  $("fsInfo").innerHTML = fsSeconds > FS_MAX
+    ? `<span style="color:#f87171">⚠️ ${fsSeconds.toFixed(1)} စက္ကန့် — အများဆုံး ${FS_MAX} စက္ကန့်ပဲ ရပါတယ်။ ဖုန်းမှာ ဖြတ်ပြီးမှ ပြန်ရွေးပါ (၁၀ စက္ကန့်လောက် အကောင်းဆုံး)</span>`
+    : `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ~${fmt(Math.round(fsSeconds * fsRate() * 4500))} ကျပ်`; };
 document.querySelectorAll("#fsEngine button").forEach(b => b.onclick = () => {
   document.querySelectorAll("#fsEngine button").forEach(x => x.classList.toggle("on", x === b)); fsEngine = b.dataset.v; fsShowCost(); });
 $("fsVideo").onchange = () => {
@@ -579,6 +583,7 @@ $("fsBtn").onclick = async () => {
   const vf = $("fsVideo").files[0], ff = $("fsFace").files[0];
   if (!vf || !ff) return toast("Video နဲ့ ပုံ ရွေးပါ");
   if (vf.size > 50 * 1024 * 1024) return toast("Video 50MB ထက် မကြီးရပါ");
+  if (fsSeconds && fsSeconds > FS_MAX) return toast(`Video ${FS_MAX} စက္ကန့်ထက် မရှည်ရပါ`);
   $("fsBtn").disabled = true;
   $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>တင်နေပါတယ်…</p>`;
   try {
