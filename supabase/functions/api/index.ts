@@ -1,11 +1,10 @@
 // Yoke AI — video generation API (Supabase Edge Function)
 // Actions (POST JSON, user JWT required):
-//   { action: "create", mode, prompt, quality, duration, ratio, image_path? } -> { id }
+//   { action: "plan", prompt, duration, mode } -> { plan_id }   (no credits; customer approves the plan first)
+//   { action: "plan_status", plan_id } -> { status, summary_mm, issues, lines }
+//   { action: "create", plan_id?, mode, prompt, quality, duration, ratio, image_path? } -> { id }
 //   { action: "status", id } -> { generation, video_url? }
 //
-// Secrets (Supabase → Edge Functions → Secrets):
-//   YOTTA_API_KEY   required — Yotta Labs AI Gateway key
-//   LLM_MODEL       optional — chat model on Yotta Gateway used to plan prompts + Burmese lines
 // Vault secrets: yotta_api_key, elevenlabs_api_key (TTS, SFX, speech timing), eachlabs_api_key (audio/video merge)
 // Dialogue videos: Wan 3.0 makes picture + lip movement; its speech is replaced by native Burmese voices
 // placed on Wan's own speaking times, mixed with background sound, then merged (stages: dubbing → merging).
@@ -21,7 +20,6 @@ async function loadYottaKey(admin: any) {
   YOTTA_KEY = data ?? "";
   return YOTTA_KEY;
 }
-const LLM_MODEL = Deno.env.get("LLM_MODEL") ?? "grok-4.7";
 const YOTTA = "https://gateway.yottalabs.ai";
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -35,81 +33,29 @@ const json = (body: unknown, status = 200) =>
 
 const RESOLUTION: Record<string, string> = { std: "480p", hd: "720p" };
 
-// ---------- prompt rewrite (Burmese -> English scene + Burmese dialogue lines) ----------
-const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into a plan for the Wan 3.0 video model, which generates video with native audio and lip-synced speech.
-Return ONLY one JSON object, no markdown:
-{"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "emotion": "calm|polite|warm|happy|excited|shouting|angry|sad|scared|whisper", "text": "<the exact Burmese line>"}], "ambience": "<English description of the continuous background sound only: no speech, no music>", "effects": [{"text": "<one short English sound effect, e.g. burst of rifle gunfire>", "at": <second it starts>, "dur": <seconds, 0.5-4>}]}
-Rules for "prompt":
-- Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English. Choose camera distance to suit the story.
-- People look like Burmese (Bamar) people of Myanmar, Southeast Asian features, and wear clothes Myanmar people really wear for the scene (longyi, htamein, eingyi blouse, thanaka; or ordinary modern T-shirts, jeans, uniforms). Never Indian clothing (no sari, kurta, turban, bindi).
-- Any written text, shop signs, bus signs or banners are in Burmese (Myanmar) script, never Hindi/Devanagari, Bengali or Tamil script. Buildings, vehicles and streets look like Myanmar.
-- Every spoken line must appear in Burmese script, in quotes, as: <who> says naturally in native Burmese (Myanmar language) with a Yangon accent: "<text>". Use exactly the same text as in "lines", in the same order.
-- Write Burmese the way people actually speak, as one flowing phrase: NEVER put spaces between Burmese words. Use only ၊ or ။ where a speaker naturally pauses for breath.
-- If the user wrote dialogue in quotes, use those words EXACTLY (same words, same spelling, same order); never correct, translate, shorten or paraphrase them. Only remove spaces between Burmese words.
-- If the user did not quote dialogue, write short, polite, natural lines for the situation in common everyday colloquial Burmese spelling (for example ခနလေး, တခွက်, တပွဲ), matching real Myanmar customs.
-- If the user asks for no speech or a silent video, never invent speech.
-- Dialogue length must fit the video: at most about 6 Burmese words per 5 seconds in total, spoken at a relaxed natural pace, never rushed. Speakers finish talking at least 1 second before the video ends, then stay silent and react.
-- Only one person speaks at a time. Say who speaks first and who answers; keep the speaker's face visible while they talk.
-- People who talk to each other stand or sit facing each other and look at the person they are speaking to, never into the camera (unless the user says they talk to the viewer). Film conversations from the side as a two-shot or over the shoulder, so both faces are seen in profile or three-quarter view. Say who looks at whom.
-- Write every number in a spoken line as Burmese words, never digits (for example ဆယ်နှစ်, not ၁၀နှစ်).
-- Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
-- Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].
-Rules for "emotion": choose how each line must sound from the story (a battle cry is "shouting", a cheerful greeting is "happy", ordering food is "polite"). Never make a calm line dramatic.
-Rules for "effects": list the important story sounds (gunshots, explosion, door slam, car horn, glass breaking...) with the second they happen, at most 6. In "prompt", make those actions happen at those same seconds.`
-
-// remove spaces between Burmese characters (spaces make speech and mouth movement choppy)
-const MM = "\\u1000-\\u109F\\uAA60-\\uAA7F";
-const mmJoin = (s: string) => String(s ?? "").replace(new RegExp(`([${MM}])[ \\u00A0\\u200B]+(?=[${MM}])`, "g"), "$1");
-
-// Burmese lines the customer wrote inside quotes
-const userQuotedLines = (mm: string) =>
-  [...String(mm).matchAll(/["“‘「]([^"”’」\n]{1,180})["”’」]/gu)].map((x) => mmJoin(x[1].trim())).filter((x) => new RegExp(`[${MM}]`).test(x));
-const silentRequested = (mm: string) => /(?:စကားမပြော|စကားမပါ|အသံမပါ|တိတ်ဆိတ်|no dialogue|no speech|silent video)/iu.test(mm);
-
-type Plan = { prompt: string; lines: { who?: string; gender?: string; age?: string; emotion?: string; text: string }[]; ambience?: string; effects?: { text: string; at: number; dur: number }[] };
-
-async function planVideo(mm: string, duration = 10): Promise<Plan> {
-  const fallback: Plan = { prompt: fallbackPrompt(mm), lines: [] };
-  if (!LLM_MODEL) return fallback;
+// ---------- planning: the "planner" function writes a checked plan (scene prompt, Burmese lines with acting, timeline,
+// Burmese summary for the customer). It runs before any money is spent, so the customer can approve it first.
+async function planVideo(mm: string, duration = 10): Promise<any> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
+    method: "POST", signal: AbortSignal.timeout(140000),
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ story: mm, duration }),
+  });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
+  return { ...j.plan, issues: j.issues ?? [] };
+}
+// fill a waiting plan row in the background
+async function runPlan(admin: any, id: string) {
+  const { data: p } = await admin.from("plans").select("*").eq("id", id).single();
   try {
-    const r = await fetch(`${YOTTA}/api/maas/chat/completions`, {
-      method: "POST",
-      headers: { "X-API-KEY": YOTTA_KEY, "Authorization": `Bearer ${YOTTA_KEY}`, "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(120000),
-      body: JSON.stringify({
-        model: LLM_MODEL, temperature: 0.4, max_tokens: 2000,
-        messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\nRequest:\n${mm}` }],
-      }),
-    });
-    if (!r.ok) throw new Error(`llm ${r.status}`);
-    const j = await r.json();
-    let text: string = j?.choices?.[0]?.message?.content?.trim() ?? "";
-    text = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-    const a = text.indexOf("{"), b = text.lastIndexOf("}");
-    const p = JSON.parse(text.slice(a, b + 1));
-    const lines = (Array.isArray(p.lines) ? p.lines : []).filter((l: any) => l && String(l.text ?? "").trim())
-      .map((l: any) => ({ who: l.who, gender: String(l.gender ?? "").toLowerCase(), age: String(l.age ?? "").toLowerCase(), emotion: String(l.emotion ?? "").toLowerCase(), text: mmJoin(String(l.text).trim()) }));
-    const effects = (Array.isArray(p.effects) ? p.effects : []).filter((e: any) => e && e.text && isFinite(Number(e.at))).slice(0, 6)
-      .map((e: any) => ({ text: String(e.text).slice(0, 120), at: Math.max(0, Math.min(Number(e.at), duration - 0.5)), dur: Math.max(0.5, Math.min(Number(e.dur) || 1.5, 4)) }));
-    let prompt = mmJoin(String(p.prompt ?? "").trim());
-    if (!prompt) return fallback;
-    // the customer's own quoted Burmese lines always win, word for word (only inner spaces removed)
-    const quoted = userQuotedLines(mm);
-    if (quoted.length && quoted.length === lines.length) {
-      quoted.forEach((q, i) => { if (!prompt.includes(q)) prompt = prompt.replace(lines[i].text, q); lines[i].text = q; });
-      const missing = quoted.filter((q) => !prompt.includes(q));
-      if (missing.length) prompt += "\nExact Burmese dialogue, in this order: " + quoted.map((q, i) => `Line ${i + 1}: "${q}"`).join("; ");
-    }
-    if (silentRequested(mm)) lines.length = 0;
-    return { prompt, lines, ambience: p.ambience ? String(p.ambience) : undefined, effects };
+    const plan = await planVideo(p.prompt_mm, p.duration);
+    await admin.from("plans").update({ status: "ready", plan, issues: plan.issues }).eq("id", id);
   } catch (e) {
-    console.error("planVideo failed:", e);
-    if ((e as Error)?.name === "TimeoutError") throw new Error("planner busy, please try again");
-    return fallback;
+    console.error("plan failed:", e);
+    await admin.from("plans").update({ status: "failed", error: String(e).slice(0, 300) }).eq("id", id);
   }
 }
-const fallbackPrompt = (mm: string) =>
-  `A realistic scene set in Myanmar. ${mmJoin(mm)}. Any speech is spoken in Burmese. Natural light, cinematic.`;
 
 // ---------- Burmese dubbing: keep Wan's picture + mouth timing, replace its speech with native Burmese voices ----------
 const SR = 24000;
@@ -432,11 +378,13 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
 // always appended: keeps people, clothes and signs Burmese (video models otherwise drift to South Asian looks)
 const MYANMAR_LOOK = "\nStyle: authentic Myanmar. All people are Burmese (Bamar) Southeast Asian people in everyday Myanmar clothing (longyi, htamein, eingyi, thanaka, or plain modern clothes). Any visible text or signage is in Burmese script. No Indian clothing, no saris, no Hindi or Devanagari text.";
 
-// plan the scene with Grok, then submit to Wan (runs in the background after "create" has answered)
+// use the approved plan (or plan now for old clients), then submit to Wan (runs in the background after "create" has answered)
 async function startGeneration(admin: any, id: string) {
   const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
   try {
-    const plan = await planVideo(g.prompt_mm, g.duration);
+    let plan: any = null;
+    if (g.plan_id) plan = (await admin.from("plans").select("plan").eq("id", g.plan_id).single()).data?.plan;
+    if (!plan) plan = await planVideo(g.prompt_mm, g.duration);
     const en = plan.prompt;
     let imageUrl: string | undefined;
     if (g.mode === "i2v") {
@@ -447,7 +395,7 @@ async function startGeneration(admin: any, id: string) {
     const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
-      dialogue: plan.lines.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [] } : null,
+      dialogue: plan.lines?.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [] } : null,
     }).eq("id", id);
   } catch (e) {
     console.error("create failed:", e);
@@ -543,17 +491,47 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
   await loadYottaKey(admin);
 
+  // ---- plan: write and check the plan first (no credits used); the customer approves it before "create" ----
+  if (body.action === "plan") {
+    const prompt = String(body.prompt ?? "").trim().slice(0, 2000);
+    const duration = Number(body.duration) === 5 ? 5 : 10;
+    if (!prompt) return json({ error: "empty prompt" }, 400);
+    const { count } = await admin.from("plans").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 3600000).toISOString());
+    if ((count ?? 0) >= 20) return json({ error: "too many plans, please wait a little" }, 429);
+    const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v" }).select("id").single();
+    if (error) return json({ error: error.message }, 400);
+    const work = runPlan(admin, p.id);
+    // @ts-ignore EdgeRuntime is provided by Supabase
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else await work;
+    return json({ plan_id: p.id });
+  }
+  if (body.action === "plan_status") {
+    const { data: p } = await userDb.from("plans").select("*").eq("id", body.plan_id).single();
+    if (!p) return json({ error: "not found" }, 404);
+    if (p.status === "planning" && Date.now() - new Date(p.created_at).getTime() > 200000) return json({ status: "failed", error: "timeout" });
+    return json({ status: p.status, error: p.error, summary_mm: p.plan?.summary_mm ?? null, issues: p.issues ?? [],
+      lines: (p.plan?.lines ?? []).map((l: any) => ({ who: l.who, gender: l.gender, text: l.text })) });
+  }
+
   // ---- create ----
   if (body.action === "create") {
     if (!YOTTA_KEY) return json({ error: "AI service is not configured yet" }, 503);
+    let planId: string | null = null;
+    if (body.plan_id) {
+      const { data: p } = await admin.from("plans").select("id,user_id,status,prompt_mm,duration").eq("id", body.plan_id).single();
+      if (!p || p.user_id !== user.id || p.status !== "ready") return json({ error: "plan not ready" }, 400);
+      if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 2000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
+      planId = p.id;
+    }
     const { data: id, error } = await userDb.rpc("create_generation", {
       p_mode: body.mode, p_prompt: String(body.prompt ?? "").slice(0, 2000),
       p_quality: body.quality, p_duration: Number(body.duration), p_ratio: body.ratio,
       p_image_path: body.image_path ?? null,
     });
     if (error) return json({ error: error.message }, 400);
+    if (planId) await admin.from("generations").update({ plan_id: planId }).eq("id", id);
 
-    // plan + submit can take ~1 minute (Grok): answer the phone right away and keep working in the background
+    // submit in the background (old clients without a plan_id: plan first, ~1 minute)
     const work = startGeneration(admin, id);
     // @ts-ignore EdgeRuntime is provided by Supabase
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else await work;

@@ -49,6 +49,8 @@
   .status.pending{background:rgba(245,158,11,.12);color:var(--warn)}
   .status.ok{background:rgba(34,197,94,.12);color:var(--ok)}
   .status.bad{background:rgba(239,68,68,.12);color:var(--bad)}
+  ol.plan{margin:6px 0 12px;padding-left:20px;line-height:1.7;font-size:14px}
+  ol.plan li{margin-bottom:6px}
   video{width:100%;border-radius:12px;background:#000;display:block}
   .vitem{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
   .vitem .p{font-size:13.5px;margin:6px 0}
@@ -142,7 +144,7 @@
             <span class="muted">ကုန်မည့် credit</span>
             <span><b id="costCr">30</b> credits <span class="muted">(<span id="costKs">3,000</span> ကျပ်)</span></span>
           </div>
-          <button class="btn" id="genBtn">✨ Video ဖန်တီးမည်</button>
+          <button class="btn" id="genBtn">✨ အစီအစဉ် ကြည့်မည်</button>
         </div>
 
         <div class="card hidden" id="jobCard">
@@ -318,7 +320,7 @@ const costOf = () => Math.ceil(RATE[opt.quality] * opt.duration);
 function updateCost(){
   const c = costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
   const enough = !profile || profile.credits >= c;
-  $("genBtn").textContent = enough ? "✨ Video ဖန်တီးမည်" : "⚡ Credit မလောက် — ဝယ်ရန်";
+  $("genBtn").textContent = enough ? "✨ အစီအစဉ် ကြည့်မည်" : "⚡ Credit မလောက် — ဝယ်ရန်";
 }
 function preview(input, img, txt, cb){
   input.onchange = () => { const f = input.files[0]; if (!f) return;
@@ -335,26 +337,66 @@ async function uploadTo(bucket, file){
   return path;
 }
 
+// Step 1: the AI writes a plan (no credits used) and shows it in Burmese. Step 2: the customer approves → video.
+let currentPlan = null;   // { id, prompt, duration, mode }
 $("genBtn").onclick = async () => {
   const prompt = $("prompt").value.trim();
   if (profile && profile.credits < costOf()) return go("buyPage");
   if (!prompt) return toast("ဘာ video လိုချင်လဲ အရင်ရေးပါ");
   if (opt.mode === "i2v" && !opt.imageFile) return toast("ပုံ အရင်တင်ပါ");
   $("genBtn").disabled = true;
-  showJob("⏳ စတင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>Prompt ကို AI အတွက် ပြင်ရေးပြီး ပို့နေပါတယ်</p>`);
+  showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (၁–၂ မိနစ်)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
+  try {
+    const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:opt.mode } });
+    if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
+    const planId = data.plan_id, started = Date.now();
+    while (true) {
+      await new Promise(r => setTimeout(r, 4000));
+      const { data: st } = await sb.functions.invoke("api", { body: { action:"plan_status", plan_id: planId } });
+      if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode }; showPlan(st); break; }
+      if (st?.status === "failed" || Date.now() - started > 240000) throw new Error("AI အစီအစဉ် မရေးနိုင်ပါ။ ခဏနေ ပြန်စမ်းပါ။");
+      const s = Math.round((Date.now()-started)/1000);
+      showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (${s}s)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
+    }
+  } catch (e) {
+    showJob("⚠️ မစတင်နိုင်ပါ", `<div class="status bad">${esc(msgOf(e))}</div>`);
+  } finally { $("genBtn").disabled = false; }
+};
+function showPlan(st){
+  const steps = String(st.summary_mm || "").replace(/(။|[;；])\s*(?=[၀-၉0-9])/g, (m, c) => (c === "။" ? "။" : "") + "\n").split("\n").map(x => x.trim()).filter(Boolean);
+  const long = (st.issues || []).some(x => /dialogue needs|starts at second/i.test(x));
+  const warn = (st.issues || []).length ? `<div class="status pending">⚠️ ${long
+      ? "စကားပြော များနေပါတယ် — ဗီဒီယိုထဲ အကုန်မဆံ့နိုင်ပါ။ စကားကို တိုအောင်ပြင်တာ (သို့) 10 စက္ကန့် ရွေးတာ ပိုကောင်းပါတယ်။"
+      : "AI စစ်ဆေးချက်မှာ အားနည်းချက် အနည်းငယ် ကျန်နေပါတယ်။ ပြင်ရေးပြီး ပြန်စီစဉ်ရင် ပိုကောင်းနိုင်ပါတယ်။"}</div>` : "";
+  showJob("📋 ဒီအစီအစဉ်နဲ့ ဖန်တီးမလား?", `
+    <ol class="plan">${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>
+    ${warn}
+    <button class="btn" id="planOk">✅ ဒီအတိုင်း ဖန်တီးမည် (${costOf()} credits)</button>
+    <button class="btn ghost" id="planEdit" style="margin-top:8px">✏️ ပြင်ရေးမည်</button>`);
+  $("planOk").onclick = createFromPlan;
+  $("planEdit").onclick = () => { currentPlan = null; $("jobCard").classList.add("hidden"); $("prompt").focus(); $("prompt").scrollIntoView({ behavior:"smooth", block:"center" }); };
+}
+async function createFromPlan(){
+  const prompt = $("prompt").value.trim();
+  if (!currentPlan || currentPlan.prompt !== prompt || currentPlan.duration !== opt.duration || currentPlan.mode !== opt.mode)
+    return toast("စာ (သို့) ကြာချိန် ပြောင်းသွားလို့ အစီအစဉ် အသစ်ပြန်ရေးပါ");
+  if (profile && profile.credits < costOf()) return go("buyPage");
+  $("planOk").disabled = true;
+  showJob("⏳ စတင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>Video ဖန်တီးမှု စတင်နေပါတယ်</p>`);
   try {
     let image_path = null;
     if (opt.mode === "i2v") image_path = await uploadTo("inputs", opt.imageFile);
     const { data, error } = await sb.functions.invoke("api", { body: {
-      action:"create", mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, image_path } });
+      action:"create", plan_id: currentPlan.id, mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, image_path } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
+    currentPlan = null;
     loadProfile();
     watchJob(data.id, true);
   } catch (e) {
     showJob("⚠️ မစတင်နိုင်ပါ", `<div class="status bad">${esc(msgOf(e))}</div>`);
     loadProfile();
-  } finally { $("genBtn").disabled = false; }
-};
+  }
+}
 
 function showJob(title, html){
   $("jobCard").classList.remove("hidden"); $("jobTitle").textContent = title; $("jobBody").innerHTML = html;
