@@ -113,7 +113,6 @@ const VOICES: Record<string, string> = {
   male: "eZUdq4hHF9YhlUfu5DFe",   // Yan — native Burmese young male
   female: "NBISYoQ4SVxq8eZxoHlV", // Su — native Burmese young female
 };
-const voiceFor = (l: any) => VOICES[l.gender === "female" ? "female" : "male"];
 const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
 function wavOf(mix: Float32Array): Uint8Array {
   const n = mix.length; const buf = new Uint8Array(44 + n * 2); const dv = new DataView(buf.buffer);
@@ -250,13 +249,39 @@ function levelVoice(x: Int16Array, emotion?: string): Int16Array {
   for (let i = 0; i < x.length; i++) { const v = x[i] * g; out[i] = Math.max(-32000, Math.min(32000, v > 24000 ? 24000 + (v - 24000) * 0.3 : v < -24000 ? -24000 + (v + 24000) * 0.3 : v)); }
   return out;
 }
+// male lines: Su performs the line (best Burmese acting), then ElevenLabs Voice Changer turns it into a male voice,
+// keeping her timing, pitch movement and emotion. A short-window gain keeps the converted words from fading.
+async function stsToVoice(key: string, pcm: Int16Array, toVoice: string): Promise<Int16Array> {
+  const fd = new FormData();
+  fd.append("audio", new Blob([wavOf(Float32Array.from(pcm)) as BlobPart], { type: "audio/wav" }), "line.wav");
+  fd.append("model_id", "eleven_multilingual_sts_v2"); fd.append("remove_background_noise", "false");
+  fd.append("voice_settings", JSON.stringify({ stability: 0.8, similarity_boost: 0.95, style: 0, use_speaker_boost: true }));
+  const r = await fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${toVoice}?output_format=pcm_24000`, { method: "POST", headers: { "xi-api-key": key }, body: fd });
+  if (!r.ok) throw new Error("sts " + r.status + " " + (await r.text()).slice(0, 200));
+  return steady(toI16(new Uint8Array(await r.arrayBuffer())));
+}
+function steady(x: Int16Array): Int16Array {
+  const W = Math.round(0.12 * SR); const env = new Float32Array(x.length); let acc = 0;
+  for (let i = 0; i < x.length; i++) { acc += x[i] * x[i]; if (i >= W) acc -= x[i - W] * x[i - W]; env[i] = Math.sqrt(Math.max(acc, 0) / Math.min(i + 1, W)); }
+  let peak = 1; for (const v of env) peak = Math.max(peak, v); const gate = peak * 0.12, target = peak * 0.7;
+  const out = new Int16Array(x.length); let g = 1;
+  for (let i = 0; i < x.length; i++) { const want = env[i] > gate ? Math.min(2.5, target / env[i]) : g; g += (want - g) * 0.0008;
+    out[i] = Math.max(-32000, Math.min(32000, Math.round(x[i] * g))); }
+  return out;
+}
+async function voiceLine(key: string, l: any): Promise<Int16Array> {
+  const acted = trim(await tts(key, VOICES.female, l.text, l.emotion));
+  if (l.gender === "female") return levelVoice(acted, l.emotion);
+  try { return levelVoice(trim(await stsToVoice(key, acted, VOICES.male)), l.emotion); }
+  catch (e) { console.error("sts failed, using male TTS:", e); return levelVoice(trim(await tts(key, VOICES.male, l.text, l.emotion)), l.emotion); }
+}
 async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
   const lines: any[] = g.dialogue?.lines ?? [];
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
   const [turnsRaw, pcms, bed, wan] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
-    Promise.all(lines.map((l) => tts(key, voiceFor(l), l.text, l.emotion).then(trim).then((x) => levelVoice(x, l.emotion)))),
+    Promise.all(lines.map((l) => voiceLine(key, l))),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
     wanSoundtrack(admin, srcUrl),
   ]);
