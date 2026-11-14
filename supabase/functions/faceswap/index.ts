@@ -14,7 +14,7 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const EACH = "https://api.eachlabs.ai/v1/prediction/";
 const MAX_PARALLEL = 2;      // Eachlabs allows only 2 running jobs while the balance is low
-const MIN_SHOT = 0.6;        // shots shorter than this are kept as they are (too short to swap)
+const MIN_SHOT = 0.4;        // shots shorter than this are kept as they are (too short to swap)
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-lab-token",
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         pid = await submit("pixverse-swap", { video_url: video, replacement_image_url: face, quality: "540p", keyframe_id: Math.max(1, Math.round(Number(body.keyframe) || 30)) });
         stage = "single";
       } else {
-        pid = await submit("eachlabs-video-api", { mode: "capability", capability: "scene_detect", input_url: video, params: {} });
+        pid = await submit("eachlabs-video-api", { mode: "capability", capability: "scene_detect", input_url: video, params: { threshold: 0.2 } } // default threshold misses soft cuts);
         stage = "detect";
       }
       console.log("faceswap", row.id, stage, pid);
