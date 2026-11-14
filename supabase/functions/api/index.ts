@@ -237,13 +237,24 @@ async function wanSoundtrack(admin: any, srcUrl: string): Promise<Int16Array | n
     return wavTo24k(new Uint8Array(await (await fetch(url)).arrayBuffer()));
   } catch (e) { console.error("wanSoundtrack:", e); return null; }
 }
+// make every voice equally loud (speech RMS), with a small boost for shouting and a cut for whispering
+const LOUD: Record<string, number> = { shouting: 1.35, angry: 1.15, excited: 1.1, whisper: 0.6 };
+function levelVoice(x: Int16Array, emotion?: string): Int16Array {
+  let peak = 1; for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
+  const gate = peak * 0.1; let sum = 0, cnt = 0;
+  for (let i = 0; i < x.length; i++) { const v = Math.abs(x[i]); if (v > gate) { sum += v * v; cnt++; } }
+  const rms = Math.sqrt(sum / Math.max(1, cnt)); const target = 5200 * (LOUD[emotion ?? ""] ?? 1);
+  const g = Math.min(4, target / Math.max(1, rms)); const out = new Int16Array(x.length);
+  for (let i = 0; i < x.length; i++) { const v = x[i] * g; out[i] = Math.max(-32000, Math.min(32000, v > 24000 ? 24000 + (v - 24000) * 0.3 : v < -24000 ? -24000 + (v + 24000) * 0.3 : v)); }
+  return out;
+}
 async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
   const lines: any[] = g.dialogue?.lines ?? [];
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
   const [turnsRaw, pcms, bed, wan] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
-    Promise.all(lines.map((l) => tts(key, voiceFor(l), l.text, l.emotion).then(trim))),
+    Promise.all(lines.map((l) => tts(key, voiceFor(l), l.text, l.emotion).then(trim).then((x) => levelVoice(x, l.emotion)))),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
     wanSoundtrack(admin, srcUrl),
   ]);
