@@ -37,13 +37,20 @@ Deno.serve(async (req) => {
     const target = String(body.target ?? "").trim().slice(0, 200);
     const input: Record<string, unknown> = { video, images: [face], resolution: "720p", save_audio: true };
     if (target) input.instruction_prompt = `Replace only this person with the person in the reference image: ${target}. Keep everyone else, the background, the camera and the motion unchanged.`;
+    // save the job first, so a paid job can never be lost
+    const { data: row, error } = await admin.from("faceswaps").insert({ user_id: user.id, video_path: body.video_path, face_path: body.face_path,
+      target: target || null, seconds: Number(body.seconds) || null, status: "submitting" }).select("id").single();
+    if (error) return json({ error: error.message }, 500);
     const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: h, body: JSON.stringify({ model: "p-video-replace", version: "0.0.1", input }) });
     const j: any = await r.json().catch(() => ({}));
     const pid = j.predictionID ?? j.prediction_id ?? j.id;
-    if (!r.ok || !pid) return json({ error: "submit " + r.status + " " + JSON.stringify(j).slice(0, 300) }, 502);
-    const { data: row, error } = await admin.from("faceswaps").insert({ user_id: user.id, video_path: body.video_path, face_path: body.face_path,
-      target: target || null, seconds: Number(body.seconds) || null, provider_id: pid }).select("id").single();
-    if (error) return json({ error: error.message }, 500);
+    console.log("faceswap submit", row.id, r.status, pid);
+    if (!r.ok || !pid) {
+      const err = "submit " + r.status + " " + JSON.stringify(j).slice(0, 300);
+      await admin.from("faceswaps").update({ status: "failed", error: err }).eq("id", row.id);
+      return json({ error: err }, 502);
+    }
+    await admin.from("faceswaps").update({ status: "running", provider_id: pid }).eq("id", row.id);
     return json({ id: row.id });
   }
 
