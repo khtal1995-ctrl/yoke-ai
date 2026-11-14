@@ -142,7 +142,7 @@
           </div>
           <div class="cost">
             <span class="muted">ကုန်မည့် credit</span>
-            <span><b id="costCr">30</b> credits <span class="muted">(<span id="costKs">3,000</span> ကျပ်)</span></span>
+            <span><b id="costCr">35</b> credits <span class="muted">(<span id="costKs">3,500</span> ကျပ်)</span></span>
           </div>
           <button class="btn" id="genBtn">✨ အစီအစဉ် ကြည့်မည်</button>
         </div>
@@ -162,7 +162,7 @@
       <section id="buyPage" class="hidden">
         <div class="card">
           <h2>Credit ဝယ်ရန်</h2>
-          <p class="muted" style="margin-top:0">Video 10 စက္ကန့် = 30 credits (3,000 ကျပ်) · 5 စက္ကန့် = 15 credits (1,500 ကျပ်)</p>
+          <p class="muted" style="margin-top:0">Video 10 စက္ကန့် = 35 credits (3,500 ကျပ်) · 5 စက္ကန့် = 15 credits (1,500 ကျပ်)</p>
           <div id="packs"></div>
         </div>
         <div class="card hidden" id="payCard">
@@ -316,7 +316,7 @@ function seg(id, key, num){
   });
 }
 seg("durSeg","duration",true); seg("ratioSeg","ratio");
-const costOf = () => Math.ceil(RATE[opt.quality] * opt.duration);
+const costOf = () => opt.quality === "std" && opt.duration >= 10 ? 35 : Math.ceil(RATE[opt.quality] * opt.duration); // must match DB gen_cost
 function updateCost(){
   const c = costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
   const enough = !profile || profile.credits >= c;
