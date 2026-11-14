@@ -35,11 +35,11 @@ Deno.serve(async (req) => {
     const [video, face] = await Promise.all([sign(body.video_path), sign(body.face_path)]);
     if (!video || !face) return json({ error: "file not found" }, 400);
     const target = String(body.target ?? "").trim().slice(0, 200);
-    // two engines: PixVerse Swap (540p, picks the first person it sees in the first frame) or P-Video Replace (720p, text target)
+    // two engines: PixVerse Swap (540p, picks the first person it sees in the key frame — not frame 1: many clips fade in from black) or P-Video Replace (720p, text target)
     const pix = body.engine === "pixverse";
     const model = pix ? "pixverse-swap" : "p-video-replace";
     const input: Record<string, unknown> = pix
-      ? { video_url: video, replacement_image_url: face, quality: "540p" }
+      ? { video_url: video, replacement_image_url: face, quality: "540p", keyframe_id: Math.max(1, Math.round(Number(body.keyframe) || 30)) }
       : { video, images: [face], resolution: "720p", save_audio: true };
     if (!pix && target) input.instruction_prompt = `Replace only this person with the person in the reference image: ${target}. Keep everyone else, the background, the camera and the motion unchanged.`;
     // save the job first, so a paid job can never be lost
