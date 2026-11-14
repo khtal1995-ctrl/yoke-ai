@@ -112,6 +112,7 @@ const SR = 24000;
 const VOICES: Record<string, string> = {
   male: "eZUdq4hHF9YhlUfu5DFe",   // Yan — native Burmese young male
   female: "NBISYoQ4SVxq8eZxoHlV", // Su — native Burmese young female
+  maleSts: "dZUDKQDfSHNzYzM1epKR", // Jin — young male timbre for Voice Changer (chosen by owner)
 };
 const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
 function wavOf(mix: Float32Array): Uint8Array {
@@ -272,7 +273,7 @@ function steady(x: Int16Array): Int16Array {
 async function voiceLine(key: string, l: any): Promise<Int16Array> {
   const acted = trim(await tts(key, VOICES.female, l.text, l.emotion));
   if (l.gender === "female") return levelVoice(acted, l.emotion);
-  try { return levelVoice(trim(await stsToVoice(key, acted, VOICES.male)), l.emotion); }
+  try { return levelVoice(trim(await stsToVoice(key, acted, VOICES.maleSts)), l.emotion); }
   catch (e) { console.error("sts failed, using male TTS:", e); return levelVoice(trim(await tts(key, VOICES.male, l.text, l.emotion)), l.emotion); }
 }
 async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
