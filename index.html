@@ -131,6 +131,11 @@
           <div class="seg" id="durSeg">
             <button data-v="10" class="on">10 စက္ကန့်</button>
           </div>
+          <label class="lbl">Effect အသံ <span class="muted">(ဝမ်းနည်းရင် ဝမ်းနည်းသံ၊ အံ့သြရင် "ဒုန်း" စသဖြင့်)</span></label>
+          <div class="seg" id="sfxSeg">
+            <button data-v="0" class="on">မထည့်ဘူး</button>
+            <button data-v="1">🎭 ထည့်မယ်</button>
+          </div>
           <div id="ratioBox">
             <label class="lbl">အရွယ်အစား</label>
             <div class="seg" id="ratioSeg">
@@ -301,7 +306,7 @@ function go(p){
 }
 
 /* ================= CREATE ================= */
-const opt = { mode:"t2v", quality:"std", duration:10, ratio:"9:16", imageFile:null };
+const opt = { mode:"t2v", quality:"std", duration:10, ratio:"9:16", sfx:0, imageFile:null };
 document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
   opt.mode = t.dataset.mode;
   document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x === t));
@@ -314,7 +319,7 @@ function seg(id, key, num){
     opt[key] = num ? Number(b.dataset.v) : b.dataset.v; updateCost();
   });
 }
-seg("durSeg","duration",true); seg("ratioSeg","ratio");
+seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true);
 const costOf = () => opt.quality === "std" && opt.duration >= 10 ? 35 : Math.ceil(RATE[opt.quality] * opt.duration); // must match DB gen_cost
 function updateCost(){
   const c = costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
@@ -386,7 +391,7 @@ async function createFromPlan(){
     let image_path = null;
     if (opt.mode === "i2v") image_path = await uploadTo("inputs", opt.imageFile);
     const { data, error } = await sb.functions.invoke("api", { body: {
-      action:"create", plan_id: currentPlan.id, mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, image_path } });
+      action:"create", plan_id: currentPlan.id, mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, sfx: opt.sfx === 1, image_path } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     currentPlan = null;
     loadProfile();

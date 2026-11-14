@@ -124,18 +124,6 @@ async function sfxGen(key: string, text: string, sec: number): Promise<Int16Arra
   });
   return r.ok ? toI16(new Uint8Array(await r.arrayBuffer())) : null;
 }
-// instrumental background music that fits the story's mood (ElevenLabs Music)
-async function musicGen(key: string, prompt: string, sec: number): Promise<Int16Array | null> {
-  const r = await fetch(`https://api.elevenlabs.io/v1/music?output_format=pcm_24000`, {
-    method: "POST", signal: AbortSignal.timeout(90000), headers: { "xi-api-key": key, "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: prompt + ", instrumental background score, no vocals", music_length_ms: Math.round(Math.max(sec, 3) * 1000), force_instrumental: true }),
-  });
-  if (!r.ok) { console.error("music", r.status, (await r.text()).slice(0, 200)); return null; }
-  // the music comes back as 2 channels (L,R interleaved): fold to mono, otherwise it plays at half speed, an octave low
-  const raw = toI16(new Uint8Array(await r.arrayBuffer())); const out = new Int16Array(raw.length >> 1);
-  for (let i = 0; i < out.length; i++) out[i] = (raw[2 * i] + raw[2 * i + 1]) >> 1;
-  return out;
-}
 // how strongly each character acts in the picture: Wan's own (unclear) speech follows its acting
 const LADDER = ["whisper", "calm", "warm", "happy", "excited", "shouting"];
 function shiftEmotion(e: string, step: number) {
@@ -277,11 +265,13 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
   const lines: any[] = g.dialogue?.lines ?? [];
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
-  const [turnsRaw, bed, wan, music] = await Promise.all([
-    speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
+  const stingSpec: any[] = g.dialogue?.stingers ?? [];
+  const [turnsRaw, bed, wan, stings] = await Promise.all([
+    lines.length ? speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }) : Promise.resolve([]),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
     wanSoundtrack(admin, srcUrl),
-    g.dialogue?.music ? musicGen(key, g.dialogue.music, total).catch((e) => { console.error(e); return null; }) : Promise.resolve(null),
+    (async () => { const out: (Int16Array | null)[] = []; // one at a time: ElevenLabs allows only 3 requests at once
+      for (const x of stingSpec) out.push(await sfxGen(key, x.sound, 1.6).catch(() => null)); return out; })(),
   ]);
   const turns = turnsRaw.length ? fitTurns(turnsRaw, lines.length) : [];
   // match each voice to the acting in the picture: calmer than usual on screen -> one step calmer, much stronger -> one step stronger
@@ -314,21 +304,17 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     const s0 = Math.round(start * SR); for (let k = 0; k < out.length && s0 + k < n; k++) speech[s0 + k] += out[k];
     const end = start + out.length / SR; placed.push({ start, end }); cursor = end + 0.3;
   });
-  // mood music under everything: quieter while someone speaks, fades in and out
-  const addMusic = (mix: Float32Array) => {
-    if (!music?.length) return mix;
+  // reaction effects (the customer chose them): right after the line that causes the feeling, softer if someone talks over them
+  const addStingers = (mix: Float32Array) => {
     const talk = new Uint8Array(n);
-    for (const t of placed) for (let i = Math.max(0, Math.round((t.start - 0.3) * SR)); i < Math.min(n, Math.round((t.end + 0.3) * SR)); i++) talk[i] = 1;
-    // bring the music to a fixed loudness first (ElevenLabs tracks vary a lot), then: clear between lines, softer under speech
-    let ss = 0; for (let i = 0; i < music.length; i++) ss += music[i] * music[i];
-    const norm = 2600 / Math.max(1, Math.sqrt(ss / music.length));
-    console.log("music", music.length, Math.round(Math.sqrt(ss / music.length)));
-    let gm = norm;
-    for (let i = 0; i < n; i++) {
-      const want = (talk[i] ? 0.5 : 1) * norm; gm += (want - gm) * 0.0005;
-      const edge = Math.min(1, i / (0.6 * SR), (n - i) / (1.2 * SR));
-      mix[i] += (music[i % music.length] ?? 0) * gm * edge;
-    }
+    for (const t of placed) for (let i = Math.max(0, Math.round(t.start * SR)); i < Math.min(n, Math.round(t.end * SR)); i++) talk[i] = 1;
+    stingSpec.forEach((x, j) => {
+      const pcm = stings[j]; if (!pcm?.length) return;
+      const at = placed[x.after] ? placed[x.after].end + 0.05 : placed.length ? placed[placed.length - 1].end + 0.05 : Number(x.at) || 0;
+      let ss = 0; for (let i = 0; i < pcm.length; i++) ss += pcm[i] * pcm[i];
+      const norm = 3800 / Math.max(1, Math.sqrt(ss / pcm.length)); const s0 = Math.round(at * SR); const fade = Math.round(0.15 * SR);
+      for (let k = 0; k < pcm.length && s0 + k < n; k++) mix[s0 + k] += pcm[k] * norm * (talk[s0 + k] ? 0.45 : 1) * Math.min(1, (pcm.length - k) / fade);
+    });
     return mix;
   };
   // Wan's soundtrack keeps every sound effect in sync; it is silenced only where Wan's (wrong) Burmese speech was
@@ -342,7 +328,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
       const fill = bed ? (bed[i % bed.length] ?? 0) * 0.55 * (1 - mute[i]) : 0; // keep the scene alive while Wan is muted
       mix[i] = speech[i] + w + fill;
     }
-    return wavOf(addMusic(mix));
+    return wavOf(addStingers(mix));
   }
   // background bed, ducked under speech
   const mix = new Float32Array(n); const hi = 0.9, lo = 0.5, fade = Math.round(0.25 * SR);
@@ -357,7 +343,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   // timed story sounds (gunshots, explosions...) on top, a little softer while someone speaks
   for (const e of fx) { if (!e?.pcm) continue; const s0 = Math.round(e.at * SR);
     for (let k = 0; k < e.pcm.length && s0 + k < n; k++) mix[s0 + k] += e.pcm[k] * (inSp[s0 + k] ? 0.6 : 0.95); }
-  return wavOf(addMusic(mix));
+  return wavOf(addStingers(mix));
 }
 async function eachlabs(admin: any) {
   const { data: k } = await admin.rpc("get_app_secret", { p_name: "eachlabs_api_key" });
@@ -430,7 +416,8 @@ async function startGeneration(admin: any, id: string) {
     const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
-      dialogue: plan.lines?.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [], music: plan.music ?? null } : null,
+      dialogue: plan.lines?.length || (g.sfx && plan.stingers?.length)
+        ? { lines: plan.lines ?? [], ambience: plan.ambience ?? null, effects: plan.effects ?? [], stingers: g.sfx ? plan.stingers ?? [] : [] } : null,
     }).eq("id", id);
   } catch (e) {
     console.error("create failed:", e);
@@ -459,7 +446,7 @@ async function step(admin: any, g: any) {
         const p = src ? { state: "done" as const, url: src } : await pollVideo(g);
         if (p.state === "done") {
           const lines = g.dialogue?.lines ?? [];
-          if (!lines.length) await saveFrom(p.url!);
+          if (!lines.length && !g.dialogue?.stingers?.length) await saveFrom(p.url!);
           else if (await admin.rpc("claim_post_stage", { p_id: g.id, p_from: null, p_to: "dubbing" }).then((r: any) => r.data)) {
             await admin.from("generations").update({ post_data: { src: p.url } }).eq("id", g.id);
             try {
@@ -564,7 +551,7 @@ Deno.serve(async (req) => {
       p_image_path: body.image_path ?? null,
     });
     if (error) return json({ error: error.message }, 400);
-    if (planId) await admin.from("generations").update({ plan_id: planId }).eq("id", id);
+    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true }).eq("id", id);
 
     // submit in the background (old clients without a plan_id: plan first, ~1 minute)
     const work = startGeneration(admin, id);
