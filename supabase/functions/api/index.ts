@@ -239,8 +239,8 @@ async function wanSoundtrack(admin: any, srcUrl: string): Promise<Int16Array | n
     return wavTo24k(new Uint8Array(await (await fetch(url)).arrayBuffer()));
   } catch (e) { console.error("wanSoundtrack:", e); return null; }
 }
-// make every voice equally loud (speech RMS), with a small boost for shouting and a cut for whispering
-const LOUD: Record<string, number> = { shouting: 1.35, angry: 1.15, excited: 1.1, whisper: 0.6 };
+// one fixed standard loudness for every voice (speech RMS); shouting/angry louder, whispering/sad softer
+const LOUD: Record<string, number> = { shouting: 1.6, angry: 1.35, excited: 1.2, happy: 1.05, sad: 0.85, scared: 0.9, whisper: 0.45 };
 function levelVoice(x: Int16Array, emotion?: string): Int16Array {
   let peak = 1; for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
   const gate = peak * 0.1; let sum = 0, cnt = 0;
