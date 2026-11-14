@@ -76,7 +76,8 @@ Deno.serve(async (req) => {
     const engine = body.engine === "pixverse" ? "pixverse" : lab && body.engine === "dry" ? "dry" : "pvideo"; // dry: cut + join only (lab test)
     // save the job first, so a paid job can never be lost
     const { data: row, error } = await admin.from("faceswaps").insert({ user_id: user.id, video_path: body.video_path, face_path: body.face_path,
-      target: target || null, seconds: Number(body.seconds) || null, status: "submitting", engine }).select("id").single();
+      target: target || null, seconds: Number(body.seconds) || null, status: "submitting", engine,
+      width: Math.round(Number(body.width)) || null, height: Math.round(Number(body.height)) || null }).select("id").single();
     if (error) return json({ error: error.message }, 500);
     try {
       let pid: string, stage: string;
@@ -134,6 +135,14 @@ Deno.serve(async (req) => {
         const bounds = [0, ...cuts, total || (cuts.length ? cuts[cuts.length - 1] + 3 : 30)];
         const scenes: any[] = [];
         for (let i = 0; i + 1 < bounds.length; i++) if (bounds[i + 1] - bounds[i] > 0.05) scenes.push({ start: +bounds[i].toFixed(3), end: +bounds[i + 1].toFixed(3) });
+        // the joiner takes at most 10 clips: merge the shortest shot into its shorter neighbour until 10 remain
+        while (scenes.length > 10) {
+          let k = 0; for (let i = 1; i < scenes.length; i++) if (scenes[i].end - scenes[i].start < scenes[k].end - scenes[k].start) k = i;
+          const left = k > 0 ? scenes[k - 1] : null, right = k + 1 < scenes.length ? scenes[k + 1] : null;
+          const into = !right || (left && left.end - left.start < right.end - right.start) ? k - 1 : k + 1;
+          scenes[Math.min(k, into)] = { start: scenes[Math.min(k, into)].start, end: scenes[Math.max(k, into)].end };
+          scenes.splice(Math.max(k, into), 1);
+        }
         if (scenes.length <= 1) { // one shot: swap the whole clip at once
           const [video, face] = await Promise.all([signIn(fs.video_path), signIn(fs.face_path)]);
           const pid = await submit("p-video-replace", pvInput(video!, face!, fs.target));
@@ -185,7 +194,12 @@ Deno.serve(async (req) => {
           await admin.from("faceswaps").update({ scenes }).eq("id", fs.id);
           const ready = scenes.filter((s) => s.out).length;
           if (ready === scenes.length) {
-            const pid = await submit("eachlabs-video-api", { mode: "capability", capability: "concat", input_urls: scenes.map((s) => s.out), params: {} });
+            // output size: swapped shots come back at 720p (short side 720); keep the clip's shape
+            const w0 = Number(fs.width) || 720, h0 = Number(fs.height) || 1280;
+            const k = fs.engine === "dry" ? 1 : 720 / Math.min(w0, h0);
+            const even = (v: number) => Math.max(16, Math.round(v * k / 2) * 2);
+            const pid = await submit("eachlabs-video-api", { mode: "capability", capability: "concat", input_urls: scenes.map((s) => s.out),
+              params: { inputs: scenes.length, width: even(w0), height: even(h0) } });
             await admin.from("faceswaps").update({ stage: "concat", provider_id: pid }).eq("id", fs.id);
             return json({ status: "running", progress: "ဇာတ်ဝင်ခန်းတွေ ပြန်ဆက်နေပါတယ်…" });
           }
