@@ -207,7 +207,12 @@
           <div class="muted" id="fsInfo" style="font-size:13px;margin:4px 0"></div>
           <label class="lbl">ထည့်မယ့် လူပုံ (ကိုယ့်ပုံ ဒါမှမဟုတ် ခွင့်ပြုချက် ရထားသူ)</label>
           <input type="file" id="fsFace" accept="image/jpeg,image/png,image/webp">
-          <label class="lbl">ဘယ်သူ့ကို လဲမလဲ (အင်္ဂလိပ်လို ရေးရင် ပိုမှန်)</label>
+          <label class="lbl">AI</label>
+          <div class="seg" id="fsEngine">
+            <button data-v="pixverse" class="on">PixVerse 540p<small>ပထမ ပုံရိပ်ထဲက လူ</small></button>
+            <button data-v="pvideo">P-Video 720p<small>စာနဲ့ ရွေး</small></button>
+          </div>
+          <label class="lbl">ဘယ်သူ့ကို လဲမလဲ (P-Video အတွက်ပဲ — အင်္ဂလိပ်လို ရေးရင် ပိုမှန်)</label>
           <input type="text" id="fsTarget" placeholder="e.g. the main young man with short black hair">
           <button class="btn" id="fsBtn" style="margin-top:10px">🎭 Face swap လုပ်မည်</button>
           <div id="fsOut" style="margin-top:10px"></div>
@@ -557,13 +562,17 @@ async function review(id, ok){
 }
 
 /* ================= FACE SWAP (admin test) ================= */
-let fsSeconds = null;
+let fsSeconds = null, fsEngine = "pixverse";
+const fsRate = () => fsEngine === "pixverse" ? 0.045 : 0.03;
+const fsShowCost = () => { if (fsSeconds) $("fsInfo").textContent = `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ~${fmt(Math.round(fsSeconds * fsRate() * 4500))} ကျပ်`; };
+document.querySelectorAll("#fsEngine button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#fsEngine button").forEach(x => x.classList.toggle("on", x === b)); fsEngine = b.dataset.v; fsShowCost(); });
 $("fsVideo").onchange = () => {
   const f = $("fsVideo").files[0]; fsSeconds = null; $("fsInfo").textContent = "";
   if (!f) return;
   const v = document.createElement("video"); v.preload = "metadata";
   v.onloadedmetadata = () => { fsSeconds = v.duration; URL.revokeObjectURL(v.src);
-    $("fsInfo").textContent = `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ~${fmt(Math.round(fsSeconds * 0.03 * 4500))} ကျပ်`; };
+    fsShowCost(); };
   v.src = URL.createObjectURL(f);
 };
 $("fsBtn").onclick = async () => {
@@ -574,7 +583,7 @@ $("fsBtn").onclick = async () => {
   $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>တင်နေပါတယ်…</p>`;
   try {
     const [video_path, face_path] = await Promise.all([uploadTo("inputs", vf), uploadTo("inputs", ff)]);
-    const { data, error } = await sb.functions.invoke("faceswap", { body: { action:"create", video_path, face_path, target: $("fsTarget").value, seconds: fsSeconds } });
+    const { data, error } = await sb.functions.invoke("faceswap", { body: { action:"create", video_path, face_path, target: $("fsTarget").value, seconds: fsSeconds, engine: fsEngine } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>လဲနေပါတယ်… (၂–၅ မိနစ်)</p>`;
     const poll = async () => {

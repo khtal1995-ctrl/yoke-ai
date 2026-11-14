@@ -1,5 +1,5 @@
 // faceswap: put a person (from one photo) into an uploaded scene video, keeping the scene's motion and sound.
-// Admin-only while testing. Uses Eachlabs "p-video-replace" (720p, $0.03 per output second).
+// Admin-only while testing. Engines: Eachlabs "p-video-replace" (720p, $0.03/s) or "pixverse-swap" (540p, $0.045/s).
 // POST {action:"create", video_path, face_path, target?, seconds?} -> {id}
 // POST {action:"status", id} -> {status, url?, error?}
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -35,13 +35,18 @@ Deno.serve(async (req) => {
     const [video, face] = await Promise.all([sign(body.video_path), sign(body.face_path)]);
     if (!video || !face) return json({ error: "file not found" }, 400);
     const target = String(body.target ?? "").trim().slice(0, 200);
-    const input: Record<string, unknown> = { video, images: [face], resolution: "720p", save_audio: true };
-    if (target) input.instruction_prompt = `Replace only this person with the person in the reference image: ${target}. Keep everyone else, the background, the camera and the motion unchanged.`;
+    // two engines: PixVerse Swap (540p, picks the first person it sees in the first frame) or P-Video Replace (720p, text target)
+    const pix = body.engine === "pixverse";
+    const model = pix ? "pixverse-swap" : "p-video-replace";
+    const input: Record<string, unknown> = pix
+      ? { video_url: video, replacement_image_url: face, quality: "540p" }
+      : { video, images: [face], resolution: "720p", save_audio: true };
+    if (!pix && target) input.instruction_prompt = `Replace only this person with the person in the reference image: ${target}. Keep everyone else, the background, the camera and the motion unchanged.`;
     // save the job first, so a paid job can never be lost
     const { data: row, error } = await admin.from("faceswaps").insert({ user_id: user.id, video_path: body.video_path, face_path: body.face_path,
       target: target || null, seconds: Number(body.seconds) || null, status: "submitting" }).select("id").single();
     if (error) return json({ error: error.message }, 500);
-    const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: h, body: JSON.stringify({ model: "p-video-replace", version: "0.0.1", input }) });
+    const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: h, body: JSON.stringify({ model, version: "0.0.1", input }) });
     const j: any = await r.json().catch(() => ({}));
     const pid = j.predictionID ?? j.prediction_id ?? j.id;
     console.log("faceswap submit", row.id, r.status, pid);
@@ -63,7 +68,7 @@ Deno.serve(async (req) => {
     const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${fs.provider_id}`, { headers: h });
     const j: any = await r.json().catch(() => ({}));
     if (j.status === "error" || j.status === "failed") {
-      const raw = String(j.error ?? (typeof j.output === "string" ? j.output : "") ?? "") || String(j.status);
+      const raw = String(j.error ?? j.message ?? (typeof j.output === "string" ? j.output : "") ?? "") + (j.details ? " " + JSON.stringify(j.details).slice(0, 200) : "") || String(j.status);
       const err = (/temporarily unavailable|retry/i.test(raw) ? "Face swap service က ခဏ မအားလို့ပါ (ငွေ မကုန်ပါ)။ ခဏနေမှ ပြန်နှိပ်ပါ။ — " : "") + raw.slice(0, 300);
       await admin.from("faceswaps").update({ status: "failed", error: err }).eq("id", fs.id);
       return json({ status: "failed", error: err });
