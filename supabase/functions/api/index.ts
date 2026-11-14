@@ -124,6 +124,27 @@ async function sfxGen(key: string, text: string, sec: number): Promise<Int16Arra
   });
   return r.ok ? toI16(new Uint8Array(await r.arrayBuffer())) : null;
 }
+// instrumental background music that fits the story's mood (ElevenLabs Music)
+async function musicGen(key: string, prompt: string, sec: number): Promise<Int16Array | null> {
+  const r = await fetch(`https://api.elevenlabs.io/v1/music?output_format=pcm_24000`, {
+    method: "POST", signal: AbortSignal.timeout(90000), headers: { "xi-api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: prompt + ", instrumental background score, no vocals", music_length_ms: Math.round(Math.max(sec, 3) * 1000), force_instrumental: true }),
+  });
+  if (!r.ok) { console.error("music", r.status, (await r.text()).slice(0, 200)); return null; }
+  return toI16(new Uint8Array(await r.arrayBuffer()));
+}
+// how strongly each character acts in the picture: Wan's own (unclear) speech follows its acting
+const LADDER = ["whisper", "calm", "warm", "happy", "excited", "shouting"];
+function shiftEmotion(e: string, step: number) {
+  const i = LADDER.indexOf(e);
+  if (i < 0 || !step) return e;
+  return LADDER[Math.max(1, Math.min(LADDER.length - 1, i + step))];
+}
+function rmsOf(x: Int16Array, a: number, b: number) {
+  const s = Math.max(0, Math.round(a * SR)), e = Math.min(x.length, Math.round(b * SR)); let sum = 0;
+  for (let i = s; i < e; i++) sum += x[i] * x[i];
+  return e > s ? Math.sqrt(sum / (e - s)) : 0;
+}
 // when does each speaker talk in Wan's own audio? (ElevenLabs Scribe, word timings + speakers)
 async function speechTurns(key: string, url: string, speakers: number): Promise<{ start: number; end: number; spk: string }[]> {
   const fd = new FormData(); fd.append("model_id", "scribe_v1"); fd.append("cloud_storage_url", url);
@@ -241,7 +262,7 @@ async function voiceLine(key: string, l0: any, maleVoice = MALE_YOUNG): Promise<
   // check the words came out right; one more try if not, keep the clearer take
   let best: Int16Array | null = null, bestScore = -1;
   for (let t = 0; t < 2; t++) {
-    const out = trim(await tts(key, voice, l.text, l.emotion));
+    const out = trim(await tts(key, voice, l.text, l.emotion, voice === MALE_YOUNG ? 0.1 : 0));
     if (l.gender === "female") return levelVoice(out, l.emotion);
     const score = similar(await heard(key, out), l.text);
     if (score > bestScore) { best = out; bestScore = score; }
@@ -253,26 +274,30 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
   const lines: any[] = g.dialogue?.lines ?? [];
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
-  const [turnsRaw, pcms, bed, wan] = await Promise.all([
+  const [turnsRaw, bed, wan, music] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
-    (async () => { // one at a time (ElevenLabs allows 3 at once); each man keeps his own voice
-      const cast = new Map<string, string>(); const out: Int16Array[] = [];
-      for (const l of lines) {
-        const who = String(l.who ?? "man").toLowerCase();
-        if (l.gender !== "female" && !cast.has(who)) {
-          const older = /middle|old/.test(String(l.age ?? "")) || /uncle|father|dad|grand|old|elder|boss/.test(who);
-          const youngTaken = [...cast.values()].includes(MALE_YOUNG);
-          cast.set(who, older || youngTaken ? MALE_OLDER : MALE_YOUNG);
-        }
-        out.push(await voiceLine(key, l, cast.get(who) ?? MALE_YOUNG));
-      }
-      return out; })(),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
     wanSoundtrack(admin, srcUrl),
+    g.dialogue?.music ? musicGen(key, g.dialogue.music, total).catch((e) => { console.error(e); return null; }) : Promise.resolve(null),
   ]);
+  const turns = turnsRaw.length ? fitTurns(turnsRaw, lines.length) : [];
+  // match each voice to the acting in the picture: calmer than usual on screen -> one step calmer, much stronger -> one step stronger
+  const energy = turns.map((t) => (wan ? rmsOf(wan, t.start, t.end) : 0));
+  const known = energy.filter((e) => e > 0).sort((a, b) => a - b); const med = known.length ? known[Math.floor(known.length / 2)] : 0;
+  const pcms: Int16Array[] = []; const cast = new Map<string, string>();
+  for (let i = 0; i < lines.length; i++) { // one at a time (ElevenLabs allows 3 at once); each man keeps his own voice
+    const l = lines[i]; let emotion = l.emotion;
+    if (med > 0 && energy[i] > 0 && known.length >= 2) { const r = energy[i] / med; emotion = shiftEmotion(emotion, r < 0.65 ? -1 : r > 1.5 ? 1 : 0); }
+    const who = String(l.who ?? "man").toLowerCase();
+    if (l.gender !== "female" && !cast.has(who)) {
+      const older = /middle|old/.test(String(l.age ?? "")) || /uncle|father|dad|grand|old|elder|boss/.test(who);
+      const youngTaken = [...cast.values()].includes(MALE_YOUNG);
+      cast.set(who, older || youngTaken ? MALE_OLDER : MALE_YOUNG);
+    }
+    pcms.push(await voiceLine(key, { ...l, emotion }, cast.get(who) ?? MALE_YOUNG));
+  }
   // only when Wan's own soundtrack is unavailable do we add guessed, timed effects
   const fx = wan ? [] : await Promise.all(((g.dialogue?.effects ?? []) as any[]).map((e) => sfxGen(key, e.text, e.dur).then((pcm) => ({ ...e, pcm })).catch(() => null)));
-  const turns = turnsRaw.length ? fitTurns(turnsRaw, lines.length) : [];
   const speech = new Float32Array(n); const placed: { start: number; end: number }[] = [];
   let cursor = 0.5;
   pcms.forEach((pcm, i) => {
@@ -286,6 +311,19 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     const s0 = Math.round(start * SR); for (let k = 0; k < out.length && s0 + k < n; k++) speech[s0 + k] += out[k];
     const end = start + out.length / SR; placed.push({ start, end }); cursor = end + 0.3;
   });
+  // mood music under everything: quieter while someone speaks, fades in and out
+  const addMusic = (mix: Float32Array) => {
+    if (!music?.length) return mix;
+    const talk = new Uint8Array(n);
+    for (const t of placed) for (let i = Math.max(0, Math.round((t.start - 0.3) * SR)); i < Math.min(n, Math.round((t.end + 0.3) * SR)); i++) talk[i] = 1;
+    let gm = 0.22;
+    for (let i = 0; i < n; i++) {
+      const want = talk[i] ? 0.11 : 0.22; gm += (want - gm) * 0.0005;
+      const edge = Math.min(1, i / (0.6 * SR), (n - i) / (1.2 * SR));
+      mix[i] += (music[i % music.length] ?? 0) * gm * edge;
+    }
+    return mix;
+  };
   // Wan's soundtrack keeps every sound effect in sync; it is silenced only where Wan's (wrong) Burmese speech was
   if (wan) {
     const mute = new Float32Array(n).fill(1); const pad = Math.round(0.2 * SR), ramp = Math.round(0.06 * SR);
@@ -297,7 +335,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
       const fill = bed ? (bed[i % bed.length] ?? 0) * 0.55 * (1 - mute[i]) : 0; // keep the scene alive while Wan is muted
       mix[i] = speech[i] + w + fill;
     }
-    return wavOf(mix);
+    return wavOf(addMusic(mix));
   }
   // background bed, ducked under speech
   const mix = new Float32Array(n); const hi = 0.9, lo = 0.5, fade = Math.round(0.25 * SR);
@@ -312,7 +350,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   // timed story sounds (gunshots, explosions...) on top, a little softer while someone speaks
   for (const e of fx) { if (!e?.pcm) continue; const s0 = Math.round(e.at * SR);
     for (let k = 0; k < e.pcm.length && s0 + k < n; k++) mix[s0 + k] += e.pcm[k] * (inSp[s0 + k] ? 0.6 : 0.95); }
-  return wavOf(mix);
+  return wavOf(addMusic(mix));
 }
 async function eachlabs(admin: any) {
   const { data: k } = await admin.rpc("get_app_secret", { p_name: "eachlabs_api_key" });
@@ -385,7 +423,7 @@ async function startGeneration(admin: any, id: string) {
     const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
-      dialogue: plan.lines?.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [] } : null,
+      dialogue: plan.lines?.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [], music: plan.music ?? null } : null,
     }).eq("id", id);
   } catch (e) {
     console.error("create failed:", e);
