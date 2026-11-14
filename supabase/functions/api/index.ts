@@ -62,10 +62,11 @@ const SR = 24000;
 const VOICES: Record<string, string> = {
   male: "eZUdq4hHF9YhlUfu5DFe",   // Yan — native Burmese young male
   female: "NBISYoQ4SVxq8eZxoHlV", // Su — native Burmese young female
-  maleSts: "dZUDKQDfSHNzYzM1epKR", // Jin — young male timbre for Voice Changer (chosen by owner)
 };
-// different men in one video must not sound the same: 1st man Jin, 2nd man Edison, then repeat
-const MALE_STS = ["dZUDKQDfSHNzYzM1epKR", "ZyIwtt7dzBKVYuXxaRw7"];
+// men speak with native Burmese voices directly (no voice change): young men use the owner's own cloned voice,
+// older men (and a second young man) use Yan, so two men in one video never sound the same
+const MALE_YOUNG = "B5MB163SdECMmHySTkLK"; // Yoke Male 1 — owner's own voice, cloned with his consent
+const MALE_OLDER = "eZUdq4hHF9YhlUfu5DFe"; // Yan
 const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
 function wavOf(mix: Float32Array): Uint8Array {
   const n = mix.length; const buf = new Uint8Array(44 + n * 2); const dv = new DataView(buf.buffer);
@@ -202,28 +203,6 @@ function levelVoice(x: Int16Array, emotion?: string): Int16Array {
   for (let i = 0; i < x.length; i++) { const v = x[i] * g; out[i] = Math.max(-32000, Math.min(32000, v > 24000 ? 24000 + (v - 24000) * 0.3 : v < -24000 ? -24000 + (v + 24000) * 0.3 : v)); }
   return out;
 }
-// male lines: Su performs the line (best Burmese acting), then ElevenLabs Voice Changer turns it into a male voice,
-// keeping her timing, pitch movement and emotion. A short-window gain keeps the converted words from fading.
-async function stsToVoice(key: string, pcm: Int16Array, toVoice: string): Promise<Int16Array> {
-  const fd = new FormData();
-  fd.append("audio", new Blob([wavOf(Float32Array.from(pcm)) as BlobPart], { type: "audio/wav" }), "line.wav");
-  fd.append("model_id", "eleven_multilingual_sts_v2"); fd.append("remove_background_noise", "false");
-  fd.append("voice_settings", JSON.stringify({ stability: 0.8, similarity_boost: 0.95, style: 0, use_speaker_boost: true }));
-  const r = await fetch(`https://api.elevenlabs.io/v1/speech-to-speech/${toVoice}?output_format=pcm_24000`, { method: "POST", headers: { "xi-api-key": key }, body: fd });
-  if (!r.ok) throw new Error("sts " + r.status + " " + (await r.text()).slice(0, 200));
-  return steady(toI16(new Uint8Array(await r.arrayBuffer())));
-}
-function steady(x: Int16Array): Int16Array {
-  const W = Math.round(0.12 * SR); const env = new Float32Array(x.length); let acc = 0;
-  for (let i = 0; i < x.length; i++) { acc += x[i] * x[i]; if (i >= W) acc -= x[i - W] * x[i - W]; env[i] = Math.sqrt(Math.max(acc, 0) / Math.min(i + 1, W)); }
-  let peak = 1; for (const v of env) peak = Math.max(peak, v); const gate = peak * 0.12, target = peak * 0.7;
-  const out = new Int16Array(x.length); let g = 1;
-  for (let i = 0; i < x.length; i++) { const want = env[i] > gate ? Math.min(2.5, target / env[i]) : g; g += (want - g) * 0.0008;
-    out[i] = Math.max(-32000, Math.min(32000, Math.round(x[i] * g))); }
-  return out;
-}
-// the voice changer exaggerates Su's acting, so for male lines she acts one step calmer
-const SOFTER: Record<string, string> = { shouting: "excited", excited: "happy", happy: "warm", scared: "sad" };
 // how close the heard words are to the line (0..1), Burmese letters only
 const mmLetters = (t: string) => [...String(t).replace(/[^\u1000-\u109F]/g, "")];
 function similar(a: string, b: string) {
@@ -256,21 +235,19 @@ const spokenNumbers = (t: string) => t.replace(/[0-9\u1040-\u1049]+/g, (m) => {
   const n = Number([...m].map((c) => { const k = c.charCodeAt(0); return k >= 0x1040 ? String(k - 0x1040) : c; }).join(""));
   return n <= 99999 ? mmNumber(n) : m;
 });
-async function voiceLine(key: string, l0: any, maleVoice = VOICES.maleSts): Promise<Int16Array> {
+async function voiceLine(key: string, l0: any, maleVoice = MALE_YOUNG): Promise<Int16Array> {
   const l = { ...l0, text: spokenNumbers(String(l0.text)) };
-  if (l.gender === "female") return levelVoice(trim(await tts(key, VOICES.female, l.text, l.emotion)), l.emotion);
-  try {
-    // check the words survived the voice change; one more try if not, keep the clearer one
-    let best: Int16Array | null = null, bestScore = -1;
-    for (let t = 0; t < 2; t++) {
-      const acted = trim(await tts(key, VOICES.female, l.text, SOFTER[l.emotion] ?? l.emotion, 0.2));
-      const out = trim(await stsToVoice(key, acted, maleVoice));
-      const score = similar(await heard(key, out), l.text);
-      if (score > bestScore) { best = out; bestScore = score; }
-      if (score >= 0.8) break;
-    }
-    return levelVoice(best!, l.emotion);
-  } catch (e) { console.error("sts failed, using male TTS:", e); return levelVoice(trim(await tts(key, VOICES.male, l.text, l.emotion)), l.emotion); }
+  const voice = l.gender === "female" ? VOICES.female : maleVoice;
+  // check the words came out right; one more try if not, keep the clearer take
+  let best: Int16Array | null = null, bestScore = -1;
+  for (let t = 0; t < 2; t++) {
+    const out = trim(await tts(key, voice, l.text, l.emotion));
+    if (l.gender === "female") return levelVoice(out, l.emotion);
+    const score = similar(await heard(key, out), l.text);
+    if (score > bestScore) { best = out; bestScore = score; }
+    if (score >= 0.8) break;
+  }
+  return levelVoice(best!, l.emotion);
 }
 async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
@@ -279,11 +256,15 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   const [turnsRaw, pcms, bed, wan] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
     (async () => { // one at a time (ElevenLabs allows 3 at once); each man keeps his own voice
-      const men: string[] = []; const out: Int16Array[] = [];
+      const cast = new Map<string, string>(); const out: Int16Array[] = [];
       for (const l of lines) {
         const who = String(l.who ?? "man").toLowerCase();
-        if (l.gender !== "female" && !men.includes(who)) men.push(who);
-        out.push(await voiceLine(key, l, MALE_STS[Math.max(0, men.indexOf(who)) % MALE_STS.length]));
+        if (l.gender !== "female" && !cast.has(who)) {
+          const older = /middle|old/.test(String(l.age ?? "")) || /uncle|father|dad|grand|old|elder|boss/.test(who);
+          const youngTaken = [...cast.values()].includes(MALE_YOUNG);
+          cast.set(who, older || youngTaken ? MALE_OLDER : MALE_YOUNG);
+        }
+        out.push(await voiceLine(key, l, cast.get(who) ?? MALE_YOUNG));
       }
       return out; })(),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
