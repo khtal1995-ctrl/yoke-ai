@@ -9,7 +9,7 @@ Return ONLY one JSON object, no markdown:
 Rules for "prompt":
 - Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English. Choose camera distance to suit the story.
 - People look like Burmese (Bamar) people of Myanmar, Southeast Asian features, and wear clothes Myanmar people really wear for the scene (longyi, htamein, eingyi blouse, thanaka; or ordinary modern T-shirts, jeans, uniforms). Never Indian clothing (no sari, kurta, turban, bindi).
-- Any written text, shop signs, bus signs or banners are in Burmese (Myanmar) script, never Hindi/Devanagari, Bengali or Tamil script. Buildings, vehicles and streets look like Myanmar.
+- Video models cannot write Burmese letters (they come out as fake gibberish), so never ask for readable text: no close-up signs, menus, posters, banners, phone screens or name boards. Shop signs may exist only small, far in the background or softly out of focus. Never English, Chinese, Thai, Hindi/Devanagari, Bengali or Tamil writing. Make the place look like Myanmar through buildings, streets, vehicles, food, clothes and people instead.
 - Every spoken line must appear in Burmese script, in quotes, as: <who> says naturally in native Burmese (Myanmar language) with a Yangon accent: "<text>". Use exactly the same text as in "lines", in the same order.
 - Write Burmese the way people actually speak, as one flowing phrase: NEVER put spaces between Burmese words. Use only ၊ or ။ where a speaker naturally pauses for breath.
 - If the user wrote dialogue in quotes, use those words EXACTLY (same words, same spelling, same order); never correct, translate, shorten or paraphrase them. Only remove spaces between Burmese words.

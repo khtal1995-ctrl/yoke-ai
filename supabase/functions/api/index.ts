@@ -397,7 +397,7 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
 }
 
 // always appended: keeps people, clothes and signs Burmese (video models otherwise drift to South Asian looks)
-const MYANMAR_LOOK = "\nStyle: authentic Myanmar. All people are Burmese (Bamar) Southeast Asian people in everyday Myanmar clothing (longyi, htamein, eingyi, thanaka, or plain modern clothes). Any visible text or signage is in Burmese script. No Indian clothing, no saris, no Hindi or Devanagari text.";
+const MYANMAR_LOOK = "\nStyle: authentic Myanmar. All people are Burmese (Bamar) Southeast Asian people in everyday Myanmar clothing (longyi, htamein, eingyi, thanaka, or plain modern clothes). No readable text anywhere: shop signs, banners and posters are small, far in the background or softly out of focus, shown as colours and shapes, never as close-up legible lettering. No English, Chinese, Thai, Hindi or Devanagari writing. No Indian clothing, no saris.";
 
 // use the approved plan (or plan now for old clients), then submit to Wan (runs in the background after "create" has answered)
 async function startGeneration(admin: any, id: string) {
