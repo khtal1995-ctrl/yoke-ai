@@ -41,6 +41,8 @@ Return ONLY one JSON object, no markdown:
 {"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "emotion": "calm|polite|warm|happy|excited|shouting|angry|sad|scared|whisper", "text": "<the exact Burmese line>"}], "ambience": "<English description of the continuous background sound only: no speech, no music>", "effects": [{"text": "<one short English sound effect, e.g. burst of rifle gunfire>", "at": <second it starts>, "dur": <seconds, 0.5-4>}]}
 Rules for "prompt":
 - Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English. Choose camera distance to suit the story.
+- People look like Burmese (Bamar) people of Myanmar, Southeast Asian features, and wear clothes Myanmar people really wear for the scene (longyi, htamein, eingyi blouse, thanaka; or ordinary modern T-shirts, jeans, uniforms). Never Indian clothing (no sari, kurta, turban, bindi).
+- Any written text, shop signs, bus signs or banners are in Burmese (Myanmar) script, never Hindi/Devanagari, Bengali or Tamil script. Buildings, vehicles and streets look like Myanmar.
 - Every spoken line must appear in Burmese script, in quotes, as: <who> says naturally in native Burmese (Myanmar language) with a Yangon accent: "<text>". Use exactly the same text as in "lines", in the same order.
 - Write Burmese the way people actually speak, as one flowing phrase: NEVER put spaces between Burmese words. Use only ၊ or ။ where a speaker naturally pauses for breath.
 - If the user wrote dialogue in quotes, use those words EXACTLY (same words, same spelling, same order); never correct, translate, shorten or paraphrase them. Only remove spaces between Burmese words.
@@ -353,6 +355,9 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
   return { state: "running" };
 }
 
+// always appended: keeps people, clothes and signs Burmese (video models otherwise drift to South Asian looks)
+const MYANMAR_LOOK = "\nStyle: authentic Myanmar. All people are Burmese (Bamar) Southeast Asian people in everyday Myanmar clothing (longyi, htamein, eingyi, thanaka, or plain modern clothes). Any visible text or signage is in Burmese script. No Indian clothing, no saris, no Hindi or Devanagari text.";
+
 // plan the scene with Grok, then submit to Wan (runs in the background after "create" has answered)
 async function startGeneration(admin: any, id: string) {
   const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
@@ -365,7 +370,7 @@ async function startGeneration(admin: any, id: string) {
       if (se || !s) throw new Error("image not found");
       imageUrl = s.signedUrl;
     }
-    const sub = await submitVideo(g, en, imageUrl);
+    const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
       dialogue: plan.lines.length ? { lines: plan.lines, ambience: plan.ambience ?? null, effects: plan.effects ?? [] } : null,
