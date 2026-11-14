@@ -48,7 +48,7 @@ Rules for "prompt":
 - If the user wrote dialogue in quotes, use those words EXACTLY (same words, same spelling, same order); never correct, translate, shorten or paraphrase them. Only remove spaces between Burmese words.
 - If the user did not quote dialogue, write short, polite, natural lines for the situation in common everyday colloquial Burmese spelling (for example ခနလေး, တခွက်, တပွဲ), matching real Myanmar customs.
 - If the user asks for no speech or a silent video, never invent speech.
-- Dialogue length must fit the video: at most about 8 Burmese words per 5 seconds in total. Speakers finish talking at least 1 second before the video ends, then stay silent and react.
+- Dialogue length must fit the video: at most about 6 Burmese words per 5 seconds in total, spoken at a relaxed natural pace, never rushed. Speakers finish talking at least 1 second before the video ends, then stay silent and react.
 - Only one person speaks at a time. Say who speaks first and who answers; keep the speaker's face visible while they talk.
 - Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
 - Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].
@@ -155,11 +155,11 @@ const EMOTION: Record<string, { tag: string; stability: number }> = {
   angry: { tag: "[angry] ", stability: 0.4 }, sad: { tag: "[sad] ", stability: 0.5 }, scared: { tag: "[scared] ", stability: 0.4 },
   whisper: { tag: "[whispers] ", stability: 0.55 },
 };
-async function tts(key: string, voice: string, text: string, emotion?: string): Promise<Int16Array> {
+async function tts(key: string, voice: string, text: string, emotion?: string, calmer = 0): Promise<Int16Array> {
   const e = EMOTION[emotion ?? ""] ?? EMOTION.calm;
   const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=pcm_24000`, {
     method: "POST", headers: { "xi-api-key": key, "Content-Type": "application/json" },
-    body: JSON.stringify({ text: e.tag + text, model_id: "eleven_v4", voice_settings: { stability: e.stability, similarity_boost: 0.8, speed: 1.05 } }),
+    body: JSON.stringify({ text: e.tag + text, model_id: "eleven_v4", voice_settings: { stability: Math.min(0.85, e.stability + calmer), similarity_boost: 0.8, speed: 1.05 } }),
   });
   if (!r.ok) throw new Error("tts " + r.status + " " + (await r.text()).slice(0, 200));
   return toI16(new Uint8Array(await r.arrayBuffer()));
@@ -270,11 +270,38 @@ function steady(x: Int16Array): Int16Array {
     out[i] = Math.max(-32000, Math.min(32000, Math.round(x[i] * g))); }
   return out;
 }
+// the voice changer exaggerates Su's acting, so for male lines she acts one step calmer
+const SOFTER: Record<string, string> = { shouting: "excited", excited: "happy", happy: "warm", scared: "sad" };
+// how close the heard words are to the line (0..1), Burmese letters only
+const mmLetters = (t: string) => [...String(t).replace(/[^\u1000-\u109F]/g, "")];
+function similar(a: string, b: string) {
+  const x = mmLetters(a), y = mmLetters(b); if (!x.length || !y.length) return 0;
+  let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i++) { const cur = [i];
+    for (let j = 1; j <= y.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    prev = cur; }
+  return 1 - prev[y.length] / Math.max(x.length, y.length);
+}
+async function heard(key: string, pcm: Int16Array): Promise<string> {
+  const fd = new FormData(); fd.append("model_id", "scribe_v1"); fd.append("language_code", "mya"); fd.append("tag_audio_events", "false");
+  fd.append("file", new Blob([wavOf(Float32Array.from(pcm)) as BlobPart], { type: "audio/wav" }), "l.wav");
+  const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": key }, body: fd });
+  return r.ok ? String((await r.json()).text ?? "") : "";
+}
 async function voiceLine(key: string, l: any): Promise<Int16Array> {
-  const acted = trim(await tts(key, VOICES.female, l.text, l.emotion));
-  if (l.gender === "female") return levelVoice(acted, l.emotion);
-  try { return levelVoice(trim(await stsToVoice(key, acted, VOICES.maleSts)), l.emotion); }
-  catch (e) { console.error("sts failed, using male TTS:", e); return levelVoice(trim(await tts(key, VOICES.male, l.text, l.emotion)), l.emotion); }
+  if (l.gender === "female") return levelVoice(trim(await tts(key, VOICES.female, l.text, l.emotion)), l.emotion);
+  try {
+    // check the words survived the voice change; one more try if not, keep the clearer one
+    let best: Int16Array | null = null, bestScore = -1;
+    for (let t = 0; t < 2; t++) {
+      const acted = trim(await tts(key, VOICES.female, l.text, SOFTER[l.emotion] ?? l.emotion, 0.2));
+      const out = trim(await stsToVoice(key, acted, VOICES.maleSts));
+      const score = similar(await heard(key, out), l.text);
+      if (score > bestScore) { best = out; bestScore = score; }
+      if (score >= 0.8) break;
+    }
+    return levelVoice(best!, l.emotion);
+  } catch (e) { console.error("sts failed, using male TTS:", e); return levelVoice(trim(await tts(key, VOICES.male, l.text, l.emotion)), l.emotion); }
 }
 async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
@@ -282,7 +309,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
   const [turnsRaw, pcms, bed, wan] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
-    Promise.all(lines.map((l) => voiceLine(key, l))),
+    (async () => { const out: Int16Array[] = []; for (const l of lines) out.push(await voiceLine(key, l)); return out; })(), // one at a time (ElevenLabs allows 3 at once)
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
     wanSoundtrack(admin, srcUrl),
   ]);
@@ -295,7 +322,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     let out: Int16Array | Float32Array = pcm; let start: number;
     if (turns[i]) {
       const win = turns[i].end - turns[i].start + 0.15;
-      const ratio = Math.min(1, Math.max(0.72, (win * SR) / pcm.length));
+      const ratio = Math.min(1, Math.max(0.83, (win * SR) / pcm.length));
       if (ratio < 0.995) out = stretch(pcm, ratio);
       start = Math.max(0, turns[i].start - 0.05);
     } else { start = cursor; }
