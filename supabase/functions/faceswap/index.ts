@@ -6,7 +6,7 @@
 //  - "pixverse": pixverse-swap, 540p, $0.045/s, one pass (picks the person it sees ~1s in).
 //  - "seedance": Seedance 2.0 Mini reference-to-video, 720p: re-draws the clip with the chosen person's face, every
 //    shot in one pass (~$0.04/s). Clip is scaled into Seedance's size range first; the original sound is put back after.
-// POST {action:"create", video_path, face_path, target?, seconds?, engine?} -> {id}
+// POST {action:"create", video_path, face_path, target?, seconds?, engine?, ranges?: [{start,end,swap}]} -> {id}
 // POST {action:"status", id} -> {status, url?, error?, progress?}   (each status call also moves the job forward)
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -97,6 +97,11 @@ Deno.serve(async (req) => {
       } else if (engine === "pixverse") {
         pid = await submit("pixverse-swap", { video_url: video, replacement_image_url: face, quality: "540p", keyframe_id: Math.max(1, Math.round(Number(body.keyframe) || 30)) });
         stage = "single";
+      } else if (Array.isArray(body.ranges) && body.ranges.length >= 2 && body.ranges.length <= 10) {
+        // shots already chosen (start, end, swap?): only the shots with the person get swapped, the rest stay as they are
+        const scenes = body.ranges.map((r: any) => ({ start: +Number(r.start).toFixed(3), end: +Number(r.end).toFixed(3), keep: !r.swap }));
+        await admin.from("faceswaps").update({ scenes }).eq("id", row.id);
+        pid = "ranges"; stage = "work";
       } else {
         pid = await submit("eachlabs-video-api", { mode: "capability", capability: "scene_detect", input_url: video, params: { threshold: 0.2 } }); // default threshold misses soft cuts
         stage = "detect";
@@ -223,7 +228,7 @@ Deno.serve(async (req) => {
           for (const s of scenes) {
             if (active >= MAX_PARALLEL || blocked) break;
             if (s.clip && !s.out && !s.swap_pid) {
-              if (s.end - s.start < MIN_SHOT || fs.engine === "dry") { s.out = s.clip; continue; }
+              if (s.keep || s.end - s.start < MIN_SHOT || fs.engine === "dry") { s.out = s.clip; continue; }
               const pid = await trySubmit("p-video-replace", pvInput(s.clip, face!, fs.target));
               if (pid) { s.swap_pid = pid; active++; }
             }
