@@ -112,6 +112,9 @@ Deno.serve(async (req) => {
       return json({ status: "done", url: await signOut(path) });
     };
 
+    // only one worker per job at a time (the app polls and a background timer polls too)
+    const { data: mine } = await admin.rpc("claim_faceswap", { p_id: fs.id, p_seconds: 130 });
+    if (!mine) return json({ status: "running", progress: fs.stage === "work" ? "လုပ်ဆောင်နေပါတယ်…" : undefined });
     try {
       // one-pass jobs (PixVerse, or a single-shot result being joined)
       if (fs.stage === "single" || fs.stage === "concat" || !fs.stage) {
@@ -141,55 +144,64 @@ Deno.serve(async (req) => {
         fs.scenes = scenes; fs.stage = "work";
       }
 
-      // 2) cut every shot, swap every shot (max 2 jobs at a time), keep a shot as it is if its swap fails
+      // 2) cut every shot, swap every shot (max 2 jobs at a time), keep a shot as it is if its swap fails.
+      //    Cuts take ~6s, so keep working inside this call (up to ~100s) instead of waiting for the next poll.
       if (fs.stage === "work") {
         const scenes: any[] = fs.scenes;
-        let active = 0;
-        for (const s of scenes) {
-          if (s.cut_pid && !s.clip) {
-            const j = await poll(s.cut_pid);
-            if (bad(j)) return await fail("ဇာတ်ဝင်ခန်း ဖြတ်လို့ မရပါ: " + errText(j));
-            if (done(j) && outUrl(j)) s.clip = outUrl(j); else active++;
-          }
-          if (s.swap_pid && !s.out) {
-            const j = await poll(s.swap_pid);
-            if (bad(j)) { s.out = s.clip; s.swap_failed = errText(j).slice(0, 120); }
-            else if (done(j) && outUrl(j)) s.out = outUrl(j); else active++;
-          }
-        }
         const video = await signIn(fs.video_path); const face = await signIn(fs.face_path);
-        // a refused submit (busy, 429) just waits for the next poll; everything already submitted is saved below
-        let blocked = false;
-        const trySubmit = async (model: string, input: unknown) => { try { return await submit(model, input); } catch (e) { console.error(e); blocked = true; return null; } };
-        for (const s of scenes) {
-          if (active >= MAX_PARALLEL || blocked) break;
-          if (s.clip && !s.out && !s.swap_pid) {
-            if (s.end - s.start < MIN_SHOT || fs.engine === "dry") { s.out = s.clip; continue; }
-            const pid = await trySubmit("p-video-replace", pvInput(s.clip, face!, fs.target));
-            if (pid) { s.swap_pid = pid; active++; }
+        const t0 = Date.now();
+        for (;;) {
+          let active = 0, activeCuts = 0;
+          for (const s of scenes) {
+            if (s.cut_pid && !s.clip) {
+              const j = await poll(s.cut_pid);
+              if (bad(j)) return await fail("ဇာတ်ဝင်ခန်း ဖြတ်လို့ မရပါ: " + errText(j));
+              if (done(j) && outUrl(j)) s.clip = outUrl(j); else { active++; activeCuts++; }
+            }
+            if (s.swap_pid && !s.out) {
+              const j = await poll(s.swap_pid);
+              if (bad(j)) { s.out = s.clip; s.swap_failed = errText(j).slice(0, 120); }
+              else if (done(j) && outUrl(j)) s.out = outUrl(j); else active++;
+            }
           }
-        }
-        for (const s of scenes) {
-          if (active >= MAX_PARALLEL || blocked) break;
-          if (!s.cut_pid) {
-            const pid = await trySubmit("eachlabs-video-api", { mode: "capability", capability: "keep_ranges", input_url: video, params: { ranges: [{ start: s.start, end: s.end }] } });
-            if (pid) { s.cut_pid = pid; active++; }
+          // a refused submit (busy, 429) just waits; everything already submitted is saved below
+          let blocked = false;
+          const trySubmit = async (model: string, input: unknown) => { try { return await submit(model, input); } catch (e) { console.error(String(e).slice(0, 160)); blocked = true; return null; } };
+          for (const s of scenes) {
+            if (active >= MAX_PARALLEL || blocked) break;
+            if (s.clip && !s.out && !s.swap_pid) {
+              if (s.end - s.start < MIN_SHOT || fs.engine === "dry") { s.out = s.clip; continue; }
+              const pid = await trySubmit("p-video-replace", pvInput(s.clip, face!, fs.target));
+              if (pid) { s.swap_pid = pid; active++; }
+            }
           }
-        }
-        const ready = scenes.filter((s) => s.out).length;
-        if (ready === scenes.length) {
+          for (const s of scenes) {
+            if (active >= MAX_PARALLEL || blocked) break;
+            if (!s.cut_pid) {
+              const pid = await trySubmit("eachlabs-video-api", { mode: "capability", capability: "keep_ranges", input_url: video, params: { ranges: [{ start: s.start, end: s.end }] } });
+              if (pid) { s.cut_pid = pid; active++; activeCuts++; }
+            }
+          }
           await admin.from("faceswaps").update({ scenes }).eq("id", fs.id);
-          const pid = await submit("eachlabs-video-api", { mode: "capability", capability: "concat", input_urls: scenes.map((s) => s.out), params: {} });
-          await admin.from("faceswaps").update({ stage: "concat", provider_id: pid, scenes }).eq("id", fs.id);
-          return json({ status: "running", progress: "ဇာတ်ဝင်ခန်းတွေ ပြန်ဆက်နေပါတယ်…" });
+          const ready = scenes.filter((s) => s.out).length;
+          if (ready === scenes.length) {
+            const pid = await submit("eachlabs-video-api", { mode: "capability", capability: "concat", input_urls: scenes.map((s) => s.out), params: {} });
+            await admin.from("faceswaps").update({ stage: "concat", provider_id: pid }).eq("id", fs.id);
+            return json({ status: "running", progress: "ဇာတ်ဝင်ခန်းတွေ ပြန်ဆက်နေပါတယ်…" });
+          }
+          const moreCuts = scenes.some((s) => !s.clip);
+          if (Date.now() - t0 > 100000 || (!activeCuts && !moreCuts) && !blocked) {
+            return json({ status: "running", progress: `ဇာတ်ဝင်ခန်း ${ready}/${scenes.length} ပြီးပါပြီ…` });
+          }
+          await new Promise((r) => setTimeout(r, 5000));
         }
-        await admin.from("faceswaps").update({ scenes }).eq("id", fs.id);
-        return json({ status: "running", progress: `ဇာတ်ဝင်ခန်း ${ready}/${scenes.length} ပြီးပါပြီ…` });
       }
       return json({ status: "running" });
     } catch (e) {
       console.error("faceswap step", fs.id, e);
       return json({ status: "running", note: String(e).slice(0, 200) }); // next poll retries
+    } finally {
+      await admin.from("faceswaps").update({ locked_until: null }).eq("id", fs.id);
     }
   }
   return json({ error: "unknown action" }, 400);
