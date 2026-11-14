@@ -4,7 +4,8 @@
 //    (eachlabs-video-api scene_detect + keep_ranges), every shot is swapped on its own, then joined (concat),
 //    because the swap model loses the person when the shot changes.
 //  - "pixverse": pixverse-swap, 540p, $0.045/s, one pass (picks the person it sees ~1s in).
-//  - "faceonly": each-faceswap-v1, ~$0.06 per run: swaps only the face, keeps hair/clothes/scene, follows cuts.
+//  - "seedance": Seedance 2.0 Mini reference-to-video, 720p: re-draws the clip with the chosen person's face, every
+//    shot in one pass (~$0.04/s). Clip is scaled into Seedance's size range first; the original sound is put back after.
 // POST {action:"create", video_path, face_path, target?, seconds?, engine?} -> {id}
 // POST {action:"status", id} -> {status, url?, error?, progress?}   (each status call also moves the job forward)
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
     const [video, face] = await Promise.all([signIn(body.video_path), signIn(body.face_path)]);
     if (!video || !face) return json({ error: "file not found" }, 400);
     const target = String(body.target ?? "").trim().slice(0, 200);
-    const engine = ["pixverse", "faceonly"].includes(body.engine) ? body.engine : lab && body.engine === "dry" ? "dry" : "pvideo"; // dry: cut + join only (lab test)
+    const engine = ["pixverse", "seedance"].includes(body.engine) ? body.engine : lab && body.engine === "dry" ? "dry" : "pvideo"; // dry: cut + join only (lab test)
     // save the job first, so a paid job can never be lost
     const { data: row, error } = await admin.from("faceswaps").insert({ user_id: user.id, video_path: body.video_path, face_path: body.face_path,
       target: target || null, seconds: Number(body.seconds) || null, status: "submitting", engine,
@@ -82,9 +83,17 @@ Deno.serve(async (req) => {
     if (error) return json({ error: error.message }, 500);
     try {
       let pid: string, stage: string;
-      if (engine === "faceonly") { // face only (keeps the scene's hair, clothes, everything else); works across cuts
-        pid = await submit("each-faceswap-v1", { source_image: face, target_image_gif_or_video: video });
-        stage = "single";
+      if (engine === "seedance") {
+        // the original sound is taken out now and put back on the new video at the end
+        const audioPid = await submit("eachlabs-video-api", { mode: "capability", capability: "extract_audio", input_url: video, params: { format: "mp3" } }).catch(() => null);
+        const w = Number(body.width) || 0, h = Number(body.height) || 0, px = w * h;
+        let data: any = { audio_pid: audioPid };
+        if (w && h && (px < 409600 || px > 927000)) { // Seedance takes clips between ~640x640 and ~834x1112 only
+          const k = Math.sqrt(600000 / px), even = (v: number) => Math.max(2, Math.round(v * k / 2) * 2);
+          pid = await submit("eachlabs-video-api", { mode: "capability", capability: "scale", input_url: video, params: { width: even(w), height: even(h) } });
+          stage = "sd_scale";
+        } else { pid = await submit("bytedance-seedance-2-0-mini-reference-to-video", sdInput(video, face, target, Number(body.seconds), w, h)); stage = "sd_gen"; }
+        await admin.from("faceswaps").update({ scenes: data }).eq("id", row.id);
       } else if (engine === "pixverse") {
         pid = await submit("pixverse-swap", { video_url: video, replacement_image_url: face, quality: "540p", keyframe_id: Math.max(1, Math.round(Number(body.keyframe) || 30)) });
         stage = "single";
@@ -121,6 +130,37 @@ Deno.serve(async (req) => {
     const { data: mine } = await admin.rpc("claim_faceswap", { p_id: fs.id, p_seconds: 130 });
     if (!mine) return json({ status: "running", progress: fs.stage === "work" ? "လုပ်ဆောင်နေပါတယ်…" : undefined });
     try {
+      // Seedance: scale → generate → put the original sound back
+      if (fs.stage === "sd_scale" || fs.stage === "sd_gen") {
+        const d: any = fs.scenes ?? {};
+        if (d.audio_pid && !d.audio_url && !d.audio_failed) {
+          const a = await poll(d.audio_pid);
+          if (done(a) && outUrl(a)) d.audio_url = outUrl(a); else if (bad(a)) d.audio_failed = true;
+        }
+        const j = await poll(fs.provider_id);
+        if (bad(j)) return await fail(errText(j));
+        if (!done(j) || !outUrl(j)) { await admin.from("faceswaps").update({ scenes: d }).eq("id", fs.id);
+          return json({ status: "running", progress: fs.stage === "sd_scale" ? "ဗီဒီယို ပြင်ဆင်နေပါတယ်…" : "AI က ဇာတ်ကွက်တိုင်း ပြန်ဆွဲနေပါတယ် (၃–၈ မိနစ်)…" }); }
+        if (fs.stage === "sd_scale") {
+          const face = await signIn(fs.face_path);
+          const pid = await submit("bytedance-seedance-2-0-mini-reference-to-video", sdInput(outUrl(j)!, face!, fs.target, Number(fs.seconds), Number(fs.width), Number(fs.height)));
+          await admin.from("faceswaps").update({ stage: "sd_gen", provider_id: pid, scenes: d }).eq("id", fs.id);
+          return json({ status: "running", progress: "AI က ဇာတ်ကွက်တိုင်း ပြန်ဆွဲနေပါတယ် (၃–၈ မိနစ်)…" });
+        }
+        d.gen_url = outUrl(j); d.gen_cost = j?.metrics?.cost;
+        if (!d.audio_url && !d.audio_failed && d.audio_pid) { await admin.from("faceswaps").update({ scenes: d }).eq("id", fs.id); return json({ status: "running", progress: "အသံ ပြန်ထည့်နေပါတယ်…" }); }
+        if (!d.audio_url) return await finish(d.gen_url); // no sound in the original
+        const mp = await submit("ffmpeg-api-merge-audio-video", { video_url: d.gen_url, audio_url: d.audio_url });
+        await admin.from("faceswaps").update({ stage: "sd_merge", provider_id: mp, scenes: d }).eq("id", fs.id);
+        return json({ status: "running", progress: "အသံ ပြန်ထည့်နေပါတယ်…" });
+      }
+      if (fs.stage === "sd_merge") {
+        const j = await poll(fs.provider_id);
+        if (bad(j)) return await finish(fs.scenes?.gen_url); // keep the silent video rather than lose it
+        if (done(j) && outUrl(j)) return await finish(outUrl(j)!);
+        return json({ status: "running", progress: "အသံ ပြန်ထည့်နေပါတယ်…" });
+      }
+
       // one-pass jobs (PixVerse, or a single-shot result being joined)
       if (fs.stage === "single" || fs.stage === "concat" || !fs.stage) {
         const j = await poll(fs.provider_id);
@@ -228,4 +268,18 @@ Deno.serve(async (req) => {
 // no instruction text: tests showed the face comes out much more like the photo without it
 function pvInput(video: string, face: string, _target?: string | null) {
   return { video, images: [face], resolution: "720p", save_audio: true };
+}
+
+// Seedance 2.0 Mini (reference-to-video): redraw the whole clip, every shot, with only the chosen person's face changed
+function sdInput(video: string, face: string, target: string | null | undefined, seconds: number, w: number, h: number) {
+  const who = (target || "the main person").replace(/[^\w\s-]/g, "").slice(0, 60) || "the main person";
+  const ratios: [string, number][] = [["21:9", 21 / 9], ["16:9", 16 / 9], ["4:3", 4 / 3], ["1:1", 1], ["3:4", 3 / 4], ["9:16", 9 / 16]];
+  const r = w && h ? w / h : 9 / 16;
+  const aspect = ratios.reduce((a, b) => Math.abs(Math.log(b[1] / r)) < Math.abs(Math.log(a[1] / r)) ? b : a)[0];
+  const dur = String(Math.min(15, Math.max(4, Math.ceil((seconds || 5) - 0.05))));
+  const prompt = `Replace only the face of ${who} in @Video1 with the face of the person in @Image1. ` +
+    `Keep exactly the facial identity of the person in @Image1 in every shot where ${who} appears. ` +
+    `Preserve everything else from @Video1 exactly: clothing, hairstyle, body, motion, expressions, timing, camera movement, ` +
+    `every shot change, all other people, background and lighting. No text or subtitles.`;
+  return { prompt, video_urls: [video], image_urls: [face], resolution: "720p", duration: dur, aspect_ratio: aspect, generate_audio: false };
 }

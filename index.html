@@ -209,10 +209,18 @@
           <input type="file" id="fsFace" accept="image/jpeg,image/png,image/webp">
           <label class="lbl">AI</label>
           <div class="seg" id="fsEngine">
-            <button data-v="pvideo" class="on">🧍 လူတစ်ယောက်လုံး<small>P-Video 720p</small></button>
+            <button data-v="seedance" class="on">🎬 ဇာတ်ကွက်အကုန်<small>Seedance · မျက်နှာပဲ</small></button>
+            <button data-v="pvideo">🧍 လူတစ်ယောက်လုံး<small>P-Video 720p</small></button>
             <button data-v="pixverse">PixVerse<small>540p</small></button>
           </div>
-          <input type="hidden" id="fsTarget" value="">
+          <div id="fsWhoBox">
+            <label class="lbl">ဘယ်သူ့နေရာ ဝင်မလဲ</label>
+            <div class="seg" id="fsWho">
+              <button data-v="the man" class="on">👨 မင်းသား</button>
+              <button data-v="the woman">👩 မင်းသမီး</button>
+            </div>
+          </div>
+          <input type="hidden" id="fsTarget" value="the man">
           <button class="btn" id="fsBtn" style="margin-top:10px">🎭 Face swap လုပ်မည်</button>
           <div id="fsOut" style="margin-top:10px"></div>
         </div>
@@ -561,15 +569,21 @@ async function review(id, ok){
 }
 
 /* ================= FACE SWAP (admin test) ================= */
-let fsSeconds = null, fsW = null, fsH = null, fsEngine = "pvideo";
+let fsSeconds = null, fsW = null, fsH = null, fsEngine = "seedance";
 const fsRate = () => fsEngine === "pixverse" ? 0.045 : 0.03;
-const FS_MAX = 30; // the face swap AIs accept at most 30 seconds
+let FS_MAX = 15; // Seedance: 15 seconds; P-Video / PixVerse: 30
+const fsCostText = () => fsEngine === "pvideo" ? "ဇာတ်ကွက် ၁ ခုလျှင် ~675 ကျပ်"
+  : fsEngine === "seedance" ? "~" + fmt(Math.round(Math.max(4, Math.ceil(fsSeconds)) * 190)) + " ကျပ် (ဇာတ်ကွက် ဘယ်နှခုပါပါ)"
+  : "~" + fmt(Math.round(fsSeconds * fsRate() * 4500)) + " ကျပ်";
 const fsShowCost = () => { if (!fsSeconds) return;
   $("fsInfo").innerHTML = fsSeconds > FS_MAX
     ? `<span style="color:#f87171">⚠️ ${fsSeconds.toFixed(1)} စက္ကန့် — အများဆုံး ${FS_MAX} စက္ကန့်ပဲ ရပါတယ်။ ဖုန်းမှာ ဖြတ်ပြီးမှ ပြန်ရွေးပါ (၁၀ စက္ကန့်လောက် အကောင်းဆုံး)</span>`
-    : `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ${fsEngine === "pvideo" ? "ဇာတ်ကွက် ၁ ခုလျှင် ~675 ကျပ်" : "~" + fmt(Math.round(fsSeconds * fsRate() * 4500)) + " ကျပ်"}`; };
+    : `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ${fsCostText()}`; };
 document.querySelectorAll("#fsEngine button").forEach(b => b.onclick = () => {
-  document.querySelectorAll("#fsEngine button").forEach(x => x.classList.toggle("on", x === b)); fsEngine = b.dataset.v; fsShowCost(); });
+  document.querySelectorAll("#fsEngine button").forEach(x => x.classList.toggle("on", x === b)); fsEngine = b.dataset.v;
+  FS_MAX = fsEngine === "seedance" ? 15 : 30; $("fsWhoBox").classList.toggle("hidden", fsEngine !== "seedance"); fsShowCost(); });
+document.querySelectorAll("#fsWho button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#fsWho button").forEach(x => x.classList.toggle("on", x === b)); $("fsTarget").value = b.dataset.v; });
 $("fsVideo").onchange = () => {
   const f = $("fsVideo").files[0]; fsSeconds = null; $("fsInfo").textContent = "";
   if (!f) return;
