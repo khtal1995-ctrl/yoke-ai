@@ -66,10 +66,27 @@ function normalize(p: any, story: string, duration: number) {
     }
   }
   if (silentRequested(story)) lines.length = 0;
+  // digits make the video model mouth something odd: say numbers as Burmese words, in the lines and in the prompt
+  for (const l of lines) { const w = spokenNumbers(l.text); if (w !== l.text) { prompt = prompt.split(l.text).join(w); l.text = w; } }
   const effects = (Array.isArray(p.effects) ? p.effects : []).filter((e: any) => e && e.text && isFinite(Number(e.at))).slice(0, 6)
     .map((e: any) => ({ text: String(e.text).slice(0, 120), at: Math.max(0, Math.min(Number(e.at), duration - 0.5)), dur: Math.max(0.5, Math.min(Number(e.dur) || 1.5, 4)) }));
   return { prompt, lines, effects, ambience: p.ambience ? String(p.ambience) : null, speech_start: Number(p.speech_start), summary_mm: String(p.summary_mm ?? "").trim() };
 }
+const MM_DIGIT = ["သုည", "တစ်", "နှစ်", "သုံး", "လေး", "ငါး", "ခြောက်", "ခုနစ်", "ရှစ်", "ကိုး"];
+function mmNumber(n: number): string {
+  if (n < 10) return MM_DIGIT[n];
+  const units: [number, string, string][] = [[10000, "သောင်း", "သောင်း"], [1000, "ထောင်", "ထောင့်"], [100, "ရာ", "ရာ့"], [10, "ဆယ်", "ဆယ့်"]];
+  let out = "", rest = n;
+  for (const [v, plain, joined] of units) {
+    const d = Math.floor(rest / v); rest %= v; if (!d) continue;
+    out += (d === 1 && v === 10 && !out ? "" : MM_DIGIT[d]) + (rest ? joined : plain);
+  }
+  return out + (rest ? MM_DIGIT[rest] : "");
+}
+const spokenNumbers = (t: string) => t.replace(/[0-9\u1040-\u1049]+/g, (m) => {
+  const n = Number([...m].map((c) => { const k = c.charCodeAt(0); return k >= 0x1040 ? String(k - 0x1040) : c; }).join(""));
+  return n <= 99999 ? mmNumber(n) : m;
+});
 const mmLetters = (t: string) => [...String(t).replace(/[^က-႟]/g, "")];
 function similar(a: string, b: string) {
   const x = mmLetters(a), y = mmLetters(b); if (!x.length || !y.length) return 0;
