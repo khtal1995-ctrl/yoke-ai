@@ -312,7 +312,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
       const pcm = stings[j]; if (!pcm?.length) return;
       const at = placed[x.after] ? placed[x.after].end + 0.05 : placed.length ? placed[placed.length - 1].end + 0.05 : Number(x.at) || 0;
       let ss = 0; for (let i = 0; i < pcm.length; i++) ss += pcm[i] * pcm[i];
-      const norm = 3800 / Math.max(1, Math.sqrt(ss / pcm.length)); const s0 = Math.round(at * SR); const fade = Math.round(0.15 * SR);
+      const norm = Math.min(4, 3800 / Math.max(1, Math.sqrt(ss / pcm.length))); const s0 = Math.round(at * SR); const fade = Math.round(0.15 * SR);
       for (let k = 0; k < pcm.length && s0 + k < n; k++) mix[s0 + k] += pcm[k] * norm * (talk[s0 + k] ? 0.45 : 1) * Math.min(1, (pcm.length - k) / fade);
     });
     return mix;
