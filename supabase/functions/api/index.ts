@@ -64,6 +64,8 @@ const VOICES: Record<string, string> = {
   female: "NBISYoQ4SVxq8eZxoHlV", // Su — native Burmese young female
   maleSts: "dZUDKQDfSHNzYzM1epKR", // Jin — young male timbre for Voice Changer (chosen by owner)
 };
+// different men in one video must not sound the same: 1st man Jin, 2nd man Edison, then repeat
+const MALE_STS = ["dZUDKQDfSHNzYzM1epKR", "ZyIwtt7dzBKVYuXxaRw7"];
 const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
 function wavOf(mix: Float32Array): Uint8Array {
   const n = mix.length; const buf = new Uint8Array(44 + n * 2); const dv = new DataView(buf.buffer);
@@ -254,7 +256,7 @@ const spokenNumbers = (t: string) => t.replace(/[0-9\u1040-\u1049]+/g, (m) => {
   const n = Number([...m].map((c) => { const k = c.charCodeAt(0); return k >= 0x1040 ? String(k - 0x1040) : c; }).join(""));
   return n <= 99999 ? mmNumber(n) : m;
 });
-async function voiceLine(key: string, l0: any): Promise<Int16Array> {
+async function voiceLine(key: string, l0: any, maleVoice = VOICES.maleSts): Promise<Int16Array> {
   const l = { ...l0, text: spokenNumbers(String(l0.text)) };
   if (l.gender === "female") return levelVoice(trim(await tts(key, VOICES.female, l.text, l.emotion)), l.emotion);
   try {
@@ -262,7 +264,7 @@ async function voiceLine(key: string, l0: any): Promise<Int16Array> {
     let best: Int16Array | null = null, bestScore = -1;
     for (let t = 0; t < 2; t++) {
       const acted = trim(await tts(key, VOICES.female, l.text, SOFTER[l.emotion] ?? l.emotion, 0.2));
-      const out = trim(await stsToVoice(key, acted, VOICES.maleSts));
+      const out = trim(await stsToVoice(key, acted, maleVoice));
       const score = similar(await heard(key, out), l.text);
       if (score > bestScore) { best = out; bestScore = score; }
       if (score >= 0.8) break;
@@ -276,7 +278,14 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   const total = Number(g.duration) || 10; const n = Math.round(total * SR);
   const [turnsRaw, pcms, bed, wan] = await Promise.all([
     speechTurns(key, srcUrl, new Set(lines.map((l) => l.who ?? l.gender)).size).catch((e) => { console.error(e); return []; }),
-    (async () => { const out: Int16Array[] = []; for (const l of lines) out.push(await voiceLine(key, l)); return out; })(), // one at a time (ElevenLabs allows 3 at once)
+    (async () => { // one at a time (ElevenLabs allows 3 at once); each man keeps his own voice
+      const men: string[] = []; const out: Int16Array[] = [];
+      for (const l of lines) {
+        const who = String(l.who ?? "man").toLowerCase();
+        if (l.gender !== "female" && !men.includes(who)) men.push(who);
+        out.push(await voiceLine(key, l, MALE_STS[Math.max(0, men.indexOf(who)) % MALE_STS.length]));
+      }
+      return out; })(),
     g.dialogue?.ambience ? sfxGen(key, g.dialogue.ambience, total) : Promise.resolve(null),
     wanSoundtrack(admin, srcUrl),
   ]);

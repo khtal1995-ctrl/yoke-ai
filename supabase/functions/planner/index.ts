@@ -21,7 +21,7 @@ Rules for "prompt":
 - People who talk to each other stand or sit facing each other and look at the person they are speaking to, never into the camera (unless the user says they talk to the viewer). Film conversations from the side as a two-shot or over the shoulder, so both faces are seen in profile or three-quarter view. Say who looks at whom.
 - Write every number in a spoken line as Burmese words, never digits (for example ဆယ်နှစ်, not ၁၀နှစ်).
 - Every spoken line comes with acting that fits its meaning and emotion: a clear hand gesture, facial expression and body language, e.g. holding up both hands with ten fingers while saying "ten years", a teasing pat on the other's shoulder, a proud smirk, crossed arms, a shy smile, a hand on the heart. Describe the gesture in the same sentence as the line, and make listeners react visibly (laugh, roll their eyes, nod, look away).
-- Plan the timeline in seconds. Dialogue and acting are the heart of the video: the first line starts by second 3 at the latest (by second 1 in a 5-second video). Any action before the talking takes at most 3 seconds; if the story has a long action before the talking (a race, a journey), show only its end (e.g. the cars screeching to a stop) and keep the rest for the conversation.
+- Plan the timeline in seconds. Dialogue and acting are the heart of the video: the first line starts by second 3 at the latest (by second 1 in a 5-second video). Any action before the talking takes at most 3 seconds; if the story has a long action before the talking (a race, a journey), show only its end (e.g. the cars screeching to a stop) and keep the rest for the conversation. With three or more lines, open with the people already in place (e.g. already out of the cars, facing each other) so the first line starts by second 1.5.
 - Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
 - Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].
 Rules for "emotion": choose how each line must sound from the story (a battle cry is "shouting", a cheerful greeting is "happy", ordering food is "polite"). Never make a calm line dramatic.
@@ -80,8 +80,8 @@ function similar(a: string, b: string) {
   return 1 - prev[y.length] / Math.max(x.length, y.length);
 }
 // spoken syllables (a Burmese syllable starts at a consonant/vowel letter that is not killed by asat or stacked)
-const syllables = (t: string) => (t.match(/[က-အဣ-ဪဿ၌-၏](?![္်])/g) || []).length + (t.match(/[0-9၀-၉]/g) || []).length * 2;
-const SYL_PER_SEC = 4.2;
+const syllables = (t: string) => (t.match(/[က-အဣ-ဪဿ၌-၏](?![္်])/g) || []).length + (t.match(/[0-9၀-၉]/g) || []).length;
+const SYL_PER_SEC = 5; // measured: Su speaks about 5 Burmese syllables per second
 
 // problems we can detect before spending money on the video
 function lint(plan: any, story: string, duration: number): string[] {
@@ -89,11 +89,11 @@ function lint(plan: any, story: string, duration: number): string[] {
   const n = plan.lines.length;
   if (!plan.prompt) issues.push("The prompt is empty.");
   if (n) {
-    const latest = duration <= 5 ? 1.5 : 3.5;
+    const latest = duration <= 5 || n >= 3 ? 2 : 3.5;
     if (!isFinite(plan.speech_start)) issues.push(`Give "speech_start" (the second the first line starts).`);
     else if (plan.speech_start > latest) issues.push(`The first line starts at second ${plan.speech_start}; it must start by second ${latest}. Shorten or cut the action before the talking (show only its end).`);
     const start = isFinite(plan.speech_start) ? plan.speech_start : 1;
-    const need = plan.lines.reduce((s: number, l: any) => s + syllables(l.text), 0) / SYL_PER_SEC + 0.5 * (n - 1);
+    const need = plan.lines.reduce((s: number, l: any) => s + syllables(l.text), 0) / SYL_PER_SEC + 0.4 * (n - 1);
     const room = duration - start - 1;
     if (need > room + 0.3) issues.push(`The dialogue needs about ${need.toFixed(1)} seconds but only ${room.toFixed(1)} seconds are left after second ${start}. Start talking earlier${userQuotedLines(story).length ? "" : " or use fewer/shorter lines"}.`);
     plan.lines.forEach((l: any, i: number) => {
@@ -101,7 +101,10 @@ function lint(plan: any, story: string, duration: number): string[] {
       if (!plan.prompt.includes(l.text)) issues.push(`Line ${i + 1} ("${l.text}") must appear in the prompt exactly, in quotes.`);
       if (/[0-9၀-၉]/.test(l.text) && !userQuotedLines(story).includes(l.text)) issues.push(`Line ${i + 1} contains digits; write the number as Burmese words.`);
     });
-    if (!toViewerRequested(story) && /\b(toward|towards|into|at|facing|face|faces|to)\s+(the\s+)?(camera|lens|viewer|audience)\b/i.test(plan.prompt))
+    // "toward the camera" counts, "never at the camera" does not
+    const camera = [...plan.prompt.matchAll(/\b(toward|towards|into|at|facing|face|faces|to)\s+(the\s+)?(camera|lens|viewer|audience)\b/gi)]
+      .some((m) => !/\b(never|not|no|without|away from|n't)\b[^.;]{0,25}$/i.test(plan.prompt.slice(Math.max(0, m.index! - 40), m.index)));
+    if (!toViewerRequested(story) && camera)
       issues.push("Someone faces or speaks toward the camera. People who talk to each other must face each other and look at the person they speak to; film them from the side (two-shot or over the shoulder). Remove every 'toward/at/into the camera'.");
     if (new Set(plan.lines.map((l: any) => l.who)).size >= 2 && !/\b(each other|facing (him|her|them|the other)|turns? to|looks? at (him|her|the other|his friend|her friend|his|her))/i.test(plan.prompt))
       issues.push("Say clearly that the speakers face each other and who looks at whom while talking.");
