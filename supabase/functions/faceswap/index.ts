@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         pid = await submit("pixverse-swap", { video_url: video, replacement_image_url: face, quality: "540p", keyframe_id: Math.max(1, Math.round(Number(body.keyframe) || 30)) });
         stage = "single";
       } else {
-        pid = await submit("eachlabs-video-api", { mode: "capability", capability: "scene_detect", input_url: video, params: { threshold: 0.2 } } // default threshold misses soft cuts);
+        pid = await submit("eachlabs-video-api", { mode: "capability", capability: "scene_detect", input_url: video, params: { threshold: 0.2 } }); // default threshold misses soft cuts
         stage = "detect";
       }
       console.log("faceswap", row.id, stage, pid);
