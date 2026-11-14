@@ -63,7 +63,8 @@ Deno.serve(async (req) => {
     const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${fs.provider_id}`, { headers: h });
     const j: any = await r.json().catch(() => ({}));
     if (j.status === "error" || j.status === "failed") {
-      const err = String(j.error ?? j.message ?? j.status).slice(0, 300);
+      const raw = String(j.error ?? (typeof j.output === "string" ? j.output : "") ?? "") || String(j.status);
+      const err = (/temporarily unavailable|retry/i.test(raw) ? "Face swap service က ခဏ မအားလို့ပါ (ငွေ မကုန်ပါ)။ ခဏနေမှ ပြန်နှိပ်ပါ။ — " : "") + raw.slice(0, 300);
       await admin.from("faceswaps").update({ status: "failed", error: err }).eq("id", fs.id);
       return json({ status: "failed", error: err });
     }
