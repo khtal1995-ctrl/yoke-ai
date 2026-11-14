@@ -65,6 +65,18 @@ const MALE_YOUNG = "B5MB163SdECMmHySTkLK"; // Yoke Male 1 — owner's own voice
 const MALE_OLDER = "d4WXuYHO9Ot8KDdiOwIg"; // Yoke main character male (replaces Yan; also used for older men until an older voice exists)
 const FEMALE_MAIN = "NBISYoQ4SVxq8eZxoHlV"; // Su
 const FEMALE_2 = "12GZ6E7rJLrs85C6m4J6"; // Yoke main character female
+const OLD_MAN = "uh7A30exzQsUAB5ovsOu"; // Old man
+const CHILD = "uFPN3uAkEca3mQ6uRmBk"; // Yoke child (used for boys and girls until a boy's voice exists)
+// which voices suit a character, best first; a voice already taken by another character is skipped when possible
+function voiceChoices(l: any, who: string): string[] {
+  const age = String(l.age ?? "");
+  const female = l.gender === "female";
+  if (age === "child" || /child|kid|boy|girl|son|daughter|grandchild|little/.test(who) && !/young (man|woman)|boyfriend|girlfriend/.test(who) && age !== "young")
+    return [CHILD];
+  if (age === "old" || /grand|old|elder/.test(who)) return female ? [FEMALE_2, FEMALE_MAIN] : [OLD_MAN, MALE_OLDER];
+  if (age === "middle" || /uncle|aunt|father|mother|dad|mom|boss/.test(who)) return female ? [FEMALE_2, FEMALE_MAIN] : [MALE_OLDER, OLD_MAN];
+  return female ? [FEMALE_MAIN, FEMALE_2] : [MALE_YOUNG, MALE_OLDER];
+}
 const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
 function wavOf(mix: Float32Array): Uint8Array {
   const n = mix.length; const buf = new Uint8Array(44 + n * 2); const dv = new DataView(buf.buffer);
@@ -280,10 +292,8 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     if (med > 0 && energy[i] > 0 && known.length >= 2) { const r = energy[i] / med; emotion = shiftEmotion(emotion, r < 0.65 ? -1 : r > 1.5 ? 1 : 0); }
     const who = String(l.who ?? "man").toLowerCase();
     if (!cast.has(who)) {
-      const female = l.gender === "female";
-      const older = /middle|old/.test(String(l.age ?? "")) || /uncle|aunt|father|mother|dad|mom|grand|old|elder|boss/.test(who);
-      const [main, second] = female ? [FEMALE_MAIN, FEMALE_2] : [MALE_YOUNG, MALE_OLDER];
-      cast.set(who, older || [...cast.values()].includes(main) ? second : main);
+      const opts = voiceChoices(l, who); const taken = [...cast.values()];
+      cast.set(who, opts.find((v) => !taken.includes(v)) ?? opts[0]);
     }
     pcms.push(await voiceLine(key, { ...l, emotion }, cast.get(who)!));
   }
