@@ -73,7 +73,7 @@ function voiceChoices(l: any, who: string): string[] {
   const female = l.gender === "female";
   if (age === "child" || /child|kid|boy|girl|son|daughter|grandchild|little/.test(who) && !/young (man|woman)|boyfriend|girlfriend/.test(who) && age !== "young")
     return [CHILD];
-  if (age === "old" || /grand|old|elder/.test(who)) return female ? [FEMALE_2, FEMALE_MAIN] : [OLD_MAN, MALE_OLDER];
+  if (age === "old" || /grand|old|elder/.test(who)) return female ? [FEMALE_2, FEMALE_MAIN] : [OLD_MAN];
   if (age === "middle" || /uncle|aunt|father|mother|dad|mom|boss/.test(who)) return female ? [FEMALE_2, FEMALE_MAIN] : [MALE_OLDER, OLD_MAN];
   return female ? [FEMALE_MAIN, FEMALE_2] : [MALE_YOUNG, MALE_OLDER];
 }
@@ -111,6 +111,17 @@ function stretch(xi: Int16Array, ratio: number): Float32Array {
   const out = new Float32Array(outLen); for (let i = 0; i < outLen; i++) out[i] = ws[i] > 1e-3 ? y[i] / ws[i] : 0;
   return out;
 }
+// change the pitch but keep the length: resample (pitch moves), then WSOLA back to the original length.
+// Used when two characters must share one voice (e.g. two grandfathers): the second sounds a little different.
+function pitchShift(x: Int16Array, p: number): Int16Array {
+  if (p === 1 || x.length < 2000) return x;
+  const L = Math.round(x.length / p); const y = new Int16Array(L);
+  for (let i = 0; i < L; i++) { const t = i * p, k = Math.floor(t), f = t - k; y[i] = Math.round((1 - f) * (x[k] ?? 0) + f * (x[k + 1] ?? x[k] ?? 0)); }
+  const z = stretch(y, p); const out = new Int16Array(z.length);
+  for (let i = 0; i < z.length; i++) out[i] = Math.max(-32767, Math.min(32767, Math.round(z[i])));
+  return out;
+}
+const PITCH_VARIANTS = [1, 0.9, 1.08]; // 1st, 2nd, 3rd character on the same voice
 // how each line should sound: an ElevenLabs audio tag + how expressive the voice may be
 const EMOTION: Record<string, { tag: string; stability: number }> = {
   calm: { tag: "", stability: 0.6 }, polite: { tag: "[politely] ", stability: 0.65 }, warm: { tag: "[warmly] ", stability: 0.55 },
@@ -286,16 +297,17 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
   // match each voice to the acting in the picture: calmer than usual on screen -> one step calmer, much stronger -> one step stronger
   const energy = turns.map((t) => (wan ? rmsOf(wan, t.start, t.end) : 0));
   const known = energy.filter((e) => e > 0).sort((a, b) => a - b); const med = known.length ? known[Math.floor(known.length / 2)] : 0;
-  const pcms: Int16Array[] = []; const cast = new Map<string, string>();
+  const pcms: Int16Array[] = []; const cast = new Map<string, string>(); const pitch = new Map<string, number>();
   for (let i = 0; i < lines.length; i++) { // one at a time (ElevenLabs allows 3 at once); each man keeps his own voice
     const l = lines[i]; let emotion = l.emotion;
     if (med > 0 && energy[i] > 0 && known.length >= 2) { const r = energy[i] / med; emotion = shiftEmotion(emotion, r < 0.65 ? -1 : r > 1.5 ? 1 : 0); }
     const who = String(l.who ?? "man").toLowerCase();
     if (!cast.has(who)) {
       const opts = voiceChoices(l, who); const taken = [...cast.values()];
-      cast.set(who, opts.find((v) => !taken.includes(v)) ?? opts[0]);
+      const v = opts.find((o) => !taken.includes(o)) ?? opts[0];
+      cast.set(who, v); pitch.set(who, PITCH_VARIANTS[Math.min(2, taken.filter((t) => t === v).length)]);
     }
-    pcms.push(await voiceLine(key, { ...l, emotion }, cast.get(who)!));
+    pcms.push(pitchShift(await voiceLine(key, { ...l, emotion }, cast.get(who)!), pitch.get(who) ?? 1));
   }
   // only when Wan's own soundtrack is unavailable do we add guessed, timed effects
   const fx = wan ? [] : await Promise.all(((g.dialogue?.effects ?? []) as any[]).map((e) => sfxGen(key, e.text, e.dur).then((pcm) => ({ ...e, pcm })).catch(() => null)));
