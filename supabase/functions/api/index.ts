@@ -59,12 +59,12 @@ async function runPlan(admin: any, id: string) {
 
 // ---------- Burmese dubbing: keep Wan's picture + mouth timing, replace its speech with native Burmese voices ----------
 const SR = 24000;
-// each character gets a native Burmese voice of their own (cloned with the speakers' consent):
-// the first young man / woman get the main voices, a second (or older) man / woman gets the second voice
-const MALE_YOUNG = "B5MB163SdECMmHySTkLK"; // Yoke Male 1 — owner's own voice
-const MALE_OLDER = "d4WXuYHO9Ot8KDdiOwIg"; // Yoke main character male (replaces Yan; also used for older men until an older voice exists)
-const FEMALE_MAIN = "NBISYoQ4SVxq8eZxoHlV"; // Su
-const FEMALE_2 = "12GZ6E7rJLrs85C6m4J6"; // Yoke main character female
+// each character gets a native Burmese voice of their own (cloned with the speakers' consent).
+// Main characters always use the owner's "main character" voices; others get the next fitting voice.
+const MAIN_MALE = "d4WXuYHO9Ot8KDdiOwIg"; // Yoke main character male
+const MAIN_FEMALE = "12GZ6E7rJLrs85C6m4J6"; // Yoke main character female
+const YOKE_MALE_1 = "B5MB163SdECMmHySTkLK"; // Yoke Male 1 — owner's own voice (second young man, middle-aged men)
+const SU = "NBISYoQ4SVxq8eZxoHlV"; // Su — ElevenLabs library voice (second young woman, aunties)
 const OLD_MAN = "uh7A30exzQsUAB5ovsOu"; // Old man
 const CHILD = "uFPN3uAkEca3mQ6uRmBk"; // Yoke child (used for boys and girls until a boy's voice exists)
 // which voices suit a character, best first; a voice already taken by another character is skipped when possible
@@ -73,9 +73,9 @@ function voiceChoices(l: any, who: string): string[] {
   const female = l.gender === "female";
   if (age === "child" || /child|kid|boy|girl|son|daughter|grandchild|little/.test(who) && !/young (man|woman)|boyfriend|girlfriend/.test(who) && age !== "young")
     return [CHILD];
-  if (age === "old" || /grand|old|elder/.test(who)) return female ? [FEMALE_2, FEMALE_MAIN] : [OLD_MAN];
-  if (age === "middle" || /uncle|aunt|father|mother|dad|mom|boss/.test(who)) return female ? [FEMALE_2, FEMALE_MAIN] : [MALE_OLDER, OLD_MAN];
-  return female ? [FEMALE_MAIN, FEMALE_2] : [MALE_YOUNG, MALE_OLDER];
+  if (age === "old" || /grand|old|elder/.test(who)) return female ? [SU, MAIN_FEMALE] : [OLD_MAN];
+  if (age === "middle" || /uncle|aunt|father|mother|dad|mom|boss/.test(who)) return female ? [SU, MAIN_FEMALE] : [YOKE_MALE_1, OLD_MAN];
+  return female ? [MAIN_FEMALE, SU] : [MAIN_MALE, YOKE_MALE_1];
 }
 const toI16 = (b: Uint8Array) => { const n = b.length >> 1; const o = new Int16Array(n); const dv = new DataView(b.buffer, b.byteOffset, n * 2); for (let i = 0; i < n; i++) o[i] = dv.getInt16(i * 2, true); return o; };
 function wavOf(mix: Float32Array): Uint8Array {
@@ -273,8 +273,8 @@ async function voiceLine(key: string, l0: any, voice: string): Promise<Int16Arra
   // check the words came out right; one more try if not, keep the clearer take
   let best: Int16Array | null = null, bestScore = -1;
   for (let t = 0; t < 2; t++) {
-    const out = trim(await tts(key, voice, l.text, l.emotion, voice === MALE_YOUNG ? 0.1 : 0));
-    if (voice === FEMALE_MAIN) return levelVoice(out, l.emotion); // Su is a library voice: always clear
+    const out = trim(await tts(key, voice, l.text, l.emotion, voice === YOKE_MALE_1 ? 0.1 : 0));
+    if (voice === SU) return levelVoice(out, l.emotion); // Su is a library voice: always clear
     const score = similar(await heard(key, out), l.text);
     if (score > bestScore) { best = out; bestScore = score; }
     if (score >= 0.8) break;
