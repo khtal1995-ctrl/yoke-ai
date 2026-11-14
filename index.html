@@ -209,8 +209,9 @@
           <input type="file" id="fsFace" accept="image/jpeg,image/png,image/webp">
           <label class="lbl">AI</label>
           <div class="seg" id="fsEngine">
-            <button data-v="pvideo" class="on">P-Video 720p<small>ဇာတ်ဝင်ခန်းတိုင်း</small></button>
-            <button data-v="pixverse">PixVerse 540p<small>တစ်ခန်းတည်း</small></button>
+            <button data-v="faceonly" class="on">😀 မျက်နှာပဲ<small>အဝတ်/ဆံပင် မူလအတိုင်း</small></button>
+            <button data-v="pvideo">🧍 လူတစ်ယောက်လုံး<small>P-Video 720p</small></button>
+            <button data-v="pixverse">PixVerse<small>540p</small></button>
           </div>
           <input type="hidden" id="fsTarget" value="">
           <button class="btn" id="fsBtn" style="margin-top:10px">🎭 Face swap လုပ်မည်</button>
@@ -561,13 +562,13 @@ async function review(id, ok){
 }
 
 /* ================= FACE SWAP (admin test) ================= */
-let fsSeconds = null, fsW = null, fsH = null, fsEngine = "pvideo";
-const fsRate = () => fsEngine === "pixverse" ? 0.045 : 0.03;
+let fsSeconds = null, fsW = null, fsH = null, fsEngine = "faceonly";
+const fsRate = () => fsEngine === "pixverse" ? 0.045 : fsEngine === "faceonly" ? 0 : 0.03;
 const FS_MAX = 30; // the face swap AIs accept at most 30 seconds
 const fsShowCost = () => { if (!fsSeconds) return;
   $("fsInfo").innerHTML = fsSeconds > FS_MAX
     ? `<span style="color:#f87171">⚠️ ${fsSeconds.toFixed(1)} စက္ကန့် — အများဆုံး ${FS_MAX} စက္ကန့်ပဲ ရပါတယ်။ ဖုန်းမှာ ဖြတ်ပြီးမှ ပြန်ရွေးပါ (၁၀ စက္ကန့်လောက် အကောင်းဆုံး)</span>`
-    : `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ~${fmt(Math.round(fsSeconds * fsRate() * 4500))} ကျပ်`; };
+    : `${fsSeconds.toFixed(1)} စက္ကန့် · ကုန်ကျစရိတ် ~${fmt(fsEngine === "faceonly" ? 270 : Math.round(fsSeconds * fsRate() * 4500))} ကျပ်`; };
 document.querySelectorAll("#fsEngine button").forEach(b => b.onclick = () => {
   document.querySelectorAll("#fsEngine button").forEach(x => x.classList.toggle("on", x === b)); fsEngine = b.dataset.v; fsShowCost(); });
 $("fsVideo").onchange = () => {

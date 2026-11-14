@@ -4,6 +4,7 @@
 //    (eachlabs-video-api scene_detect + keep_ranges), every shot is swapped on its own, then joined (concat),
 //    because the swap model loses the person when the shot changes.
 //  - "pixverse": pixverse-swap, 540p, $0.045/s, one pass (picks the person it sees ~1s in).
+//  - "faceonly": each-faceswap-v1, ~$0.06 per run: swaps only the face, keeps hair/clothes/scene, follows cuts.
 // POST {action:"create", video_path, face_path, target?, seconds?, engine?} -> {id}
 // POST {action:"status", id} -> {status, url?, error?, progress?}   (each status call also moves the job forward)
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -73,7 +74,7 @@ Deno.serve(async (req) => {
     const [video, face] = await Promise.all([signIn(body.video_path), signIn(body.face_path)]);
     if (!video || !face) return json({ error: "file not found" }, 400);
     const target = String(body.target ?? "").trim().slice(0, 200);
-    const engine = body.engine === "pixverse" ? "pixverse" : lab && body.engine === "dry" ? "dry" : "pvideo"; // dry: cut + join only (lab test)
+    const engine = ["pixverse", "faceonly"].includes(body.engine) ? body.engine : lab && body.engine === "dry" ? "dry" : "pvideo"; // dry: cut + join only (lab test)
     // save the job first, so a paid job can never be lost
     const { data: row, error } = await admin.from("faceswaps").insert({ user_id: user.id, video_path: body.video_path, face_path: body.face_path,
       target: target || null, seconds: Number(body.seconds) || null, status: "submitting", engine,
@@ -81,7 +82,10 @@ Deno.serve(async (req) => {
     if (error) return json({ error: error.message }, 500);
     try {
       let pid: string, stage: string;
-      if (engine === "pixverse") {
+      if (engine === "faceonly") { // face only (keeps the scene's hair, clothes, everything else); works across cuts
+        pid = await submit("each-faceswap-v1", { source_image: face, target_image_gif_or_video: video });
+        stage = "single";
+      } else if (engine === "pixverse") {
         pid = await submit("pixverse-swap", { video_url: video, replacement_image_url: face, quality: "540p", keyframe_id: Math.max(1, Math.round(Number(body.keyframe) || 30)) });
         stage = "single";
       } else {
