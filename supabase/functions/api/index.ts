@@ -50,6 +50,8 @@ Rules for "prompt":
 - If the user asks for no speech or a silent video, never invent speech.
 - Dialogue length must fit the video: at most about 6 Burmese words per 5 seconds in total, spoken at a relaxed natural pace, never rushed. Speakers finish talking at least 1 second before the video ends, then stay silent and react.
 - Only one person speaks at a time. Say who speaks first and who answers; keep the speaker's face visible while they talk.
+- People who talk to each other stand or sit facing each other and look at the person they are speaking to, never into the camera (unless the user says they talk to the viewer). Film conversations from the side as a two-shot or over the shoulder, so both faces are seen in profile or three-quarter view. Say who looks at whom.
+- Write every number in a spoken line as Burmese words, never digits (for example ဆယ်နှစ်, not ၁၀နှစ်).
 - Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
 - Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].
 Rules for "emotion": choose how each line must sound from the story (a battle cry is "shouting", a cheerful greeting is "happy", ordering food is "polite"). Never make a calm line dramatic.
@@ -73,6 +75,7 @@ async function planVideo(mm: string, duration = 10): Promise<Plan> {
     const r = await fetch(`${YOTTA}/api/maas/chat/completions`, {
       method: "POST",
       headers: { "X-API-KEY": YOTTA_KEY, "Authorization": `Bearer ${YOTTA_KEY}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(120000),
       body: JSON.stringify({
         model: LLM_MODEL, temperature: 0.4, max_tokens: 2000,
         messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\nRequest:\n${mm}` }],
@@ -101,6 +104,7 @@ async function planVideo(mm: string, duration = 10): Promise<Plan> {
     return { prompt, lines, ambience: p.ambience ? String(p.ambience) : undefined, effects };
   } catch (e) {
     console.error("planVideo failed:", e);
+    if ((e as Error)?.name === "TimeoutError") throw new Error("planner busy, please try again");
     return fallback;
   }
 }
@@ -288,7 +292,24 @@ async function heard(key: string, pcm: Int16Array): Promise<string> {
   const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": key }, body: fd });
   return r.ok ? String((await r.json()).text ?? "") : "";
 }
-async function voiceLine(key: string, l: any): Promise<Int16Array> {
+// digits are read badly by the voices: say them as Burmese words (up to 99,999)
+const MM_DIGIT = ["သုည", "တစ်", "နှစ်", "သုံး", "လေး", "ငါး", "ခြောက်", "ခုနစ်", "ရှစ်", "ကိုး"];
+function mmNumber(n: number): string {
+  if (n < 10) return MM_DIGIT[n];
+  const units: [number, string, string][] = [[10000, "သောင်း", "သောင်း"], [1000, "ထောင်", "ထောင့်"], [100, "ရာ", "ရာ့"], [10, "ဆယ်", "ဆယ့်"]];
+  let out = "", rest = n;
+  for (const [v, plain, joined] of units) {
+    const d = Math.floor(rest / v); rest %= v; if (!d) continue;
+    out += (d === 1 && v === 10 && !out ? "" : MM_DIGIT[d]) + (rest ? joined : plain);
+  }
+  return out + (rest ? MM_DIGIT[rest] : "");
+}
+const spokenNumbers = (t: string) => t.replace(/[0-9\u1040-\u1049]+/g, (m) => {
+  const n = Number([...m].map((c) => { const k = c.charCodeAt(0); return k >= 0x1040 ? String(k - 0x1040) : c; }).join(""));
+  return n <= 99999 ? mmNumber(n) : m;
+});
+async function voiceLine(key: string, l0: any): Promise<Int16Array> {
+  const l = { ...l0, text: spokenNumbers(String(l0.text)) };
   if (l.gender === "female") return levelVoice(trim(await tts(key, VOICES.female, l.text, l.emotion)), l.emotion);
   try {
     // check the words survived the voice change; one more try if not, keep the clearer one
