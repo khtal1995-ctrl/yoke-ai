@@ -131,7 +131,10 @@ async function musicGen(key: string, prompt: string, sec: number): Promise<Int16
     body: JSON.stringify({ prompt: prompt + ", instrumental background score, no vocals", music_length_ms: Math.round(Math.max(sec, 3) * 1000), force_instrumental: true }),
   });
   if (!r.ok) { console.error("music", r.status, (await r.text()).slice(0, 200)); return null; }
-  return toI16(new Uint8Array(await r.arrayBuffer()));
+  // the music comes back as 2 channels (L,R interleaved): fold to mono, otherwise it plays at half speed, an octave low
+  const raw = toI16(new Uint8Array(await r.arrayBuffer())); const out = new Int16Array(raw.length >> 1);
+  for (let i = 0; i < out.length; i++) out[i] = (raw[2 * i] + raw[2 * i + 1]) >> 1;
+  return out;
 }
 // how strongly each character acts in the picture: Wan's own (unclear) speech follows its acting
 const LADDER = ["whisper", "calm", "warm", "happy", "excited", "shouting"];
