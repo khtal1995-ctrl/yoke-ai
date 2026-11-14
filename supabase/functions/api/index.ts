@@ -316,9 +316,13 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     if (!music?.length) return mix;
     const talk = new Uint8Array(n);
     for (const t of placed) for (let i = Math.max(0, Math.round((t.start - 0.3) * SR)); i < Math.min(n, Math.round((t.end + 0.3) * SR)); i++) talk[i] = 1;
-    let gm = 0.22;
+    // bring the music to a fixed loudness first (ElevenLabs tracks vary a lot), then: clear between lines, softer under speech
+    let ss = 0; for (let i = 0; i < music.length; i++) ss += music[i] * music[i];
+    const norm = 2600 / Math.max(1, Math.sqrt(ss / music.length));
+    console.log("music", music.length, Math.round(Math.sqrt(ss / music.length)));
+    let gm = norm;
     for (let i = 0; i < n; i++) {
-      const want = talk[i] ? 0.11 : 0.22; gm += (want - gm) * 0.0005;
+      const want = (talk[i] ? 0.5 : 1) * norm; gm += (want - gm) * 0.0005;
       const edge = Math.min(1, i / (0.6 * SR), (n - i) / (1.2 * SR));
       mix[i] += (music[i % music.length] ?? 0) * gm * edge;
     }
