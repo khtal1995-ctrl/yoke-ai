@@ -209,11 +209,10 @@
           <input type="file" id="fsFace" accept="image/jpeg,image/png,image/webp">
           <label class="lbl">AI</label>
           <div class="seg" id="fsEngine">
-            <button data-v="seedance" class="on">🎬 ဇာတ်ကွက်အကုန်<small>Seedance · မျက်နှာပဲ</small></button>
-            <button data-v="pvideo">🧍 လူတစ်ယောက်လုံး<small>P-Video 720p</small></button>
+            <button data-v="pvideo" class="on">🧍 လူတစ်ယောက်လုံး<small>P-Video 720p</small></button>
             <button data-v="pixverse">PixVerse<small>540p</small></button>
           </div>
-          <div id="fsWhoBox">
+          <div id="fsWhoBox" class="hidden">
             <label class="lbl">ဘယ်သူ့နေရာ ဝင်မလဲ</label>
             <div class="seg" id="fsWho">
               <button data-v="the man" class="on">👨 မင်းသား</button>
@@ -569,9 +568,9 @@ async function review(id, ok){
 }
 
 /* ================= FACE SWAP (admin test) ================= */
-let fsSeconds = null, fsW = null, fsH = null, fsEngine = "seedance";
+let fsSeconds = null, fsW = null, fsH = null, fsEngine = "pvideo";
 const fsRate = () => fsEngine === "pixverse" ? 0.045 : 0.03;
-let FS_MAX = 15; // Seedance: 15 seconds; P-Video / PixVerse: 30
+let FS_MAX = 30; // Seedance: 15 seconds; P-Video / PixVerse: 30
 const fsCostText = () => fsEngine === "pvideo" ? "ဇာတ်ကွက် ၁ ခုလျှင် ~675 ကျပ်"
   : fsEngine === "seedance" ? "~" + fmt(Math.round(Math.max(4, Math.ceil(fsSeconds)) * 190)) + " ကျပ် (ဇာတ်ကွက် ဘယ်နှခုပါပါ)"
   : "~" + fmt(Math.round(fsSeconds * fsRate() * 4500)) + " ကျပ်";
