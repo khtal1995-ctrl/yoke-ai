@@ -209,10 +209,10 @@
           <input type="file" id="fsFace" accept="image/jpeg,image/png,image/webp">
           <label class="lbl">AI</label>
           <div class="seg" id="fsEngine">
-            <button data-v="pixverse" class="on">PixVerse 540p<small>ပထမ ပုံရိပ်ထဲက လူ</small></button>
-            <button data-v="pvideo">P-Video 720p<small>စာနဲ့ ရွေး</small></button>
+            <button data-v="pvideo" class="on">P-Video 720p<small>ဇာတ်ဝင်ခန်းတိုင်း</small></button>
+            <button data-v="pixverse">PixVerse 540p<small>တစ်ခန်းတည်း</small></button>
           </div>
-          <label class="lbl">ဘယ်သူ့ကို လဲမလဲ (P-Video အတွက်ပဲ — အင်္ဂလိပ်လို ရေးရင် ပိုမှန်)</label>
+          <label class="lbl">ဘယ်သူ့ကို လဲမလဲ (P-Video — အင်္ဂလိပ်လို၊ မရေးလည်း ရ)</label>
           <input type="text" id="fsTarget" placeholder="e.g. the main young man with short black hair">
           <button class="btn" id="fsBtn" style="margin-top:10px">🎭 Face swap လုပ်မည်</button>
           <div id="fsOut" style="margin-top:10px"></div>
@@ -562,7 +562,7 @@ async function review(id, ok){
 }
 
 /* ================= FACE SWAP (admin test) ================= */
-let fsSeconds = null, fsEngine = "pixverse";
+let fsSeconds = null, fsEngine = "pvideo";
 const fsRate = () => fsEngine === "pixverse" ? 0.045 : 0.03;
 const FS_MAX = 30; // the face swap AIs accept at most 30 seconds
 const fsShowCost = () => { if (!fsSeconds) return;
@@ -590,11 +590,12 @@ $("fsBtn").onclick = async () => {
     const [video_path, face_path] = await Promise.all([uploadTo("inputs", vf), uploadTo("inputs", ff)]);
     const { data, error } = await sb.functions.invoke("faceswap", { body: { action:"create", video_path, face_path, target: $("fsTarget").value, seconds: fsSeconds, engine: fsEngine } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
-    $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>လဲနေပါတယ်… (၂–၅ မိနစ်)</p>`;
+    $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>စတင်နေပါတယ်… (ဇာတ်ဝင်ခန်း များရင် ၅–၁၀ မိနစ် ကြာနိုင်ပါတယ်၊ စာမျက်နှာ မပိတ်ပါနဲ့)</p>`;
     const poll = async () => {
       const { data: st } = await sb.functions.invoke("faceswap", { body: { action:"status", id: data.id } });
       if (st?.status === "done") { $("fsOut").innerHTML = `<video src="${esc(st.url)}" controls playsinline style="width:100%;border-radius:12px"></video><a class="btn sm" href="${esc(st.url)}" target="_blank" rel="noopener" style="margin-top:8px">⬇️ ဒေါင်းလုဒ်</a>`; $("fsBtn").disabled = false; return; }
       if (st?.status === "failed") { $("fsOut").innerHTML = `<div class="status bad">${esc(st.error || "မအောင်မြင်ပါ")}</div>`; $("fsBtn").disabled = false; return; }
+      if (st?.progress) $("fsOut").innerHTML = `<p class="muted"><span class="spin"></span>${esc(st.progress)}</p>`;
       setTimeout(poll, 10000);
     };
     setTimeout(poll, 15000);
