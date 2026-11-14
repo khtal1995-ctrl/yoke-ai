@@ -221,8 +221,7 @@ Deno.serve(async (req) => {
   return json({ error: "unknown action" }, 400);
 });
 
-function pvInput(video: string, face: string, target?: string | null) {
-  const input: Record<string, unknown> = { video, images: [face], resolution: "720p", save_audio: true };
-  if (target) input.instruction_prompt = `Replace only this person with the person in the reference image: ${target}. If this person is not in the video, leave it unchanged. Keep everyone else, the background, the camera and the motion unchanged.`;
-  return input;
+// no instruction text: tests showed the face comes out much more like the photo without it
+function pvInput(video: string, face: string, _target?: string | null) {
+  return { video, images: [face], resolution: "720p", save_audio: true };
 }
