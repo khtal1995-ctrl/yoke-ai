@@ -49,6 +49,12 @@
   .cast .ph img{width:100%;height:100%;object-fit:cover}
   .cast input[type=text]{flex:1}
   .cast .x{flex:none;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
+  .tpls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tpl{position:relative;background:var(--card2);border:1.5px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer}
+  .tpl.on{border-color:var(--accent)}
+  .tpl .pv{aspect-ratio:9/16;max-height:220px;width:100%;object-fit:cover;display:flex;align-items:center;justify-content:center;font-size:44px;background:#000}
+  .tpl .t{font-size:13px;font-weight:600;padding:6px 8px;line-height:1.4}
+  .tpl .hot{position:absolute;top:6px;left:6px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px}
   .tip{font-size:12.5px;color:var(--muted);background:var(--card2);border-radius:10px;padding:8px 10px;margin-top:8px}
   .status{padding:10px 12px;border-radius:10px;font-size:14px;margin-top:10px}
   .status.pending{background:rgba(245,158,11,.12);color:var(--warn)}
@@ -119,15 +125,25 @@
       <!-- CREATE -->
       <section id="createPage">
         <div class="card">
-          <div class="tabs">
+          <div class="tabs" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="tab" data-mode="tpl">🔥 Template</div>
             <div class="tab on" data-mode="t2v">✍️ စာ → Video</div>
             <div class="tab" data-mode="i2v">🖼️ ပုံ → Video</div>
+          </div>
+          <div id="tplBox" class="hidden">
+            <div id="tplGrid" class="tpls"><p class="muted">ဖွင့်နေပါတယ်…</p></div>
+            <div id="tplPick" class="hidden">
+              <label class="lbl">👤 <span id="tplName"></span> — ကိုယ့်ပုံ ထည့်ပါ</label>
+              <div id="tplSlots"></div>
+              <div class="tip">📸 ပုံတစ်ပုံမှာ လူတစ်ယောက်တည်း၊ မျက်နှာ ရှေ့တည့်၊ အလင်းကောင်းတဲ့ပုံ။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။ နာမည်က ဇာတ်လမ်းထဲ ခေါ်မယ့်နာမည်ပါ။</div>
+            </div>
           </div>
           <div id="imageBox" class="hidden">
             <label class="lbl">ပုံတင်ပါ (video ရဲ့ ပထမဆုံး မြင်ကွင်း ဖြစ်မယ်)</label>
             <label class="drop"><input type="file" id="imgInput" accept="image/jpeg,image/png,image/webp" class="hidden">
               <span id="imgTxt">📷 နှိပ်ပြီး ပုံရွေးပါ</span><img id="imgPrev" class="hidden" alt=""></label>
           </div>
+          <div id="storyBox">
           <label class="lbl">ဘာ video လိုချင်လဲ — ပြောစေချင်တဲ့ စကားပါ ထည့်ရေးလို့ရ</label>
           <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
           <details class="tip" id="howTo"><summary style="cursor:pointer;font-weight:600">💡 ကောင်းကောင်းရေးနည်း — အသေးစိတ်ရေးလေ video ပိုလှလေ</summary>
@@ -149,6 +165,7 @@
             <div class="tip">📸 ပုံတစ်ပုံမှာ လူတစ်ယောက်တည်း၊ မျက်နှာ ရှေ့တည့်၊ မျက်လုံးပွင့်ပွင့်၊ အလင်းကောင်းတဲ့ပုံ ထည့်ပါ။ နာမည်ကို ဇာတ်လမ်းထဲမှာ ရေးတဲ့အတိုင်း ထည့်ပါ (ဥပမာ မောင်မောင်)။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။</div>
           </div>
           <div class="tip">💡 စကားပြောတဲ့သူ ၁–၂ ယောက်ထားပြီး တစ်ယောက် တစ်ခွန်းစီ တိုတိုရေးရင် ပိုကောင်းပါတယ်။ အမျိုးသမီး/အမျိုးသား အသံကို AI က ဇာတ်ကောင်ကြည့်ပြီး ရွေးပေးပါတယ်။</div>
+          </div>
 
           <label class="lbl">ကြာချိန်</label>
           <div class="seg" id="durSeg">
@@ -224,6 +241,22 @@
       <!-- ADMIN -->
       <section id="adminPage" class="hidden">
         <div class="card"><h2>အတည်ပြုရန် ငွေလွှဲများ</h2><div id="adminList"></div></div>
+        <div class="card"><h2>🔥 Template များ</h2>
+          <select id="taPick"></select>
+          <label class="lbl">Emoji · ခေါင်းစဉ်</label>
+          <div style="display:flex;gap:8px"><input type="text" id="taEmoji" maxlength="4" style="width:64px;flex:none"><input type="text" id="taTitle" maxlength="60"></div>
+          <label class="lbl">ဇာတ်လမ်း — ဇာတ်ကောင်နာမည်နေရာမှာ {1} {2} {3} ရေးပါ</label>
+          <textarea id="taStory" maxlength="1500"></textarea>
+          <label class="lbl">ဇာတ်ကောင်များ — တစ်ကြောင်းတစ်ယောက်: ခေါ်ပုံ | နာမည် | male/female</label>
+          <textarea id="taSlots" style="min-height:70px" placeholder="ကောင်လေး | မောင်မောင် | male&#10;ကောင်မလေး | မမ | female"></textarea>
+          <label class="lbl">အရွယ်အစား · အစဉ် (နည်းလေ ရှေ့ရောက်လေ)</label>
+          <div style="display:flex;gap:8px"><select id="taRatio"><option>9:16</option><option>16:9</option><option>1:1</option></select><input type="text" id="taSort" inputmode="numeric" style="width:90px;flex:none"></div>
+          <label class="lbl">နမူနာ video (customer တွေ မြင်ရမယ် — ကိုယ့်ပုံ/ခွင့်ပြုချက်ရထားသူ ပုံသာ)</label>
+          <input type="file" id="taPreview" accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp">
+          <div id="taCur" class="muted" style="font-size:12.5px"></div>
+          <label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="taActive"> App မှာ ပြမယ်</label>
+          <button class="btn" id="taSave">💾 သိမ်းမည်</button>
+        </div>
         <div class="card"><h2>🎭 Face swap (စမ်းသပ်)</h2>
           <label class="lbl">ဇာတ်ဝင်ခန်း video (၁၀ စက္ကန့်လောက် — ရှည်လေ ဈေးကြီးလေ)</label>
           <input type="file" id="fsVideo" accept="video/mp4,video/quicktime,video/*">
@@ -357,9 +390,68 @@ document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
   opt.mode = t.dataset.mode;
   document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x === t));
   $("imageBox").classList.toggle("hidden", opt.mode !== "i2v");
-  $("ratioBox").classList.toggle("hidden", opt.mode === "i2v");   // i2v follows the image shape
+  $("ratioBox").classList.toggle("hidden", opt.mode !== "t2v");   // i2v follows the image shape, templates have their own
   $("castBox").classList.toggle("hidden", opt.mode === "i2v");
+  $("storyBox").classList.toggle("hidden", opt.mode === "tpl");
+  $("tplBox").classList.toggle("hidden", opt.mode !== "tpl");
+  if (opt.mode === "tpl") loadTemplates();
 });
+const apiMode = () => opt.mode === "tpl" ? "t2v" : opt.mode;
+
+/* ---------- templates: our own tested stories; the customer adds photos (+ names) ---------- */
+let templates = [], tpl = null, tplSlots = [];
+const tplUrl = path => `${SUPABASE_URL}/storage/v1/object/public/templates/${path}`;
+const isVid = path => /\.(mp4|mov)$/i.test(path || "");
+async function loadTemplates(){
+  const { data, error } = await sb.rpc("template_list");
+  if (error) { $("tplGrid").innerHTML = `<p class="muted">${esc(msgOf(error))}</p>`; return; }
+  templates = (data || []).filter(t => t.active)
+    .sort((a, b) => (b.uses_7d - a.uses_7d) || (a.sort - b.sort));
+  const hot = new Set(templates.filter(t => t.uses_7d > 0).slice(0, 3).map(t => t.id));
+  $("tplGrid").innerHTML = templates.length ? templates.map(t => `<div class="tpl ${tpl?.id === t.id ? "on" : ""}" data-tpl="${t.id}">
+      ${hot.has(t.id) ? `<span class="hot">🔥 Hot</span>` : ""}
+      ${t.preview_path ? (isVid(t.preview_path)
+        ? `<video class="pv" src="${esc(tplUrl(t.preview_path))}" muted loop autoplay playsinline preload="metadata"></video>`
+        : `<img class="pv" src="${esc(tplUrl(t.preview_path))}" alt="">`) : `<div class="pv">${esc(t.emoji)}</div>`}
+      <div class="t">${esc(t.emoji)} ${esc(t.title)}</div></div>`).join("") : `<p class="muted">Template မရှိသေးပါ</p>`;
+  document.querySelectorAll("[data-tpl]").forEach(d => d.onclick = () => pickTemplate(d.dataset.tpl));
+}
+function pickTemplate(id){
+  tpl = templates.find(t => t.id === id); if (!tpl) return;
+  currentPlan = null;
+  tplSlots = (tpl.slots || []).map(s => ({ label: s.label, def: s.name, name: "", file: null, url: null, path: null }));
+  document.querySelectorAll("[data-tpl]").forEach(d => d.classList.toggle("on", d.dataset.tpl === id));
+  $("tplName").textContent = `${tpl.emoji} ${tpl.title}`;
+  $("tplPick").classList.remove("hidden"); renderTplSlots();
+  $("tplPick").scrollIntoView({ behavior:"smooth", block:"center" });
+}
+function renderTplSlots(){
+  $("tplSlots").innerHTML = tplSlots.map((c, i) => `<div class="cast">
+      <label class="ph">${c.file ? `<img src="${c.url}" alt="">` : "📷"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-ti="${i}"></label>
+      <div style="flex:1"><div class="muted" style="font-size:12px">${esc(c.label)}</div>
+      <input type="text" maxlength="30" placeholder="နာမည် (မထည့်ရင် ${esc(c.def)})" value="${esc(c.name)}" data-tn="${i}"></div></div>`).join("");
+  document.querySelectorAll("#tplSlots input[type=file]").forEach(inp => inp.onchange = () => {
+    const f = inp.files[0]; if (!f) return;
+    if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
+    const c = tplSlots[inp.dataset.ti]; c.file = f; c.url = URL.createObjectURL(f); c.path = null; renderTplSlots();
+  });
+  document.querySelectorAll("#tplSlots input[type=text]").forEach(inp => inp.oninput = () => { tplSlots[inp.dataset.tn].name = inp.value; });
+}
+const slotName = c => (c.name.trim() || c.def).replace(/\s+/g, " ");
+const tplStory = () => tpl ? tpl.story.replace(/\{(\d)\}/g, (m, n) => tplSlots[n - 1] ? slotName(tplSlots[n - 1]) : m) : "";
+async function tplRefs(){
+  if (!tpl) throw new Error("Template တစ်ခု ရွေးပါ");
+  if (tplSlots.some(c => !c.file)) throw new Error("ဇာတ်ကောင်တိုင်းအတွက် ပုံထည့်ပါ");
+  const names = tplSlots.map(slotName);
+  if (new Set(names).size !== names.length) throw new Error("ဇာတ်ကောင် နာမည်တွေ မတူအောင် ထည့်ပါ");
+  for (const c of tplSlots) if (!c.path) c.path = await uploadTo("inputs", c.file);
+  return tplSlots.map((c, i) => ({ path: c.path, name: names[i] }));
+}
+// what the customer is asking for right now, in any mode
+const curPrompt = () => opt.mode === "tpl" ? tplStory() : $("prompt").value.trim();
+const curRatio = () => opt.mode === "tpl" && tpl ? tpl.ratio : opt.ratio;
+const curRefsNow = () => opt.mode === "tpl" ? tplSlots.map(c => ({ path: c.path, name: slotName(c) }))
+  : opt.mode === "t2v" ? cast.filter(c => c.file || c.name.trim()).map(c => ({ path: c.path, name: c.name.trim().replace(/\s+/g, " ") })) : [];
 $("howToEx").onclick = (e) => { e.preventDefault(); const t = $("prompt"); t.value = e.target.textContent.trim(); t.dispatchEvent(new Event("input")); t.focus(); };
 function seg(id, key, num){
   document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
@@ -421,7 +513,8 @@ async function uploadTo(bucket, file){
 // Step 1: the AI writes a plan (no credits used) and shows it in Burmese. Step 2: the customer approves → video.
 let currentPlan = null;   // { id, prompt, duration, mode }
 $("genBtn").onclick = async () => {
-  const prompt = $("prompt").value.trim();
+  if (opt.mode === "tpl" && !tpl) return toast("Template တစ်ခု ရွေးပါ");
+  const prompt = curPrompt();
   if (profile && profile.credits < costOf()) return go("buyPage");
   if (!prompt) return toast("ဘာ video လိုချင်လဲ အရင်ရေးပါ");
   if (opt.mode === "i2v" && !opt.imageFile) return toast("ပုံ အရင်တင်ပါ");
@@ -430,13 +523,14 @@ $("genBtn").onclick = async () => {
   showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (၁–၂ မိနစ်)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
   try {
     if (opt.mode === "t2v") refs = await castRefs();
-    const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:opt.mode, refs } });
+    if (opt.mode === "tpl") refs = await tplRefs();
+    const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:apiMode(), refs } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     const planId = data.plan_id, started = Date.now();
     while (true) {
       await new Promise(r => setTimeout(r, 4000));
       const { data: st } = await sb.functions.invoke("api", { body: { action:"plan_status", plan_id: planId } });
-      if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode, refs }; showPlan(st); break; }
+      if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode, refs, template_id: opt.mode === "tpl" ? tpl.id : null }; showPlan(st); break; }
       if (st?.status === "failed" || Date.now() - started > 240000) throw new Error("AI အစီအစဉ် မရေးနိုင်ပါ။ ခဏနေ ပြန်စမ်းပါ။");
       const s = Math.round((Date.now()-started)/1000);
       showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (${s}s)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
@@ -457,11 +551,12 @@ function showPlan(st){
     <button class="btn" id="planOk">✅ ဒီအတိုင်း ဖန်တီးမည် (${costOf()} credits)</button>
     <button class="btn ghost" id="planEdit" style="margin-top:8px">✏️ ပြင်ရေးမည်</button>`);
   $("planOk").onclick = createFromPlan;
-  $("planEdit").onclick = () => { currentPlan = null; $("jobCard").classList.add("hidden"); $("prompt").focus(); $("prompt").scrollIntoView({ behavior:"smooth", block:"center" }); };
+  $("planEdit").onclick = () => { currentPlan = null; $("jobCard").classList.add("hidden");
+    const el = opt.mode === "tpl" ? $("tplPick") : $("prompt"); if (opt.mode !== "tpl") el.focus(); el.scrollIntoView({ behavior:"smooth", block:"center" }); };
 }
 async function createFromPlan(){
-  const prompt = $("prompt").value.trim();
-  const nowRefs = opt.mode === "t2v" ? cast.filter(c => c.file || c.name.trim()).map(c => ({ path: c.path, name: c.name.trim().replace(/\s+/g, " ") })) : [];
+  const prompt = curPrompt();
+  const nowRefs = curRefsNow();
   if (!currentPlan || currentPlan.prompt !== prompt || currentPlan.duration !== opt.duration || currentPlan.mode !== opt.mode || refsKey(currentPlan.refs) !== refsKey(nowRefs))
     return toast("စာ၊ ကြာချိန် (သို့) ဇာတ်ကောင်ပုံ ပြောင်းသွားလို့ အစီအစဉ် အသစ်ပြန်ရေးပါ");
   if (profile && profile.credits < costOf()) return go("buyPage");
@@ -471,7 +566,7 @@ async function createFromPlan(){
     let image_path = null;
     if (opt.mode === "i2v") image_path = await uploadTo("inputs", opt.imageFile);
     const { data, error } = await sb.functions.invoke("api", { body: {
-      action:"create", plan_id: currentPlan.id, mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, sfx: opt.sfx === 1, image_path, refs: currentPlan.refs } });
+      action:"create", plan_id: currentPlan.id, mode:apiMode(), prompt, quality:opt.quality, duration:opt.duration, ratio:curRatio(), sfx: opt.sfx === 1, image_path, refs: currentPlan.refs, template_id: currentPlan.template_id } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     currentPlan = null;
     loadProfile();
@@ -603,6 +698,7 @@ async function loadLedger(){
 /* ================= ADMIN ================= */
 async function loadAdmin(){
   if (!profile?.is_admin) return;
+  loadTplAdmin();
   const { data } = await sb.from("topups").select("*, profiles!topups_user_id_fkey(phone)").eq("status","pending").order("created_at");
   if (!data?.length) { $("adminList").innerHTML = `<p class="muted">စစ်စရာ မရှိပါ 🎉</p>`; return; }
   const { data: s } = await sb.storage.from("slips").createSignedUrls(data.map(t => t.slip_path), 3600);
@@ -618,6 +714,47 @@ async function loadAdmin(){
   document.querySelectorAll("[data-ok]").forEach(b => b.onclick = () => review(b.dataset.ok, true));
   document.querySelectorAll("[data-no]").forEach(b => b.onclick = () => review(b.dataset.no, false));
 }
+/* ---------- admin: templates ---------- */
+let taList = [];
+async function loadTplAdmin(){
+  const { data } = await sb.rpc("template_list");
+  taList = (data || []).sort((a, b) => a.sort - b.sort);
+  $("taPick").innerHTML = `<option value="">＋ Template အသစ်</option>` + taList.map(t =>
+    `<option value="${t.id}">${esc(t.emoji)} ${esc(t.title)}${t.active ? "" : " (ပိတ်ထား)"} · 7ရက် ${t.uses_7d} · စုစုပေါင်း ${t.uses_all}</option>`).join("");
+  fillTplForm("");
+}
+function fillTplForm(id){
+  const t = taList.find(x => x.id === id);
+  $("taPick").value = id; $("taEmoji").value = t?.emoji ?? "🎬"; $("taTitle").value = t?.title ?? ""; $("taStory").value = t?.story ?? "";
+  $("taSlots").value = (t?.slots ?? []).map(s => `${s.label} | ${s.name} | ${s.gender}`).join("\n");
+  $("taRatio").value = t?.ratio ?? "9:16"; $("taSort").value = t?.sort ?? (taList.length + 1) * 10; $("taActive").checked = t ? t.active : true;
+  $("taPreview").value = ""; $("taCur").innerHTML = t?.preview_path ? `လက်ရှိ နမူနာ: <a href="${esc(tplUrl(t.preview_path))}" target="_blank" rel="noopener" style="color:inherit">ကြည့်ရန်</a>` : "နမူနာ မရှိသေး (emoji ပြမယ်)";
+}
+$("taPick").onchange = () => fillTplForm($("taPick").value);
+$("taSave").onclick = async () => {
+  const id = $("taPick").value, story = $("taStory").value.trim(), title = $("taTitle").value.trim();
+  const slots = $("taSlots").value.split("\n").map(l => l.split("|").map(x => x.trim())).filter(x => x[0])
+    .map(([label, name, gender]) => ({ label, name: name || label, gender: /^f/i.test(gender || "") ? "female" : "male" }));
+  if (!title || story.length < 5) return toast("ခေါင်းစဉ်နဲ့ ဇာတ်လမ်း ထည့်ပါ");
+  if (!slots.length || slots.length > 3) return toast("ဇာတ်ကောင် ၁–၃ ယောက် ထည့်ပါ");
+  const miss = slots.map((_, i) => `{${i + 1}}`).filter(k => !story.includes(k));
+  if (miss.length) return toast(`ဇာတ်လမ်းထဲမှာ ${miss.join(" ")} မပါသေးပါ`);
+  $("taSave").disabled = true;
+  try {
+    const row = { title, emoji: $("taEmoji").value.trim() || "🎬", story, slots, ratio: $("taRatio").value, sort: Number($("taSort").value) || 0, active: $("taActive").checked };
+    const f = $("taPreview").files[0];
+    if (f) {
+      if (f.size > 50*1024*1024) throw new Error("နမူနာ ဖိုင် 50MB ထက် မကြီးရ");
+      const ext = (f.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "");
+      row.preview_path = `tpl/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+      const { error } = await sb.storage.from("templates").upload(row.preview_path, f, { contentType: f.type });
+      if (error) throw error;
+    }
+    const { error } = id ? await sb.from("templates").update(row).eq("id", id) : await sb.from("templates").insert(row);
+    if (error) throw error;
+    toast("သိမ်းပြီးပါပြီ"); templates = []; await loadTplAdmin();
+  } catch (e) { toast(msgOf(e)); } finally { $("taSave").disabled = false; }
+};
 async function review(id, ok){
   const note = ok ? null : "ငွေလွှဲ မတွေ့ပါ / မကိုက်ညီပါ";
   const { error } = await sb.rpc("review_topup", { p_id: id, p_approve: ok, p_note: note });

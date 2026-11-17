@@ -2,7 +2,7 @@
 // Actions (POST JSON, user JWT required):
 //   { action: "plan", prompt, duration, mode, refs? } -> { plan_id }   (no credits; customer approves the plan first)
 //   { action: "plan_status", plan_id } -> { status, summary_mm, issues, lines }
-//   { action: "create", plan_id?, mode, prompt, quality, duration, ratio, image_path?, refs? } -> { id }
+//   { action: "create", plan_id?, mode, prompt, quality, duration, ratio, image_path?, refs?, template_id? } -> { id }
 //   { action: "status", id } -> { generation, video_url? }
 //
 // Vault secrets: yotta_api_key, elevenlabs_api_key (TTS, SFX, speech timing), eachlabs_api_key (audio/video merge)
@@ -601,7 +601,13 @@ Deno.serve(async (req) => {
       p_image_path: body.image_path ?? null,
     });
     if (error) return json({ error: error.message }, 400);
-    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs }).eq("id", id);
+    // template videos count toward "Hot"
+    let tplId: string | null = null;
+    if (body.template_id && /^[0-9a-f-]{36}$/i.test(String(body.template_id))) {
+      const { data: t } = await admin.from("templates").select("id").eq("id", body.template_id).eq("active", true).maybeSingle();
+      tplId = t?.id ?? null;
+    }
+    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs, template_id: tplId }).eq("id", id);
 
     // submit in the background (old clients without a plan_id: plan first, ~1 minute)
     const work = startGeneration(admin, id);
