@@ -130,6 +130,18 @@
           </div>
           <label class="lbl">ဘာ video လိုချင်လဲ — ပြောစေချင်တဲ့ စကားပါ ထည့်ရေးလို့ရ</label>
           <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
+          <details class="tip" id="howTo"><summary style="cursor:pointer;font-weight:600">💡 ကောင်းကောင်းရေးနည်း — အသေးစိတ်ရေးလေ video ပိုလှလေ</summary>
+            <div style="margin-top:6px;line-height:1.7">
+              • <b>ဘယ်သူတွေလဲ</b> — နာမည်၊ ဘာတော်လဲ (ရည်းစား၊ မိသားစု၊ သူငယ်ချင်း)<br>
+              • <b>ဘယ်မှာလဲ</b> — ကားထဲ၊ ကမ်းခြေ၊ လက်ဖက်ရည်ဆိုင်... နဲ့ အချိန် (မနက်၊ နေဝင်ချိန်၊ ည)<br>
+              • <b>ဘာလုပ်နေလဲ</b> — လုပ်ရပ်ကို အစဉ်လိုက်<br>
+              • <b>ဘာပြောလဲ</b> — ပြောစေချင်တဲ့ စကားကို "..." ထဲ ထည့်ပါ (၁၀ စက္ကန့်ဆို ၂ ခွန်းလောက်)<br>
+              • <b>ခံစားချက်</b> — ပျော်၊ ရှက်၊ ဝမ်းနည်း၊ စိတ်ဆိုး<br>
+              ✍️ ဥပမာ (နှိပ်ရင် အပေါ်ကအကွက်ထဲ ထည့်ပေးမယ်):<br>
+              <a href="#" id="howToEx" style="color:inherit;text-decoration:underline">နေဝင်ချိန် ကမ်းခြေမှာ မောင်မောင်နဲ့ မမ ရည်းစားနှစ်ယောက် လက်တွဲလမ်းလျှောက်နေတယ်။ မမက ရှက်ရှက်နဲ့ "မောင် ချစ်လား" လို့မေးတယ်။ မောင်မောင်က ပြုံးပြီး "အရမ်းချစ်တာပေါ့ ချစ်လေးရဲ့" လို့ဖြေတယ်။</a><br>
+              ✨ တိုတိုလေးပဲ ရေးထားရင်လည်း AI က ဇာတ်လမ်းကို လှအောင် ဖြည့်ရေးပေးပါတယ် — ထုတ်ခင် plan မှာ စစ်ကြည့်လို့ရပါတယ်။
+            </div>
+          </details>
           <div id="castBox">
             <label class="lbl">👤 ဇာတ်ကောင်ပုံ <span class="muted">(မထည့်လည်း ရ — ၃ ယောက်အထိ)</span></label>
             <div id="castList"></div>
@@ -348,6 +360,7 @@ document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
   $("ratioBox").classList.toggle("hidden", opt.mode === "i2v");   // i2v follows the image shape
   $("castBox").classList.toggle("hidden", opt.mode === "i2v");
 });
+$("howToEx").onclick = (e) => { e.preventDefault(); const t = $("prompt"); t.value = e.target.textContent.trim(); t.dispatchEvent(new Event("input")); t.focus(); };
 function seg(id, key, num){
   document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
     document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b));
