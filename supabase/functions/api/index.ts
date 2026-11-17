@@ -1,8 +1,8 @@
 // Yoke AI — video generation API (Supabase Edge Function)
 // Actions (POST JSON, user JWT required):
-//   { action: "plan", prompt, duration, mode } -> { plan_id }   (no credits; customer approves the plan first)
+//   { action: "plan", prompt, duration, mode, refs? } -> { plan_id }   (no credits; customer approves the plan first)
 //   { action: "plan_status", plan_id } -> { status, summary_mm, issues, lines }
-//   { action: "create", plan_id?, mode, prompt, quality, duration, ratio, image_path? } -> { id }
+//   { action: "create", plan_id?, mode, prompt, quality, duration, ratio, image_path?, refs? } -> { id }
 //   { action: "status", id } -> { generation, video_url? }
 //
 // Vault secrets: yotta_api_key, elevenlabs_api_key (TTS, SFX, speech timing), eachlabs_api_key (audio/video merge)
@@ -33,13 +33,30 @@ const json = (body: unknown, status = 200) =>
 
 const RESOLUTION: Record<string, string> = { std: "480p", hd: "720p" };
 
+// character photos (Wan 3.0 reference-to-video): [{path, name}] in Image 1..N order
+const refNames = (refs: any) => (Array.isArray(refs) ? refs : []).map((r: any) => String(r?.name ?? "").trim()).filter(Boolean);
+function cleanRefs(raw: any, uid: string): { path: string; name: string }[] | null {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > 3) return null;
+  const out: { path: string; name: string }[] = [];
+  for (const r of raw) {
+    const path = String(r?.path ?? ""), name = String(r?.name ?? "").trim().replace(/\s+/g, " ").slice(0, 30);
+    if (!path.startsWith(uid + "/") || path.includes("..") || !name) return null;
+    if (out.some((o) => o.name === name)) return null;
+    out.push({ path, name });
+  }
+  return out;
+}
+const sameRefs = (a: any, b: any) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+const isR2v = (g: any) => Array.isArray(g.refs) && g.refs.length > 0;
+
 // ---------- planning: the "planner" function writes a checked plan (scene prompt, Burmese lines with acting, timeline,
 // Burmese summary for the customer). It runs before any money is spent, so the customer can approve it first.
-async function planVideo(mm: string, duration = 10): Promise<any> {
+async function planVideo(mm: string, duration = 10, cast: string[] = []): Promise<any> {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ story: mm, duration }),
+    body: JSON.stringify({ story: mm, duration, cast }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
@@ -49,7 +66,7 @@ async function planVideo(mm: string, duration = 10): Promise<any> {
 async function runPlan(admin: any, id: string) {
   const { data: p } = await admin.from("plans").select("*").eq("id", id).single();
   try {
-    const plan = await planVideo(p.prompt_mm, p.duration);
+    const plan = await planVideo(p.prompt_mm, p.duration, refNames(p.refs));
     await admin.from("plans").update({ status: "ready", plan, issues: plan.issues }).eq("id", id);
   } catch (e) {
     console.error("plan failed:", e);
@@ -371,14 +388,16 @@ async function eachlabs(admin: any) {
 }
 
 // ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
-async function submitVideo(g: any, prompt: string, imageUrl?: string): Promise<{ id: string; model: string }> {
+async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: string[] = []): Promise<{ id: string; model: string }> {
   const isI2v = g.mode === "i2v";
-  const path = isI2v ? "image-to-video" : "text-to-video";
+  const isRef = refUrls.length > 0;
+  const path = isRef ? "reference-to-video" : isI2v ? "image-to-video" : "text-to-video";
   const tryModel = async (model: string, extra: Record<string, unknown>) => {
     const parameters: Record<string, unknown> = {
       prompt, resolution: RESOLUTION[g.quality] ?? "480p", duration: g.duration, generate_audio: true, ...extra,
     };
     if (isI2v) parameters.first_frame = imageUrl; else parameters.aspect_ratio = g.ratio;
+    if (isRef) parameters.reference_items = refUrls.map((url) => ({ type: "image", url }));
     const r = await fetch(`${YOTTA}/api/maas/${path}/generations`, {
       method: "POST",
       headers: { "X-API-KEY": YOTTA_KEY, "Content-Type": "application/json" },
@@ -389,6 +408,8 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string): Promise<{
     if (!r.ok || !id) throw new Error(`submit ${model} failed (${r.status}): ${JSON.stringify(j).slice(0, 300)}`);
     return { id, model };
   };
+  // character photos: only Wan 3.0 keeps the faces; no fallback to a model that would ignore them
+  if (isRef) return await tryModel("wan3.0-r2v", { enhance_prompt: false });
   try {
     return await tryModel(isI2v ? "wan3.0-i2v" : "wan3.0-t2v", { enhance_prompt: false });
   } catch (e) {
@@ -399,7 +420,7 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string): Promise<{
 }
 
 async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"; url?: string; error?: string }> {
-  const path = g.mode === "i2v" ? "image-to-video" : "text-to-video";
+  const path = isR2v(g) ? "reference-to-video" : g.mode === "i2v" ? "image-to-video" : "text-to-video";
   const r = await fetch(`${YOTTA}/api/maas/${path}/generations/${g.provider_request_id}`, {
     headers: { "X-API-KEY": YOTTA_KEY },
   });
@@ -425,7 +446,7 @@ async function startGeneration(admin: any, id: string) {
   try {
     let plan: any = null;
     if (g.plan_id) plan = (await admin.from("plans").select("plan").eq("id", g.plan_id).single()).data?.plan;
-    if (!plan) plan = await planVideo(g.prompt_mm, g.duration);
+    if (!plan) plan = await planVideo(g.prompt_mm, g.duration, refNames(g.refs));
     const en = plan.prompt;
     let imageUrl: string | undefined;
     if (g.mode === "i2v") {
@@ -433,7 +454,13 @@ async function startGeneration(admin: any, id: string) {
       if (se || !s) throw new Error("image not found");
       imageUrl = s.signedUrl;
     }
-    const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl);
+    const refUrls: string[] = [];
+    for (const r of isR2v(g) ? g.refs : []) {
+      const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(r.path, 3600);
+      if (se || !s) throw new Error("character photo not found");
+      refUrls.push(s.signedUrl);
+    }
+    const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl, refUrls);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
       dialogue: plan.lines?.length || (g.sfx && plan.stingers?.length)
@@ -540,7 +567,9 @@ Deno.serve(async (req) => {
     if (!prompt) return json({ error: "empty prompt" }, 400);
     const { count } = await admin.from("plans").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 3600000).toISOString());
     if ((count ?? 0) >= 20) return json({ error: "too many plans, please wait a little" }, 429);
-    const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v" }).select("id").single();
+    const refs = body.mode === "i2v" ? [] : cleanRefs(body.refs, user.id);
+    if (refs === null) return json({ error: "ဇာတ်ကောင်ပုံ ၃ ပုံအထိ၊ ပုံတိုင်းမှာ မတူတဲ့ နာမည် ထည့်ပါ" }, 400);
+    const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v", refs: refs.length ? refs : null }).select("id").single();
     if (error) return json({ error: error.message }, 400);
     const work = runPlan(admin, p.id);
     // @ts-ignore EdgeRuntime is provided by Supabase
@@ -558,12 +587,13 @@ Deno.serve(async (req) => {
   // ---- create ----
   if (body.action === "create") {
     if (!YOTTA_KEY) return json({ error: "AI service is not configured yet" }, 503);
-    let planId: string | null = null;
+    let planId: string | null = null, planRefs: any = null;
     if (body.plan_id) {
-      const { data: p } = await admin.from("plans").select("id,user_id,status,prompt_mm,duration").eq("id", body.plan_id).single();
+      const { data: p } = await admin.from("plans").select("id,user_id,status,prompt_mm,duration,refs").eq("id", body.plan_id).single();
       if (!p || p.user_id !== user.id || p.status !== "ready") return json({ error: "plan not ready" }, 400);
       if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 2000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
-      planId = p.id;
+      if (!sameRefs(p.refs ?? [], cleanRefs(body.refs, user.id) ?? [])) return json({ error: "plan does not match" }, 400);
+      planId = p.id; planRefs = p.refs ?? null;
     }
     const { data: id, error } = await userDb.rpc("create_generation", {
       p_mode: body.mode, p_prompt: String(body.prompt ?? "").slice(0, 2000),
@@ -571,7 +601,7 @@ Deno.serve(async (req) => {
       p_image_path: body.image_path ?? null,
     });
     if (error) return json({ error: error.message }, 400);
-    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true }).eq("id", id);
+    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs }).eq("id", id);
 
     // submit in the background (old clients without a plan_id: plan first, ~1 minute)
     const work = startGeneration(admin, id);

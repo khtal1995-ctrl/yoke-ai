@@ -44,6 +44,11 @@
   .drop{display:block;border:1.5px dashed var(--line);border-radius:12px;padding:18px;text-align:center;cursor:pointer;color:var(--muted)}
   .drop img{max-width:100%;max-height:200px;border-radius:10px;display:block;margin:0 auto}
   .hidden{display:none!important}
+  .cast{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .cast .ph{width:56px;height:56px;flex:none;border:1.5px dashed var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;color:var(--muted);font-size:22px}
+  .cast .ph img{width:100%;height:100%;object-fit:cover}
+  .cast input[type=text]{flex:1}
+  .cast .x{flex:none;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
   .tip{font-size:12.5px;color:var(--muted);background:var(--card2);border-radius:10px;padding:8px 10px;margin-top:8px}
   .status{padding:10px 12px;border-radius:10px;font-size:14px;margin-top:10px}
   .status.pending{background:rgba(245,158,11,.12);color:var(--warn)}
@@ -125,6 +130,12 @@
           </div>
           <label class="lbl">ဘာ video လိုချင်လဲ — ပြောစေချင်တဲ့ စကားပါ ထည့်ရေးလို့ရ</label>
           <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
+          <div id="castBox">
+            <label class="lbl">👤 ဇာတ်ကောင်ပုံ <span class="muted">(မထည့်လည်း ရ — ၃ ယောက်အထိ)</span></label>
+            <div id="castList"></div>
+            <button class="btn ghost" id="castAdd" type="button" style="margin-top:8px">＋ ဇာတ်ကောင်ပုံ ထည့်မည်</button>
+            <div class="tip">📸 ပုံတစ်ပုံမှာ လူတစ်ယောက်တည်း၊ မျက်နှာ ရှေ့တည့်၊ မျက်လုံးပွင့်ပွင့်၊ အလင်းကောင်းတဲ့ပုံ ထည့်ပါ။ နာမည်ကို ဇာတ်လမ်းထဲမှာ ရေးတဲ့အတိုင်း ထည့်ပါ (ဥပမာ မောင်မောင်)။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။</div>
+          </div>
           <div class="tip">💡 စကားပြောတဲ့သူ ၁–၂ ယောက်ထားပြီး တစ်ယောက် တစ်ခွန်းစီ တိုတိုရေးရင် ပိုကောင်းပါတယ်။ အမျိုးသမီး/အမျိုးသား အသံကို AI က ဇာတ်ကောင်ကြည့်ပြီး ရွေးပေးပါတယ်။</div>
 
           <label class="lbl">ကြာချိန်</label>
@@ -329,11 +340,13 @@ function go(p){
 
 /* ================= CREATE ================= */
 const opt = { mode:"t2v", quality:"std", duration:10, ratio:"9:16", sfx:0, imageFile:null };
+const cast = [];   // character photos for the story: [{ file, name, path }] → Image 1..3
 document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
   opt.mode = t.dataset.mode;
   document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x === t));
   $("imageBox").classList.toggle("hidden", opt.mode !== "i2v");
   $("ratioBox").classList.toggle("hidden", opt.mode === "i2v");   // i2v follows the image shape
+  $("castBox").classList.toggle("hidden", opt.mode === "i2v");
 });
 function seg(id, key, num){
   document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
@@ -355,6 +368,35 @@ function preview(input, img, txt, cb){
 }
 preview($("imgInput"), $("imgPrev"), $("imgTxt"), f => opt.imageFile = f);
 
+function renderCast(){
+  $("castList").innerHTML = cast.map((c, i) => `<div class="cast">
+      <label class="ph">${c.file ? `<img src="${c.url}" alt="">` : "📷"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-i="${i}"></label>
+      <input type="text" maxlength="30" placeholder="နာမည် (ဥပမာ မောင်မောင်)" value="${esc(c.name)}" data-n="${i}">
+      <button class="x" type="button" data-x="${i}">✕</button></div>`).join("");
+  $("castAdd").classList.toggle("hidden", cast.length >= 3);
+  document.querySelectorAll("#castList input[type=file]").forEach(inp => inp.onchange = () => {
+    const f = inp.files[0]; if (!f) return;
+    if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
+    const c = cast[inp.dataset.i]; c.file = f; c.url = URL.createObjectURL(f); c.path = null; renderCast();
+  });
+  document.querySelectorAll("#castList input[type=text]").forEach(inp => inp.oninput = () => { cast[inp.dataset.n].name = inp.value; });
+  document.querySelectorAll("#castList [data-x]").forEach(b => b.onclick = () => { cast.splice(Number(b.dataset.x), 1); renderCast(); });
+}
+$("castAdd").onclick = () => { if (cast.length < 3) { cast.push({ file:null, url:null, name:"", path:null }); renderCast(); } };
+// upload the photos once (cached per file) and return [{path, name}] for the API
+async function castRefs(){
+  const used = cast.filter(c => c.file || c.name.trim());
+  for (const c of used) {
+    if (!c.file) throw new Error("ဇာတ်ကောင်ပုံ ထည့်ပါ (သို့) ✕ နှိပ်ပြီး ဖယ်ပါ");
+    if (!c.name.trim()) throw new Error("ဇာတ်ကောင်ပုံတိုင်းမှာ နာမည် ထည့်ပါ");
+  }
+  const names = used.map(c => c.name.trim().replace(/\s+/g, " "));
+  if (new Set(names).size !== names.length) throw new Error("ဇာတ်ကောင် နာမည်တွေ မတူအောင် ထည့်ပါ");
+  for (const c of used) if (!c.path) c.path = await uploadTo("inputs", c.file);
+  return used.map((c, i) => ({ path: c.path, name: names[i] }));
+}
+const refsKey = refs => JSON.stringify(refs || []);
+
 async function uploadTo(bucket, file){
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g,"");
   const path = `${me.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
@@ -371,15 +413,17 @@ $("genBtn").onclick = async () => {
   if (!prompt) return toast("ဘာ video လိုချင်လဲ အရင်ရေးပါ");
   if (opt.mode === "i2v" && !opt.imageFile) return toast("ပုံ အရင်တင်ပါ");
   $("genBtn").disabled = true;
+  let refs = [];
   showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (၁–၂ မိနစ်)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
   try {
-    const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:opt.mode } });
+    if (opt.mode === "t2v") refs = await castRefs();
+    const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:opt.mode, refs } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     const planId = data.plan_id, started = Date.now();
     while (true) {
       await new Promise(r => setTimeout(r, 4000));
       const { data: st } = await sb.functions.invoke("api", { body: { action:"plan_status", plan_id: planId } });
-      if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode }; showPlan(st); break; }
+      if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode, refs }; showPlan(st); break; }
       if (st?.status === "failed" || Date.now() - started > 240000) throw new Error("AI အစီအစဉ် မရေးနိုင်ပါ။ ခဏနေ ပြန်စမ်းပါ။");
       const s = Math.round((Date.now()-started)/1000);
       showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (${s}s)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
@@ -404,8 +448,9 @@ function showPlan(st){
 }
 async function createFromPlan(){
   const prompt = $("prompt").value.trim();
-  if (!currentPlan || currentPlan.prompt !== prompt || currentPlan.duration !== opt.duration || currentPlan.mode !== opt.mode)
-    return toast("စာ (သို့) ကြာချိန် ပြောင်းသွားလို့ အစီအစဉ် အသစ်ပြန်ရေးပါ");
+  const nowRefs = opt.mode === "t2v" ? cast.filter(c => c.file || c.name.trim()).map(c => ({ path: c.path, name: c.name.trim().replace(/\s+/g, " ") })) : [];
+  if (!currentPlan || currentPlan.prompt !== prompt || currentPlan.duration !== opt.duration || currentPlan.mode !== opt.mode || refsKey(currentPlan.refs) !== refsKey(nowRefs))
+    return toast("စာ၊ ကြာချိန် (သို့) ဇာတ်ကောင်ပုံ ပြောင်းသွားလို့ အစီအစဉ် အသစ်ပြန်ရေးပါ");
   if (profile && profile.credits < costOf()) return go("buyPage");
   $("planOk").disabled = true;
   showJob("⏳ စတင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>Video ဖန်တီးမှု စတင်နေပါတယ်</p>`);
@@ -413,7 +458,7 @@ async function createFromPlan(){
     let image_path = null;
     if (opt.mode === "i2v") image_path = await uploadTo("inputs", opt.imageFile);
     const { data, error } = await sb.functions.invoke("api", { body: {
-      action:"create", plan_id: currentPlan.id, mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, sfx: opt.sfx === 1, image_path } });
+      action:"create", plan_id: currentPlan.id, mode:opt.mode, prompt, quality:opt.quality, duration:opt.duration, ratio:opt.ratio, sfx: opt.sfx === 1, image_path, refs: currentPlan.refs } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     currentPlan = null;
     loadProfile();

@@ -1,5 +1,5 @@
 // planner: Burmese story -> checked plan for Wan (prompt, Burmese lines with acting, timeline, Burmese summary)
-// POST {story, duration, effort?}  auth: Bearer service-role key (from api) or x-lab-token (testing)
+// POST {story, duration, effort?, cast?: [names of characters with reference photos, Image 1..N]}  auth: Bearer service-role key (from api) or x-lab-token (testing)
 // returns {plan, issues, ms, passes}
 const YOTTA = "https://gateway.yottalabs.ai";
 const LAB = "vl_7f3k29xq81mz";
@@ -24,6 +24,10 @@ Rules for "prompt":
 - Plan the timeline in seconds. Dialogue and acting are the heart of the video: the first line starts by second 3 at the latest (by second 1 in a 5-second video). Any action before the talking takes at most 3 seconds; if the story has a long action before the talking (a race, a journey), show only its end (e.g. the cars screeching to a stop) and keep the rest for the conversation. Never drop an action the customer asked for (getting out of a car, walking out of a house...): show it, quickly if time is short, and describe it explicitly (e.g. the driver's door opens and he steps out of the car). If the customer asks for talking only, start with the people already in place.
 - Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
 - Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].
+- Look: unless the customer asks for another style, make it look like a cinematic film shot on a real camera: motivated natural lighting that fits the time and place (golden hour, neon night, soft window light...), shallow depth of field with soft background bokeh, a gentle film colour grade and subtle film grain, smooth slow camera moves, and close-ups or over-the-shoulder shots for emotional moments. Say these in the prompt.
+- Relationships: decide how the people are related from the story (couple/lovers, married, friends, family, colleagues, strangers, rivals) and show it in every moment. Lovers sit or stand close, look at each other softly and often, smile shyly or warmly, touch gently (holding hands, a hand on the arm, leaning a head on the shoulder) and speak sweetly; friends are relaxed and teasing; family is warm and respectful; rivals keep distance and glare. Write the relationship and this body language explicitly in the prompt.
+- Lines you write yourself use the words such people really use with each other in Myanmar: lovers call each other မောင်, ချစ်လေး, ကိုကို, မမ and speak softly and sweetly (never the cold မင်း or နင် between lovers unless they are fighting); friends use casual words; younger people address elders politely (အဖွား, ဦးလေး, အန်တီ).
+- Character photos: when the request lists characters with reference photos (Image 1, Image 2, ...), start the prompt with a "[Characters]" paragraph that binds each one exactly like this: "<Name> corresponds to Image <n>: use only Image <n> for <Name>'s face, hairstyle and build; <Name> is a <age> Burmese <man/woman> in <clothes>." Describe clothes that fit the story (or the clothes in the photo if the story says nothing), different for each person. Then add: "Keep the same face, hair and clothes for <Name> and <Name> in every frame." In the rest of the prompt always call these people by their names, never "he", "she", "the man" or "the woman", and give each one a clear position in the frame (left/right, driver/passenger...). Do not add any other people unless the story asks for them. In "lines", set "who" to the character's name.
 Rules for "emotion": choose how each line must sound from the story (a battle cry is "shouting", a cheerful greeting is "happy", ordering food is "polite"). Never make a calm line dramatic.
 Rules for "stingers": one short reaction sound effect, like in TikTok and Myanmar comedy/drama clips, placed ONLY right after the punchline: the single line where the joke lands, the brag or burn hits, the twist is revealed, or the emotional peak breaks. Usually exactly one per video (two only if the story clearly has two separate punchlines); none if there is no clear punchline. Never after set-up lines, greetings, questions, small talk or replies that just lead up to the punchline. The sound must fit the feeling of THAT punchline: heartbreak -> "soft sad violin sting"; sad defeat -> "sad descending trombone wah wah wah"; shocking reveal -> "dramatic shock sting with deep boom"; joke or awkward moment -> "cartoon boing" or "crickets chirping awkward silence"; brag, burn or roast -> "cool whoosh with bass drop" or "comedic record scratch"; tension -> "two tense heartbeat thumps"; romance or cute -> "magical sparkle chime"; good news or success -> "bright success chime ding".
 Rules for "effects": list the important story sounds (gunshots, explosion, door slam, car horn, glass breaking...) with the second they happen, at most 6. In "prompt", make those actions happen at those same seconds.`;
@@ -103,7 +107,7 @@ const syllables = (t: string) => (t.match(/[က-အဣ-ဪဿ၌-၏](?![္်]
 const SYL_PER_SEC = 5; // measured: Su speaks about 5 Burmese syllables per second
 
 // problems we can detect before spending money on the video
-function lint(plan: any, story: string, duration: number): string[] {
+function lint(plan: any, story: string, duration: number, cast?: string[]): string[] {
   const issues: string[] = [];
   const n = plan.lines.length;
   if (!plan.prompt) issues.push("The prompt is empty.");
@@ -128,6 +132,10 @@ function lint(plan: any, story: string, duration: number): string[] {
     if (new Set(plan.lines.map((l: any) => l.who)).size >= 2 && !/\b(each other|facing (him|her|them|the other)|turns? to|looks? at (him|her|the other|his friend|her friend|his|her))/i.test(plan.prompt))
       issues.push("Say clearly that the speakers face each other and who looks at whom while talking.");
   }
+  (cast ?? []).forEach((name: string, i: number) => {
+    if (!new RegExp(`Image\\s*${i + 1}\\b`).test(plan.prompt)) issues.push(`Bind ${name} to Image ${i + 1} in a [Characters] paragraph at the start of the prompt ("${name} corresponds to Image ${i + 1}: use only Image ${i + 1} for ${name}'s face, hairstyle and build; ...").`);
+    else if (!plan.prompt.includes(name)) issues.push(`Call the character from Image ${i + 1} by the name "${name}" throughout the prompt.`);
+  });
   if (!plan.summary_mm) issues.push(`Give "summary_mm": the plan in simple Burmese for the customer.`);
   return issues;
 }
@@ -135,22 +143,23 @@ function lint(plan: any, story: string, duration: number): string[] {
 Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   if (req.headers.get("x-lab-token") !== LAB && auth !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return new Response("no", { status: 401 });
-  const { story, duration = 10, effort = "low" } = await req.json();
+  const { story, duration = 10, effort = "low", cast = [] } = await req.json();
+  const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, 30)).filter(Boolean).slice(0, 3);
   const t0 = Date.now();
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/get_app_secret`, { method: "POST",
     headers: { apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
     body: JSON.stringify({ p_name: "yotta_api_key" }) });
   const key = await r.json();
   try {
-    const messages: any[] = [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\nRequest:\n${story}` }];
+    const messages: any[] = [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\n${names.length ? `Characters with reference photos (use their names exactly as written): ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n\n` : ""}Request:\n${story}` }];
     let raw = await llm(key, messages, effort);
     let plan = normalize(parse(raw), story, duration);
-    let issues = lint(plan, story, duration), passes = 1;
+    let issues = lint(plan, story, duration, names), passes = 1;
     if (issues.length && Date.now() - t0 < 60000) {
       // one repair pass with the exact problems
       messages.push({ role: "assistant", content: raw }, { role: "user", content: "This plan has problems. Fix all of them and return the full corrected JSON only. Keep the customer's quoted words exactly.\n- " + issues.join("\n- ") });
       raw = await llm(key, messages, effort);
-      plan = normalize(parse(raw), story, duration); issues = lint(plan, story, duration); passes = 2;
+      plan = normalize(parse(raw), story, duration); issues = lint(plan, story, duration, names); passes = 2;
     }
     return Response.json({ plan, issues, passes, ms: Date.now() - t0 });
   } catch (e) {
