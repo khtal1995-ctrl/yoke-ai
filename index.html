@@ -135,7 +135,7 @@
             <div id="tplPick" class="hidden">
               <label class="lbl">👤 <span id="tplName"></span> — ကိုယ့်ပုံ ထည့်ပါ</label>
               <div id="tplSlots"></div>
-              <div class="tip">📸 ပုံတစ်ပုံမှာ လူတစ်ယောက်တည်း၊ မျက်နှာ ရှေ့တည့်၊ အလင်းကောင်းတဲ့ပုံ။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။ နာမည်က ဇာတ်လမ်းထဲ ခေါ်မယ့်နာမည်ပါ။</div>
+              <div class="tip" id="tplTip"></div>
             </div>
           </div>
           <div id="imageBox" class="hidden">
@@ -167,6 +167,7 @@
           <div class="tip">💡 စကားပြောတဲ့သူ ၁–၂ ယောက်ထားပြီး တစ်ယောက် တစ်ခွန်းစီ တိုတိုရေးရင် ပိုကောင်းပါတယ်။ အမျိုးသမီး/အမျိုးသား အသံကို AI က ဇာတ်ကောင်ကြည့်ပြီး ရွေးပေးပါတယ်။</div>
           </div>
 
+          <div id="optBox">
           <label class="lbl">ကြာချိန်</label>
           <div class="seg" id="durSeg">
             <button data-v="10" class="on">10 စက္ကန့်</button>
@@ -175,6 +176,7 @@
           <div class="seg" id="sfxSeg">
             <button data-v="0" class="on">မထည့်ဘူး</button>
             <button data-v="1">🎭 ထည့်မယ်</button>
+          </div>
           </div>
           <div id="ratioBox">
             <label class="lbl">အရွယ်အစား</label>
@@ -243,12 +245,31 @@
         <div class="card"><h2>အတည်ပြုရန် ငွေလွှဲများ</h2><div id="adminList"></div></div>
         <div class="card"><h2>🔥 Template များ</h2>
           <select id="taPick"></select>
+          <label class="lbl">အမျိုးအစား</label>
+          <select id="taKind"><option value="story">✍️ ဇာတ်လမ်း template (AI အသစ်ဆွဲ + မြန်မာစကားပြော)</option><option value="video">🎬 Recreate template (video ထဲ လူကို လဲ)</option></select>
           <label class="lbl">Emoji · ခေါင်းစဉ်</label>
           <div style="display:flex;gap:8px"><input type="text" id="taEmoji" maxlength="4" style="width:64px;flex:none"><input type="text" id="taTitle" maxlength="60"></div>
+          <div id="taStoryBox">
           <label class="lbl">ဇာတ်လမ်း — ဇာတ်ကောင်နာမည်နေရာမှာ {1} {2} {3} ရေးပါ</label>
           <textarea id="taStory" maxlength="1500"></textarea>
           <label class="lbl">ဇာတ်ကောင်များ — တစ်ကြောင်းတစ်ယောက်: ခေါ်ပုံ | နာမည် | male/female</label>
           <textarea id="taSlots" style="min-height:70px" placeholder="ကောင်လေး | မောင်မောင် | male&#10;ကောင်မလေး | မမ | female"></textarea>
+          </div>
+          <div id="taVideoBox" class="hidden">
+          <label class="lbl">Template video (TikTok က တိုက်ရိုက် save — screen recording မဟုတ်ရ၊ Kling ဆို ၃–၁၀ စက္ကန့်၊ Genjutsu ဆို ၄–၁၅ စက္ကန့်)</label>
+          <input type="file" id="taVideo" accept="video/mp4,video/quicktime">
+          <div id="taVCur" class="muted" style="font-size:12.5px"></div>
+          <label class="lbl">လဲမယ့် လူများ — တစ်ကြောင်းတစ်ယောက်: customer မြင်ရမယ့်နာမည် | AI အတွက် English (ဘယ်လူလဲ)</label>
+          <textarea id="taVSlots" style="min-height:70px" placeholder="ရှေ့ဆုံးကလူ | the man closest to the camera in the white T-shirt&#10;အလယ်ကလူ | the young man in the middle in the number 77 jersey"></textarea>
+          <label class="lbl">AI · Resolution</label>
+          <div style="display:flex;gap:8px"><select id="taEngine"><option value="genjutsu-light">Genjutsu Light (၈ ယောက်အထိ၊ သက်သာ)</option><option value="kling-o3">Kling O3 (၃ ယောက်အထိ၊ နောက်ခံ ပိုတိကျ)</option><option value="genjutsu">Genjutsu (၈ ယောက်အထိ၊ ဈေးကြီး)</option></select>
+            <select id="taRes" style="width:100px;flex:none"><option>720p</option><option>480p</option></select></div>
+          <div id="taCostHint" class="muted" style="font-size:12.5px;margin-top:4px"></div>
+          <label class="lbl">Customer စျေး (credits — ၁ credit = ၁၀၀ ကျပ်)</label>
+          <input type="text" id="taPrice" inputmode="numeric" placeholder="ဥပမာ 80">
+          <label class="lbl">AI ကို ထပ်ပြောချင်တာ (English, မထည့်လည်း ရ)</label>
+          <textarea id="taExtra" style="min-height:60px" maxlength="1500" placeholder="e.g. Keep the explosions behind him."></textarea>
+          </div>
           <label class="lbl">အရွယ်အစား · အစဉ် (နည်းလေ ရှေ့ရောက်လေ)</label>
           <div style="display:flex;gap:8px"><select id="taRatio"><option>9:16</option><option>16:9</option><option>1:1</option></select><input type="text" id="taSort" inputmode="numeric" style="width:90px;flex:none"></div>
           <label class="lbl">နမူနာ video (customer တွေ မြင်ရမယ် — ကိုယ့်ပုံ/ခွင့်ပြုချက်ရထားသူ ပုံသာ)</label>
@@ -324,6 +345,8 @@ const ERR = [
   [/Invalid login credentials/i, "ဖုန်းနံပါတ် သို့ password မှားနေပါတယ်"],
   [/already registered|already been registered/i, "ဒီဖုန်းနဲ့ အကောင့်ရှိပြီးသားပါ — ဝင်မည် ကို နှိပ်ပါ"],
   [/refunded/i, "AI ဘက်က အမှားဖြစ်လို့ credit ပြန်အမ်းပြီးပါပြီ"],
+  [/photo count/i, "လူတိုင်းအတွက် ပုံထည့်ပါ"],
+  [/template not found/i, "ဒီ template ကို မရတော့ပါ"],
 ];
 const msgOf = e => { const m = e?.message || e?.error || String(e); for (const [r,t] of ERR) if (r.test(m)) return t; return "အမှား: " + m; };
 
@@ -395,7 +418,15 @@ document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
   $("storyBox").classList.toggle("hidden", opt.mode === "tpl");
   $("tplBox").classList.toggle("hidden", opt.mode !== "tpl");
   if (opt.mode === "tpl") loadTemplates();
+  syncTplUi();
 });
+const isRec = () => opt.mode === "tpl" && tpl?.kind === "video";
+// Recreate templates have no duration / sound / size options: the template video decides them
+function syncTplUi(){
+  $("optBox").classList.toggle("hidden", isRec());
+  $("ratioBox").classList.toggle("hidden", opt.mode !== "t2v");
+  updateCost();
+}
 const apiMode = () => opt.mode === "tpl" ? "t2v" : opt.mode;
 
 /* ---------- templates: our own tested stories; the customer adds photos (+ names) ---------- */
@@ -410,18 +441,23 @@ async function loadTemplates(){
   const hot = new Set(templates.filter(t => t.uses_7d > 0).slice(0, 3).map(t => t.id));
   $("tplGrid").innerHTML = templates.length ? templates.map(t => `<div class="tpl ${tpl?.id === t.id ? "on" : ""}" data-tpl="${t.id}">
       ${hot.has(t.id) ? `<span class="hot">🔥 Hot</span>` : ""}
-      ${t.preview_path ? (isVid(t.preview_path)
-        ? `<video class="pv" src="${esc(tplUrl(t.preview_path))}" muted loop autoplay playsinline preload="metadata"></video>`
-        : `<img class="pv" src="${esc(tplUrl(t.preview_path))}" alt="">`) : `<div class="pv">${esc(t.emoji)}</div>`}
-      <div class="t">${esc(t.emoji)} ${esc(t.title)}</div></div>`).join("") : `<p class="muted">Template မရှိသေးပါ</p>`;
+      ${(() => { const pv = t.preview_path || (t.kind === "video" ? t.video_path : null);
+        return pv ? (isVid(pv)
+          ? `<video class="pv" src="${esc(tplUrl(pv))}" muted loop autoplay playsinline preload="metadata"></video>`
+          : `<img class="pv" src="${esc(tplUrl(pv))}" alt="">`) : `<div class="pv">${esc(t.emoji)}</div>`; })()}
+      <div class="t">${esc(t.emoji)} ${esc(t.title)}${t.kind === "video" ? `<br><span class="muted" style="font-size:11.5px">🎬 Recreate · ${t.slots?.length || 1} ယောက် · ${t.price ?? "?"} cr</span>` : ""}</div></div>`).join("") : `<p class="muted">Template မရှိသေးပါ</p>`;
   document.querySelectorAll("[data-tpl]").forEach(d => d.onclick = () => pickTemplate(d.dataset.tpl));
 }
 function pickTemplate(id){
   tpl = templates.find(t => t.id === id); if (!tpl) return;
   currentPlan = null;
-  tplSlots = (tpl.slots || []).map(s => ({ label: s.label, def: s.name, name: "", file: null, url: null, path: null }));
+  tplSlots = (tpl.slots || []).map(s => ({ label: s.label, def: s.name || s.label, name: "", file: null, url: null, path: null }));
   document.querySelectorAll("[data-tpl]").forEach(d => d.classList.toggle("on", d.dataset.tpl === id));
   $("tplName").textContent = `${tpl.emoji} ${tpl.title}`;
+  $("tplTip").textContent = tpl.kind === "video"
+    ? "📸 လူတစ်ယောက်ချင်းအတွက် ခေါင်းကနေ ခြေထိ မြင်ရတဲ့ တစ်ကိုယ်လုံးပုံ ထည့်ပါ — မျက်နှာ ရှေ့တည့်၊ အလင်းကောင်း၊ လူတစ်ယောက်တည်း။ Video ထဲမှာ ပုံထဲကအတိုင်း (မျက်နှာ၊ ဆံပင်၊ အဝတ်အစား) ဖြစ်မယ်။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။"
+    : "📸 ပုံတစ်ပုံမှာ လူတစ်ယောက်တည်း၊ မျက်နှာ ရှေ့တည့်၊ အလင်းကောင်းတဲ့ပုံ။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။ နာမည်က ဇာတ်လမ်းထဲ ခေါ်မယ့်နာမည်ပါ။";
+  syncTplUi();
   $("tplPick").classList.remove("hidden"); renderTplSlots();
   $("tplPick").scrollIntoView({ behavior:"smooth", block:"center" });
 }
@@ -429,7 +465,8 @@ function renderTplSlots(){
   $("tplSlots").innerHTML = tplSlots.map((c, i) => `<div class="cast">
       <label class="ph">${c.file ? `<img src="${c.url}" alt="">` : "📷"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-ti="${i}"></label>
       <div style="flex:1"><div class="muted" style="font-size:12px">${esc(c.label)}</div>
-      <input type="text" maxlength="30" placeholder="နာမည် (မထည့်ရင် ${esc(c.def)})" value="${esc(c.name)}" data-tn="${i}"></div></div>`).join("");
+      ${tpl?.kind === "video" ? `<div style="font-size:13px">${c.file ? "✅ ပုံ ထည့်ပြီး" : "📷 နှိပ်ပြီး တစ်ကိုယ်လုံးပုံ ထည့်ပါ"}</div>`
+        : `<input type="text" maxlength="30" placeholder="နာမည် (မထည့်ရင် ${esc(c.def)})" value="${esc(c.name)}" data-tn="${i}">`}</div></div>`).join("");
   document.querySelectorAll("#tplSlots input[type=file]").forEach(inp => inp.onchange = () => {
     const f = inp.files[0]; if (!f) return;
     if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
@@ -462,9 +499,9 @@ function seg(id, key, num){
 seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true);
 const costOf = () => opt.quality === "std" && opt.duration >= 10 ? 35 : Math.ceil(RATE[opt.quality] * opt.duration); // must match DB gen_cost
 function updateCost(){
-  const c = costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
+  const c = isRec() ? (tpl.price ?? 0) : costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
   const enough = !profile || profile.credits >= c;
-  $("genBtn").textContent = enough ? "✨ အစီအစဉ် ကြည့်မည်" : "⚡ Credit မလောက် — ဝယ်ရန်";
+  $("genBtn").textContent = !enough ? "⚡ Credit မလောက် — ဝယ်ရန်" : isRec() ? "🎬 Recreate လုပ်မည်" : "✨ အစီအစဉ် ကြည့်မည်";
 }
 function preview(input, img, txt, cb){
   input.onchange = () => { const f = input.files[0]; if (!f) return;
@@ -514,6 +551,7 @@ async function uploadTo(bucket, file){
 let currentPlan = null;   // { id, prompt, duration, mode }
 $("genBtn").onclick = async () => {
   if (opt.mode === "tpl" && !tpl) return toast("Template တစ်ခု ရွေးပါ");
+  if (isRec()) return runRecreate();
   const prompt = curPrompt();
   if (profile && profile.credits < costOf()) return go("buyPage");
   if (!prompt) return toast("ဘာ video လိုချင်လဲ အရင်ရေးပါ");
@@ -609,6 +647,8 @@ async function watchJob(id, showOnCreate){
 async function resumeJobs(){
   const { data } = await sb.from("generations").select("id").in("status", ["queued","running"]);
   (data || []).forEach(g => watchJob(g.id, false));
+  const { data: rc } = await sb.from("recreates").select("id").eq("user_id", me.id).eq("status", "running");
+  (rc || []).forEach(r => watchRecreate(r.id, false));
 }
 function videoHtml(url, g){
   if (!url) return `<p class="muted">Video ဖိုင် ပြင်ဆင်နေပါတယ်…</p>`;
@@ -617,11 +657,54 @@ function videoHtml(url, g){
        href="${esc(url)}" download="yoke-${esc(g.id.slice(0,8))}.mp4" target="_blank" rel="noopener">⬇️ Download</a>`;
 }
 
+/* ================= RECREATE (video templates) ================= */
+async function runRecreate(){
+  if (tplSlots.some(c => !c.file)) return toast("လူတိုင်းအတွက် ပုံထည့်ပါ");
+  if (profile && profile.credits < (tpl.price ?? 0)) return go("buyPage");
+  $("genBtn").disabled = true;
+  showJob("⏳ စတင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>ပုံတွေ တင်နေပါတယ်…</p>`);
+  try {
+    for (const c of tplSlots) if (!c.path) c.path = await uploadTo("inputs", c.file);
+    const { data, error } = await sb.functions.invoke("recreate", { body: { action:"create", template_id: tpl.id, face_paths: tplSlots.map(c => c.path) } });
+    if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
+    loadProfile();
+    watchRecreate(data.id, true);
+  } catch (e) {
+    showJob("⚠️ မစတင်နိုင်ပါ", `<div class="status bad">${esc(msgOf(e))}</div>`);
+  } finally { $("genBtn").disabled = false; }
+}
+const watchingRc = new Set();
+async function watchRecreate(id, show){
+  if (watchingRc.has(id)) return; watchingRc.add(id);
+  const started = Date.now();
+  while (true) {
+    const { data } = await sb.functions.invoke("recreate", { body: { action:"status", id } });
+    if (data?.status === "done") {
+      if (show) showJob("✅ ပြီးပါပြီ", videoHtml(data.url, { id }));
+      watchingRc.delete(id); loadProfile(); if (!$("videosPage").classList.contains("hidden")) loadVideos(); return;
+    }
+    if (data?.status === "failed") {
+      if (show) showJob("⚠️ မအောင်မြင်ပါ", `<div class="status bad">AI က video မထုတ်နိုင်ပါ။ ${data.cost ?? ""} credits ပြန်ထည့်ပေးပြီးပါပြီ။ ပုံကို တခြားပုံ ပြောင်းပြီး ထပ်စမ်းကြည့်ပါ။</div>`);
+      watchingRc.delete(id); loadProfile(); return;
+    }
+    if (show) { const m = Math.floor((Date.now() - started) / 60000);
+      showJob("🎬 Recreate လုပ်နေပါတယ်…", `<p class="muted"><span class="spin"></span>ပုံမှန် ၅–၂၀ မိနစ် ကြာပါတယ် (${m} မိနစ်)။ ဒီစာမျက်နှာ ပိတ်ထားလည်း ရပါတယ် — "Video များ" မှာ ပြန်ကြည့်လို့ရမယ်။</p>`); }
+    await new Promise(r => setTimeout(r, 15000));
+  }
+}
+
 /* ================= VIDEOS ================= */
 const ST = { queued:"စောင့်ဆိုင်း", running:"ဖန်တီးနေ", succeeded:"ပြီးပြီ", failed:"မအောင်မြင်" };
+const RST = { running:"running", done:"succeeded", failed:"failed" };
 async function loadVideos(){
-  const { data } = await sb.from("generations").select("*").order("created_at",{ascending:false}).limit(30);
-  if (!data?.length) { $("vlist").innerHTML = `<p class="muted">Video မရှိသေးပါ။</p>`; return; }
+  const [{ data: gens }, { data: rcs }] = await Promise.all([
+    sb.from("generations").select("*").order("created_at",{ascending:false}).limit(30),
+    sb.from("recreates").select("*, templates(title, emoji)").eq("user_id", me.id).order("created_at",{ascending:false}).limit(30)]);
+  // recreates look like generations in the list
+  const data = [...(gens || []), ...(rcs || []).map(r => ({ id: r.id, rc: true, status: RST[r.status], cost: r.cost, created_at: r.created_at,
+    video_path: r.result_path, duration: "🎬", prompt_mm: `Recreate — ${r.templates?.emoji ?? ""} ${r.templates?.title ?? ""}` }))]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 40);
+  if (!data.length) { $("vlist").innerHTML = `<p class="muted">Video မရှိသေးပါ။</p>`; return; }
   const paths = data.filter(g => g.status==="succeeded" && g.video_path).map(g => g.video_path);
   const urls = {};
   if (paths.length) {
@@ -631,12 +714,13 @@ async function loadVideos(){
   $("vlist").innerHTML = data.map(g => `
     <div class="vitem">
       <span class="badge ${g.status}">${ST[g.status]}</span>
-      <span class="muted" style="font-size:12px"> · ${g.duration}s · ${new Date(g.created_at).toLocaleString()}</span>
+      <span class="muted" style="font-size:12px"> · ${g.rc ? "🎬" : g.duration + "s"} · ${new Date(g.created_at).toLocaleString()}</span>
       <div class="p">${esc(g.prompt_mm)}</div>
       ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g) : ""}
       ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
     </div>`).join("");
-  data.filter(g => g.status==="queued"||g.status==="running").forEach(g => watchJob(g.id,false));
+  data.filter(g => !g.rc && (g.status==="queued"||g.status==="running")).forEach(g => watchJob(g.id,false));
+  data.filter(g => g.rc && g.status==="running").forEach(g => watchRecreate(g.id,false));
 }
 
 /* ================= BUY ================= */
@@ -723,15 +807,45 @@ async function loadTplAdmin(){
     `<option value="${t.id}">${esc(t.emoji)} ${esc(t.title)}${t.active ? "" : " (ပိတ်ထား)"} · 7ရက် ${t.uses_7d} · စုစုပေါင်း ${t.uses_all}</option>`).join("");
   fillTplForm("");
 }
+const ENGINE_USD = { "genjutsu-light": { "720p": 0.10, "480p": 0.05 }, "genjutsu": { "720p": 0.3405, "480p": 0.159 }, "kling-o3": { "720p": 0.126, "480p": 0.126 } };
+let taSeconds = null;
+function taSync(){
+  const v = $("taKind").value === "video";
+  $("taStoryBox").classList.toggle("hidden", v); $("taVideoBox").classList.toggle("hidden", !v);
+  const t = taList.find(x => x.id === $("taPick").value);
+  const sec = taSeconds ?? t?.seconds;
+  const usd = ENGINE_USD[$("taEngine").value]?.[$("taRes").value] ?? 0;
+  $("taCostHint").textContent = sec ? `AI ခ ≈ ${fmt(Math.round(Math.ceil(sec) * usd * 4500))} ကျပ် / video (${Math.ceil(sec)} စက္ကန့်)` : "Video ရွေးရင် AI ခ တွက်ပြမယ်";
+}
+["taKind","taEngine","taRes"].forEach(i => $(i).onchange = taSync);
+$("taVideo").onchange = () => {
+  const f = $("taVideo").files[0]; taSeconds = null; if (!f) return taSync();
+  const v = document.createElement("video"); v.preload = "metadata";
+  v.onloadedmetadata = () => { taSeconds = v.duration; URL.revokeObjectURL(v.src); $("taVCur").textContent = `${v.duration.toFixed(1)} စက္ကန့် · ${v.videoWidth}×${v.videoHeight}`; taSync(); };
+  v.src = URL.createObjectURL(f);
+};
 function fillTplForm(id){
   const t = taList.find(x => x.id === id);
+  taSeconds = null; $("taVideo").value = "";
+  $("taKind").value = t?.kind ?? "story"; $("taEngine").value = t?.engine ?? "genjutsu-light"; $("taRes").value = t?.resolution ?? "720p";
+  $("taPrice").value = t?.price ?? ""; $("taExtra").value = t?.prompt_extra ?? "";
+  $("taVSlots").value = t?.kind === "video" ? (t.slots ?? []).map(s => `${s.label} | ${s.who ?? ""}`).join("\n") : "";
+  $("taVCur").innerHTML = t?.video_path ? `လက်ရှိ video: <a href="${esc(tplUrl(t.video_path))}" target="_blank" rel="noopener" style="color:inherit">ကြည့်ရန်</a> · ${t.seconds ?? "?"} စက္ကန့်` : "";
   $("taPick").value = id; $("taEmoji").value = t?.emoji ?? "🎬"; $("taTitle").value = t?.title ?? ""; $("taStory").value = t?.story ?? "";
   $("taSlots").value = (t?.slots ?? []).map(s => `${s.label} | ${s.name} | ${s.gender}`).join("\n");
   $("taRatio").value = t?.ratio ?? "9:16"; $("taSort").value = t?.sort ?? (taList.length + 1) * 10; $("taActive").checked = t ? t.active : true;
-  $("taPreview").value = ""; $("taCur").innerHTML = t?.preview_path ? `လက်ရှိ နမူနာ: <a href="${esc(tplUrl(t.preview_path))}" target="_blank" rel="noopener" style="color:inherit">ကြည့်ရန်</a>` : "နမူနာ မရှိသေး (emoji ပြမယ်)";
+  $("taPreview").value = ""; $("taCur").innerHTML = t?.preview_path ? `လက်ရှိ နမူနာ: <a href="${esc(tplUrl(t.preview_path))}" target="_blank" rel="noopener" style="color:inherit">ကြည့်ရန်</a>` : "နမူနာ မရှိသေး (Recreate ဆို template video ကိုပဲ ပြမယ်)";
+  taSync();
+}
+async function upTpl(f){
+  const ext = (f.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `tpl/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+  const { error } = await sb.storage.from("templates").upload(path, f, { contentType: f.type || "video/mp4" });
+  if (error) throw error; return path;
 }
 $("taPick").onchange = () => fillTplForm($("taPick").value);
 $("taSave").onclick = async () => {
+  if ($("taKind").value === "video") return saveVideoTpl();
   const id = $("taPick").value, story = $("taStory").value.trim(), title = $("taTitle").value.trim();
   const slots = $("taSlots").value.split("\n").map(l => l.split("|").map(x => x.trim())).filter(x => x[0])
     .map(([label, name, gender]) => ({ label, name: name || label, gender: /^f/i.test(gender || "") ? "female" : "male" }));
@@ -741,7 +855,7 @@ $("taSave").onclick = async () => {
   if (miss.length) return toast(`ဇာတ်လမ်းထဲမှာ ${miss.join(" ")} မပါသေးပါ`);
   $("taSave").disabled = true;
   try {
-    const row = { title, emoji: $("taEmoji").value.trim() || "🎬", story, slots, ratio: $("taRatio").value, sort: Number($("taSort").value) || 0, active: $("taActive").checked };
+    const row = { kind: "story", title, emoji: $("taEmoji").value.trim() || "🎬", story, slots, ratio: $("taRatio").value, sort: Number($("taSort").value) || 0, active: $("taActive").checked };
     const f = $("taPreview").files[0];
     if (f) {
       if (f.size > 50*1024*1024) throw new Error("နမူနာ ဖိုင် 50MB ထက် မကြီးရ");
@@ -755,6 +869,30 @@ $("taSave").onclick = async () => {
     toast("သိမ်းပြီးပါပြီ"); templates = []; await loadTplAdmin();
   } catch (e) { toast(msgOf(e)); } finally { $("taSave").disabled = false; }
 };
+async function saveVideoTpl(){
+  const id = $("taPick").value, title = $("taTitle").value.trim(), t = taList.find(x => x.id === id);
+  const slots = $("taVSlots").value.split("\n").map(l => l.split("|").map(x => x.trim())).filter(x => x[0])
+    .map(([label, who]) => ({ label, who: who || label }));
+  const engine = $("taEngine").value, price = Math.round(Number($("taPrice").value));
+  const f = $("taVideo").files[0], sec = taSeconds ?? t?.seconds;
+  if (!title) return toast("ခေါင်းစဉ် ထည့်ပါ");
+  if (!f && !t?.video_path) return toast("Template video ရွေးပါ");
+  if (!slots.length || slots.length > (engine === "kling-o3" ? 3 : 8)) return toast(engine === "kling-o3" ? "Kling က လူ ၁–၃ ယောက်ပဲ ရပါတယ်" : "လူ ၁–၈ ယောက် ထည့်ပါ");
+  if (sec && engine === "kling-o3" && (sec < 3 || sec > 10.05)) return toast("Kling အတွက် video ၃–၁၀ စက္ကန့် ဖြစ်ရပါမယ်");
+  if (sec && engine !== "kling-o3" && (sec < 4 || sec > 15.05)) return toast("Genjutsu အတွက် video ၄–၁၅ စက္ကန့် ဖြစ်ရပါမယ်");
+  if (!(price > 0)) return toast("Customer စျေး (credits) ထည့်ပါ");
+  if (f && f.size > 50*1024*1024) return toast("Video 50MB ထက် မကြီးရ");
+  $("taSave").disabled = true;
+  try {
+    const row = { kind: "video", title, emoji: $("taEmoji").value.trim() || "🎬", story: null, slots, engine, resolution: $("taRes").value, price,
+      prompt_extra: $("taExtra").value.trim() || null, sort: Number($("taSort").value) || 0, active: $("taActive").checked, ratio: $("taRatio").value };
+    if (f) { row.video_path = await upTpl(f); row.seconds = sec ? +sec.toFixed(2) : null; }
+    const pf = $("taPreview").files[0]; if (pf) row.preview_path = await upTpl(pf);
+    const { error } = id ? await sb.from("templates").update(row).eq("id", id) : await sb.from("templates").insert(row);
+    if (error) throw error;
+    toast("သိမ်းပြီးပါပြီ"); templates = []; await loadTplAdmin();
+  } catch (e) { toast(msgOf(e)); } finally { $("taSave").disabled = false; }
+}
 async function review(id, ok){
   const note = ok ? null : "ငွေလွှဲ မတွေ့ပါ / မကိုက်ညီပါ";
   const { error } = await sb.rpc("review_topup", { p_id: id, p_approve: ok, p_note: note });
