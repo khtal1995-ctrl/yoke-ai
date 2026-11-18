@@ -13,7 +13,7 @@
 //   { action: "produce", episode_id } -> { ok }                               pays scene by scene in the background
 //   { action: "resume", episode_id }                                          try failed scenes again
 //   { action: "check_photo", path } -> { ok, problems_mm }                     AI checks a character photo right after upload
-// Every finished scene is checked by AI (preview frames vs. the character photos and the scene); a bad scene is re-made once at our cost.
+// SCENE_QC (off for now): AI checks every finished scene and re-makes a bad one once at our cost.
 // Cron: x-cron-token + { action: "tick" } moves producing/stitching episodes forward.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -26,7 +26,8 @@ const PARALLEL = 3;             // scenes rendering at the same time per episode
 const MAX_ATTEMPTS = 2;         // a failed scene is refunded and tried once more
 const MAX_CHARS = 30;           // characters in one series
 const MAX_CAST = 6;
-const QC_REDOS = 1;             // automatic re-renders after a failed AI check (credits refunded, so the customer pays once)             // named characters in one 10-second scene (the video model takes at most 3 photos)
+const SCENE_QC = false;         // AI check of every finished scene: off (re-making bad scenes for free would cost us; decide later)
+const QC_REDOS = 1;             // when SCENE_QC is on: automatic re-renders after a failed AI check (credits refunded, so the customer pays once)             // named characters in one 10-second scene (the video model takes at most 3 photos)
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -268,7 +269,7 @@ async function advance(admin: any, ep: any) {
       const { data: gens } = gids.length ? await admin.from("generations").select("id,status,error").in("id", gids) : { data: [] };
       for (const g of gens ?? []) {
         const s = scenes.find((x: any) => x.generation_id === g.id);
-        if (g.status === "succeeded") { s.status = "checking"; await admin.from("episode_scenes").update({ status: "checking", qc_id: null }).eq("id", s.id); }
+        if (g.status === "succeeded") { s.status = SCENE_QC ? "checking" : "done"; await admin.from("episode_scenes").update({ status: s.status, qc_id: null }).eq("id", s.id); }
         if (g.status === "failed") { s.status = s.attempts < MAX_ATTEMPTS ? "pending" : "failed"; await admin.from("episode_scenes").update({ status: s.status }).eq("id", s.id); }
       }
       // 1b) AI check of finished scenes (preview frames -> vision); a bad scene is made again once, at our cost
