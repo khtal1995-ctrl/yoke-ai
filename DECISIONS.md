@@ -19,8 +19,8 @@
 - Speech must sound natural and acted, not read: real spoken Burmese, breaths, pauses, laughs (planner `delivery` → ElevenLabs v4 tags).
 
 ## Video quality
-- Fixed tuned quality base on every video (QUALITY_BASE); customer wishes on top.
-- Planner always writes [Characters] [Setting] [Lighting] [Camera] [Action] [Dialogue] [Sound] [Style].
+- 18 Nov evening: the 8-section prompt + fixed quality base made Wan stiff ("doing what it's told"). REVERTED to the 14 Nov style:
+  one natural story paragraph (what worked: tea shop, racing, podcast videos). Change prompt style only one thing at a time, tested.
 - The warm reference look (HOUSE_LOOK) is only an example — kept for a future style option, not forced.
 - Faces must stay the same in every scene.
 - Wan reads Burmese text aloud → no Burmese names outside quotes in the Wan prompt (Character A/B/C = Image 1/2/3).
