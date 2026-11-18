@@ -7,6 +7,16 @@ const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into a plan fo
 Return ONLY one JSON object, no markdown:
 {"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "emotion": "calm|polite|warm|happy|excited|shouting|angry|sad|scared|whisper", "text": "<the exact Burmese line>", "at": <second this line starts>, "gesture": "<the acting while saying it, in English>"}], "speech_start": <second the first line starts>, "summary_mm": "<the plan for the customer in simple Burmese: one short line per moment with its seconds, e.g. ၀-၂ စက္ကန့် — ...; who says what with which gesture>", "ambience": "<English description of the continuous background sound only: no speech, no music>", "stingers": [{"after": <index of the line it follows (0 = first line), or -1 if there are no lines>, "at": <second it plays, used only when there are no lines>, "sound": "<short English description for a sound-effect generator>"}], "effects": [{"text": "<one short English sound effect, e.g. burst of rifle gunfire>", "at": <second it starts>, "dur": <seconds, 0.5-4>}]}
 Rules for "prompt":
+- Structure (the basic craft that EVERY video gets; the customer's request is the content poured into it). Write the prompt as labeled sections in exactly this order, each starting on a new line:
+  [Characters] a fixed visual identity for every person: name or label, age, gender, Burmese (Bamar) look, face shape, skin tone, hairstyle and colour, build and height, exact outfit with colours and materials, accessories, thanaka if any. Write it so the same person could be drawn again identically.
+  [Setting] the place in Myanmar, time of day, weather, key props and where they stand in the frame.
+  [Lighting] the light source(s) and direction (e.g. warm low sun from the left, soft window light from behind), colour temperature, contrast, shadows, haze or practical lights, and the mood it creates.
+  [Camera] a shot list with seconds: for each shot the shot size (wide, medium, medium close-up, close-up, over-the-shoulder), lens (e.g. 24mm, 35mm, 50mm, 85mm), angle (eye level, low, high) and movement (static, slow dolly-in, pan, tracking, handheld). Usually 1 to 3 shots in 10 seconds; cut to close-ups for emotional lines and punchlines.
+  [Action] a second-by-second timeline: who moves where (left/right, toward/away), hand gestures, facial expressions, eye lines, how props are used, how listeners react. Keep positions and objects consistent; nothing appears or vanishes.
+  [Dialogue] every spoken line as required by the dialogue rules below, with its second and acting.
+  [Sound] background sounds and the sound of each action.
+  [Style] the overall look (by default: cinematic film look, shallow depth of field, gentle film grade, subtle grain, smooth camera).
+- The customer's own wishes always win: if they ask for a style, camera move, lighting, time of day, outfit or look, use theirs instead of the defaults above, and keep everything they wrote.
 - Short or vague requests: if the customer wrote only a little (e.g. just who and where), fill in a good, complete little story yourself so the video is rich: a fitting place and time of day, a clear sequence of actions, emotions, how the people are related, and lines only as the dialogue rules below allow. Keep everything the customer did write (names, place, actions, relationship, quoted words) and never contradict it; only add what is missing. Show what you added in "summary_mm" so the customer can check it before paying.
 - Describe the scene, people (Burmese, with age and gender), setting (Myanmar), camera and lighting in clear English. Choose camera distance to suit the story.
 - People look like Burmese (Bamar) people of Myanmar, Southeast Asian features, and wear clothes Myanmar people really wear for the scene (longyi, htamein, eingyi blouse, thanaka; or ordinary modern T-shirts, jeans, uniforms). Never Indian clothing (no sari, kurta, turban, bindi).
@@ -41,7 +51,7 @@ const silentRequested = (mm: string) => /(?:စကားမပြော|စက�
 const toViewerRequested = (mm: string) => /(?:ကြည့်သူ|ပရိသတ်|camera|ကင်မရာ)/iu.test(mm);
 
 async function llm(key: string, messages: any[], effort: string) {
-  const body: any = { model: "grok-4.7", temperature: 0.4, max_tokens: 3000, messages };
+  const body: any = { model: "grok-4.7", temperature: 0.4, max_tokens: 4500, messages };
   if (effort) body.reasoning_effort = effort;
   const r = await fetch(`${YOTTA}/api/maas/chat/completions`, {
     method: "POST", signal: AbortSignal.timeout(110000),
@@ -137,6 +147,8 @@ function lint(plan: any, story: string, duration: number, cast?: string[]): stri
     if (!new RegExp(`Image\\s*${i + 1}\\b`).test(plan.prompt)) issues.push(`Bind ${name} to Image ${i + 1} in a [Characters] paragraph at the start of the prompt ("${name} corresponds to Image ${i + 1}: use only Image ${i + 1} for ${name}'s face, hairstyle and build; ...").`);
     else if (!plan.prompt.includes(name)) issues.push(`Call the character from Image ${i + 1} by the name "${name}" throughout the prompt.`);
   });
+  for (const sec of ["[Characters]", "[Setting]", "[Lighting]", "[Camera]", "[Action]", "[Style]"])
+    if (!plan.prompt.includes(sec)) issues.push(`The prompt must contain the section ${sec} (sections in order: [Characters] [Setting] [Lighting] [Camera] [Action] [Dialogue] [Sound] [Style]).`);
   if (!plan.summary_mm) issues.push(`Give "summary_mm": the plan in simple Burmese for the customer.`);
   return issues;
 }
