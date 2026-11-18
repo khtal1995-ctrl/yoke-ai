@@ -15,7 +15,7 @@
 //   { action: "check_photo", path } -> { ok, problems_mm }                     AI checks a character photo right after upload
 // SCENE_QC (off for now): AI checks every finished scene and re-makes a bad one once at our cost.
 // Cron: x-cron-token + { action: "tick" } moves producing/stitching episodes forward.
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;

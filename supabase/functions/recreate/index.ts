@@ -4,7 +4,7 @@
 // POST {action:"status", id} (user JWT) -> {status, url?, error?}               also moves the job forward
 // POST {action:"tick"} (x-cron-token) -> moves every running job forward (pg_cron, every minute)
 // Engines (Eachlabs): genjutsu-light (default, $0.10/s 720p), genjutsu ($0.34/s 720p), kling-o3 (3 people max, 3-10 s video).
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;

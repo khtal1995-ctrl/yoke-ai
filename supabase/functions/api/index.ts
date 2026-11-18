@@ -8,7 +8,7 @@
 // Vault secrets: yotta_api_key, elevenlabs_api_key (TTS, SFX, speech timing), eachlabs_api_key (audio/video merge)
 // Dialogue videos: Wan 3.0 makes picture + lip movement; its speech is replaced by native Burmese voices
 // placed on Wan's own speaking times, mixed with background sound, then merged (stages: dubbing → merging).
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;

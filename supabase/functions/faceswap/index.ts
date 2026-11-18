@@ -8,7 +8,7 @@
 //    shot in one pass (~$0.04/s). Clip is scaled into Seedance's size range first; the original sound is put back after.
 // POST {action:"create", video_path, face_path, target?, seconds?, engine?, ranges?: [{start,end,swap}]} -> {id}
 // POST {action:"status", id} -> {status, url?, error?, progress?}   (each status call also moves the job forward)
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
