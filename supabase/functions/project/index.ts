@@ -187,6 +187,45 @@ async function groupScenesOn(admin: any) {
 }
 
 // ---------- producing: plan each scene with the planner, pay for it, start it through the api pipeline ----------
+const sameWords = (a: any, b: any) => String(a ?? "").replace(/[\s၊။,.!?…]/g, "") === String(b ?? "").replace(/[\s၊။,.!?…]/g, "");
+// ---- director (OpenAI GPT through the Eachlabs LLM router; OpenAI serves Myanmar) ----
+const DIRECTOR_MODEL = "openai/gpt-6.2-sol";
+const DIRECTOR_SYSTEM = `You are an experienced Myanmar film director and acting coach preparing a short Burmese drama for an AI video model and an AI voice actor.
+Always refer to characters by their exact names as given, in every field (never transliterate or translate a name).
+Read the WHOLE story first: who these people are to each other, what happened before, what each moment means to them.
+Then, for every scene, decide:
+1. continuity: exactly where everyone is, what they hold, how they stand and where props/vehicles are at the START and at the END of the scene (in English). Each scene must start exactly where the previous one ended. Never cut in the middle of an action; end each scene on a stable moment.
+2. for every spoken line:
+   - "text": the customer's words EXACTLY as written (never change, add or remove words).
+   - "spoken": the same words written as a Yangon person actually pronounces them for a Burmese voice engine: English loanwords written in Burmese script as Burmese people say them (baby -> ဘေဘီ, OK -> အိုကေ, sorry -> ဆောရီး), no spaces between Burmese words.
+   - "feeling_mm": in simple Burmese, what this person truly feels inside at this moment and why (the subtext, not the surface).
+   - "voice": 1-3 short English voice-direction tags in square brackets that follow from that feeling, e.g. [soft, sincere, voice slightly shaking]. Truthful and restrained like real people; never over-act. Never laugh, giggle or sound excited on lines of longing, confession, sadness or apology. Never stretch or sing words.
+   - "face": English: the face and body while saying it (small, specific, real: eyes, breath, lips, hands) and how the listener reacts.
+3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
+Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","lines":[{"who":"...","text":"...","spoken":"...","feeling_mm":"...","voice":"...","face":"..."}]}]}`;
+
+async function direct(admin: any, ep: any, b: any, scenes: any[]) {
+  const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
+    b.chars.map((c: any) => `- ${c.name} (${c.gender}, ${c.age}): ${c.look_mm ?? ""}. Personality: ${c.personality_mm ?? ""}`).join("\n") +
+    `\n\nScenes of episode ${ep.num} (about 10 seconds each):\n` + scenes.map((s: any) => `${s.idx}. [${(s.cast_names ?? []).join(", ")}] ${s.story_mm}`).join("\n");
+  const r = await fetch("https://api.eachlabs.ai/v1/chat/completions", { method: "POST", signal: AbortSignal.timeout(100000),
+    headers: { Authorization: `Bearer ${(await admin.rpc("get_app_secret", { p_name: "eachlabs_api_key" })).data}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: DIRECTOR_MODEL, max_tokens: 6000, messages: [{ role: "system", content: DIRECTOR_SYSTEM }, { role: "user", content: user }] }) });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`director ${r.status} ${JSON.stringify(j).slice(0, 200)}`);
+  const txt = String(j.choices?.[0]?.message?.content ?? "");
+  const out = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+  if (!Array.isArray(out.scenes)) throw new Error("director: no scenes");
+  out.usage = j.usage; out.model = DIRECTOR_MODEL;
+  return out;
+}
+function directorNotes(d: any, idx: number): string {
+  const sc = (d?.scenes ?? []).find((x: any) => Number(x.idx) === idx);
+  if (!sc) return "";
+  const lines = (sc.lines ?? []).map((l: any) => `- ${l.who} says "${l.text}": feels ${l.feeling_mm}; voice ${l.voice}; acting: ${l.face}`).join("\n");
+  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\n${lines}`;
+}
+
 async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
   const chars = b.chars.filter((c: any) => s.cast_names.includes(c.name));
   // the video model takes at most 3 photos: the first 3 characters (in the scene's order) with a photo; the rest are drawn from their saved looks
@@ -194,7 +233,7 @@ async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
   const refs = ordered.filter((c: any) => c.photo_path).slice(0, (await groupScenesOn(admin)) ? 9 : 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
   const story = `[Series context, keep it consistent; do not show it as text]\n${bibleText(b, ep.num)}\n\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
-    `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.`;
+    `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.` + directorNotes(ep.director, s.idx);
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
@@ -204,6 +243,13 @@ async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
   if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
   const voices: Record<string, string> = {};
   for (const c of b.chars) if (c.voice_id) voices[c.name] = c.voice_id;
+  const dl = ((ep.director?.scenes ?? []).find((x: any) => Number(x.idx) === s.idx)?.lines ?? []) as any[];
+  for (const l of j.plan.lines ?? []) {
+    const m = dl.find((x) => x.who === l.who && sameWords(x.text, l.text)) ?? dl.find((x) => sameWords(x.text, l.text));
+    if (!m) continue;
+    if (/^\s*\[/.test(String(m.voice ?? ""))) l.delivery = String(m.voice).match(/\[[^\]\[]{1,60}\]/g)!.filter((t) => !/[\u1000-\u109F]/.test(t)).slice(0, 3).join(" ");
+    if (m.spoken) l.spoken = String(m.spoken);
+  }
   const { data: plan, error: pe } = await admin.from("plans").insert({ user_id: ep.user_id, prompt_mm: s.story_mm, duration: 10, mode: "t2v",
     status: "ready", plan: { ...j.plan, voices }, issues: j.issues ?? [], refs: refs.length ? refs : null }).select("id").single();
   if (pe) throw pe;
@@ -278,6 +324,14 @@ async function advance(admin: any, ep: any) {
       }
       // 2) start the next scenes (one or two per minute; the planner takes ~30-60 s)
       const b = await loadBible(admin, ep.project_id);
+      // 1c) director: once per episode, before the first scene, a strong model reads the whole episode and decides
+      //     each line's feeling, voice and acting, and where everyone/everything is at each scene's start and end
+      if (!ep.director && scenes.some((x: any) => x.status === "pending")) {
+        let d: any;
+        try { d = await direct(admin, ep, b, scenes); } catch (e) { console.error("director", ep.id, e); d = { failed: String((e as any)?.message ?? e).slice(0, 300) }; }
+        ep.director = d; await admin.from("episodes").update({ director: d }).eq("id", ep.id);
+        return; // scenes start on the next tick
+      }
       let running = scenes.filter((s: any) => s.status === "running" || s.status === "checking").length;
       const t0 = Date.now();
       for (const s of scenes.filter((x: any) => x.status === "pending")) {

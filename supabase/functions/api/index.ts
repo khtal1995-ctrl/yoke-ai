@@ -315,9 +315,9 @@ async function voiceLine(key: string, l0: any, voice: string): Promise<Int16Arra
   // check the words came out right; one more try if not, keep the clearer take
   let best: Int16Array | null = null, bestScore = -1;
   for (let t = 0; t < 2; t++) {
-    const out = trim(await tts(key, voice, l.text, l.emotion, voice === YOKE_MALE_1 ? 0.1 : 0, String(l.delivery ?? "")));
+    const out = trim(await tts(key, voice, String(l.spoken || l.text), l.emotion, voice === YOKE_MALE_1 ? 0.1 : 0, String(l.delivery ?? "")));
     if (voice === SU) return levelVoice(out, l.emotion); // Su is a library voice: always clear
-    const score = similar(await heard(key, out), l.text);
+    const score = similar(await heard(key, out), String(l.spoken || l.text));
     if (score > bestScore) { best = out; bestScore = score; }
     if (score >= 0.8) break;
   }
