@@ -467,6 +467,9 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
 // The scene's own [Lighting]/[Camera] say what this shot is; this base makes every shot well exposed, sharp and stable.
 const QUALITY_BASE = "\nQuality (always): premium cinematic image as if shot on a professional cinema camera with prime lenses. Correct exposure: no blown-out highlights, no crushed blacks, rich detail in shadows. Faces are always well lit and clearly readable: soft key light at about 45 degrees, gentle fill on the shadow side, subtle rim light separating people from the background, catchlights in the eyes; even night and indoor scenes keep faces visible with motivated practical light. Natural, accurate Southeast Asian skin tones, neutral white balance, no colour cast. Pin-sharp focus on the speaking face, smooth shallow depth of field. Stable, smooth camera motion with no jitter, no shaking and no sudden zooms; natural 24 fps motion blur. Clean, high-detail image: no flicker, no warping, no morphing, no extra fingers or limbs, natural anatomy and hands, eyes and teeth rendered cleanly, faces and clothes stay identical from the first to the last frame.";
 
+// our signature look (from the owner's reference video): added to every video unless the customer asked for another style
+const HOUSE_LOOK = "\nSignature look: warm golden cinematic palette, amber and honey tones, creamy highlights, rich deep-brown shadows, gentle film contrast, never flat or grey. Interiors: low-key, moody light from warm practical lamps and windows visible in the background (2800-3200K tungsten glow), soft flattering light on faces, darker room edges, subtle haze with tiny floating dust particles catching the light, steam rising from hot drinks where it fits. Exteriors: golden-hour backlight with a soft sun flare through trees, warm atmospheric haze, lush colourful plants and flowers in the foreground, deep layered depth. Camera language: eye level, rule-of-thirds framing; conversations as shot/reverse-shot over the shoulder with the near shoulder dark and softly out of focus; medium close-ups on 50mm and emotional close-ups on 85mm; wide 24-35mm establishing shots with leading lines and a slow push-in or tracking move; very shallow depth of field with creamy bokeh; layered foreground, midground and background.";
+
 // always appended: keeps people, clothes and signs Burmese (video models otherwise drift to South Asian looks)
 const MYANMAR_LOOK = "\nStyle: authentic Myanmar. All people are Burmese (Bamar) Southeast Asian people in everyday Myanmar clothing (longyi, htamein, eingyi, thanaka, or plain modern clothes). No readable text anywhere: shop signs, banners and posters are small, far in the background or softly out of focus, shown as colours and shapes, never as close-up legible lettering. No English, Chinese, Thai, Hindi or Devanagari writing. No Indian clothing, no saris.";
 
@@ -490,7 +493,7 @@ async function startGeneration(admin: any, id: string) {
       if (se || !s) throw new Error("character photo not found");
       refUrls.push(s.signedUrl);
     }
-    const sub = await submitVideo(g, en + QUALITY_BASE + MYANMAR_LOOK, imageUrl, refUrls);
+    const sub = await submitVideo(g, en + (plan.custom_look ? "" : HOUSE_LOOK) + QUALITY_BASE + MYANMAR_LOOK, imageUrl, refUrls);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
       dialogue: plan.lines?.length || (g.sfx && plan.stingers?.length)
