@@ -137,7 +137,7 @@ function lint(plan: any, story: string, duration: number, cast?: string[]): stri
     });
     // "toward the camera" counts, "never at the camera" does not
     const camera = [...plan.prompt.matchAll(/\b(toward|towards|into|at|facing|face|faces|to)\s+(the\s+)?(camera|lens|viewer|audience)\b/gi)]
-      .some((m) => !/\b(never|not|no|without|away from|n't)\b[^.;]{0,25}$/i.test(plan.prompt.slice(Math.max(0, m.index! - 40), m.index)));
+      .some((m) => !/\b(never|not|no|without|away from|n't|neither|nor|nobody|no one|none|avoid|avoids)\b[^.;]{0,25}$/i.test(plan.prompt.slice(Math.max(0, m.index! - 40), m.index)));
     if (!toViewerRequested(story) && camera)
       issues.push("Someone faces or speaks toward the camera. People who talk to each other must face each other and look at the person they speak to; film them from the side (two-shot or over the shoulder). Remove every 'toward/at/into the camera'.");
     if (new Set(plan.lines.map((l: any) => l.who)).size >= 2 && !/\b(each other|facing (him|her|them|the other)|turns? to|looks? at (him|her|the other|his friend|her friend|his|her))/i.test(plan.prompt))
