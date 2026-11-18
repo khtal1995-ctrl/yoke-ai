@@ -320,13 +320,23 @@ async function voiceLine(key: string, l0: any, voice: string): Promise<Int16Arra
   // check the words came out right; one more try if not, keep the clearer take
   let best: Int16Array | null = null, bestScore = -1;
   for (let t = 0; t < 2; t++) {
-    const out = trim(await tts(key, voice, String(l.spoken || l.text), l.emotion, voice === YOKE_MALE_1 ? 0.1 : 0, String(l.delivery ?? "")));
+    const out = trim(await tts(key, voice, sayable(String(l.spoken || l.text)), l.emotion, voice === YOKE_MALE_1 ? 0.1 : 0, String(l.delivery ?? "")));
     if (voice === SU) return levelVoice(out, l.emotion); // Su is a library voice: always clear
-    const score = similar(await heard(key, out), String(l.spoken || l.text));
+    const score = similar(await heard(key, out), sayable(String(l.spoken || l.text)));
     if (score > bestScore) { best = out; bestScore = score; }
     if (score >= 0.8) break;
   }
   return levelVoice(best!, l.emotion);
+}
+// English words inside a Burmese line are read with English stress and stretched ("baaabyyy"); say them the Yangon way.
+// The planner/director give "spoken"; this is the safety net for anything left in Latin letters.
+const LOANS: Record<string, string> = { baby: "ဘေဘီ", babe: "ဘိတ်", sorry: "ဆောရီး", ok: "အိုကေ", okay: "အိုကေ", bye: "ဘိုင်", "bye bye": "ဘိုင်ဘိုင်",
+  "thank you": "သန့်ကျူး", thanks: "သန့်ကျူး", hello: "ဟယ်လို", hi: "ဟိုင်း", please: "ပလိစ်", love: "လပ်ဗ်", "i love you": "အိုင်လပ်ဗ်ယူ", phone: "ဖုန်း",
+  car: "ကား", wow: "ဝါး", yes: "ယက်စ်", no: "နို", boss: "ဘော့စ်", bro: "ဘရို", sis: "ဆစ်စ်", honey: "ဟန်နီ", darling: "ဒါလင်", party: "ပါတီ", birthday: "ဘတ်ဒေး" };
+function sayable(text: string): string {
+  let t = String(text);
+  for (const k of Object.keys(LOANS).sort((a, b) => b.length - a.length)) t = t.replace(new RegExp(`(^|[^A-Za-z])${k}(?=$|[^A-Za-z])`, "gi"), (_, pre) => pre + LOANS[k]);
+  return t;
 }
 async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8Array> {
   const { data: key } = await admin.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
