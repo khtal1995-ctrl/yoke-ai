@@ -320,7 +320,12 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     if (med > 0 && energy[i] > 0 && known.length >= 2) { const r = energy[i] / med; emotion = shiftEmotion(emotion, r < 0.65 ? -1 : r > 1.5 ? 1 : 0); }
     const who = String(l.who ?? "man").toLowerCase();
     const fixed = g.dialogue?.voices?.[String(l.who ?? "")]; // series characters keep one voice in every episode
-    if (!cast.has(who) && fixed) { cast.set(who, fixed); pitch.set(who, 1); }
+    if (!cast.has(who) && fixed) { // "voiceId" or "voiceId@pitch" (series characters that share a voice)
+      const [vid, pp] = String(fixed).split("@"); let pv = Number(pp) || 1;
+      const same = [...cast.keys()].filter((k) => cast.get(k) === vid && pitch.get(k) === pv).length;
+      if (same) pv = PITCH_VARIANTS.find((x) => ![...cast.keys()].some((k) => cast.get(k) === vid && pitch.get(k) === x)) ?? pv;
+      cast.set(who, vid); pitch.set(who, pv);
+    }
     if (!cast.has(who)) {
       const opts = voiceChoices(l, who); const taken = [...cast.values()];
       const v = opts.find((o) => !taken.includes(o)) ?? opts[0];

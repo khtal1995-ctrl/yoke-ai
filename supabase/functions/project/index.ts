@@ -22,6 +22,8 @@ const YOTTA = "https://gateway.yottalabs.ai";
 const MAX_SCENES = 30;          // one episode: at most 5 minutes (30 x 10 s)
 const PARALLEL = 3;             // scenes rendering at the same time per episode
 const MAX_ATTEMPTS = 2;         // a failed scene is refunded and tried once more
+const MAX_CHARS = 30;           // characters in one series
+const MAX_CAST = 6;             // named characters in one 10-second scene (the video model takes at most 3 photos)
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -46,7 +48,12 @@ function pickVoice(c: any, taken: string[]): string {
   const f = c.gender === "female";
   const opts = c.age === "child" ? [V.CHILD] : c.age === "old" ? (f ? [V.SU, V.MAIN_FEMALE] : [V.OLD_MAN, V.MALE_1])
     : c.age === "middle" ? (f ? [V.SU, V.MAIN_FEMALE] : [V.MALE_1, V.OLD_MAN]) : (f ? [V.MAIN_FEMALE, V.SU] : [V.MAIN_MALE, V.MALE_1]);
-  return opts.find((o) => !taken.includes(o)) ?? opts[0];
+  const base = (v: string) => v.split("@")[0];
+  const free = opts.find((o) => !taken.some((t) => base(t) === o));
+  if (free) return free;
+  // more characters than voices: the same voice with a different pitch ("id@0.9"), fixed for the whole series
+  const n = taken.filter((t) => base(t) === opts[0]).length;
+  return n >= 3 ? opts[0] : `${opts[0]}@${[1, 0.9, 1.08][n]}`;
 }
 
 // ---------- LLM (grok via Yotta, same as the planner) ----------
@@ -101,9 +108,9 @@ async function draftBible(admin: any, id: string) {
     const out = await llmJson(admin, `You plan a Burmese short-drama series from a customer's idea. ${BURMESE_STYLE}
 Return ONLY JSON: {"premise_mm": "<what the series is about, 2-4 sentences>", "setting_mm": "<main places and time, 1-3 sentences>",
 "characters": [{"name": "<Burmese name>", "gender": "male|female", "age": "child|young|middle|old", "look_mm": "<face, hair, usual clothes, 1 sentence>", "personality_mm": "<character and relationships to the others, 1-2 sentences>"}]}
-Rules: keep every name, place and fact the customer wrote; only add what is missing. 2 to 6 main characters. Realistic Myanmar names, clothes and places.`,
+Rules: keep every name, place and fact the customer wrote; only add what is missing. All the main and supporting characters the idea needs (usually 2 to 12). Realistic Myanmar names, clothes and places.`,
       `Series title: ${p.title}\nIdea: ${p.idea_mm}`);
-    const chars = (Array.isArray(out?.characters) ? out.characters : []).slice(0, 6);
+    const chars = (Array.isArray(out?.characters) ? out.characters : []).slice(0, MAX_CHARS);
     const taken: string[] = [];
     const rows = chars.filter((c: any) => clip(c?.name, 30)).map((c: any, i: number) => {
       const row = { project_id: id, name: clip(c.name, 30), gender: c.gender === "female" ? "female" : "male",
@@ -128,7 +135,7 @@ async function planEpisode(admin: any, epId: string) {
     const out = await llmJson(admin, `You split one episode of a Burmese short-drama series into scenes for an AI video model that makes 10-second clips with native Burmese speech. ${BURMESE_STYLE}
 Return ONLY JSON: {"title_mm": "<short episode title>", "scenes": [{"story_mm": "<this 10-second scene in Burmese: where, who, what they do, the exact Burmese lines in quotes, their emotion>", "cast": ["<character names in this scene>"]}], "warnings_mm": ["<a problem with the story so far, in Burmese>"]}
 Rules:
-- One scene = one moment of about 10 seconds: one place, at most 3 characters, at most 2 short lines of dialogue (about 12 Burmese words in total). Long conversations go over several scenes.
+- One scene = one moment of about 10 seconds: one place, at most 6 named characters (crowds are fine as background), at most 2 short lines of dialogue (about 12 Burmese words in total). Long conversations go over several scenes.
 - Use the characters' names exactly. Keep their looks, personalities and relationships from the Story Bible. Continue from where the story is now.
 - Every scene must make sense on its own: say the place and the characters again in each scene (the video model sees one scene at a time).
 - Dialogue is the heart: punchlines, brags, twists and emotional lines are spoken by the characters themselves.
@@ -143,7 +150,7 @@ Rules:
     await admin.from("episode_scenes").delete().eq("episode_id", epId).eq("status", "pending");
     await admin.from("episode_scenes").insert(scenes.map((s: any, i: number) => ({
       episode_id: epId, idx: i, story_mm: clip(s.story_mm, 900),
-      cast_names: (Array.isArray(s.cast) ? s.cast : []).map((n: any) => clip(n, 30)).filter((n: string) => names.includes(n)).slice(0, 3),
+      cast_names: (Array.isArray(s.cast) ? s.cast : []).map((n: any) => clip(n, 30)).filter((n: string) => names.includes(n)).slice(0, MAX_CAST),
     })));
     const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
     const per = pr.quality === "hd" ? 50 : 35;
@@ -157,7 +164,9 @@ Rules:
 // ---------- producing: plan each scene with the planner, pay for it, start it through the api pipeline ----------
 async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
   const chars = b.chars.filter((c: any) => s.cast_names.includes(c.name));
-  const refs = chars.filter((c: any) => c.photo_path).slice(0, 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
+  // the video model takes at most 3 photos: the first 3 characters (in the scene's order) with a photo; the rest are drawn from their saved looks
+  const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
+  const refs = ordered.filter((c: any) => c.photo_path).slice(0, 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
   const story = `[Series context, keep it consistent; do not show it as text]\n${bibleText(b, ep.num)}\n\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
     `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.`;
@@ -350,7 +359,7 @@ Deno.serve(async (req) => {
       if ("title" in body && clip(body.title, 80)) upd.title = clip(body.title, 80);
       await admin.from("projects").update(upd).eq("id", p.id);
       if (Array.isArray(body.characters)) {
-        if (body.characters.length > 8) return json({ error: "ဇာတ်ကောင် ၈ ယောက်အထိ" }, 400);
+        if (body.characters.length > MAX_CHARS) return json({ error: "ဇာတ်ကောင် ၃၀ ယောက်အထိ" }, 400);
         const { data: old } = await admin.from("project_characters").select("*").eq("project_id", p.id);
         const keep: string[] = []; const taken = (old ?? []).map((c: any) => c.voice_id);
         for (const [i, c] of body.characters.entries()) {
@@ -410,7 +419,7 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       if ("summary_mm" in body && ep.status === "done") await admin.from("episodes").update({ summary_mm: clip(body.summary_mm, 1200) }).eq("id", ep.id);
       if (Array.isArray(body.scenes)) {
         if (ep.status !== "ready") return json({ error: "can't edit now" }, 400);
-        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 900), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, 3) })).filter((s: any) => s.story_mm);
+        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 900), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, MAX_CAST) })).filter((s: any) => s.story_mm);
         if (!list.length || list.length > MAX_SCENES) return json({ error: `scene ၁ ခုမှ ${MAX_SCENES} ခုအထိ` }, 400);
         await admin.from("episode_scenes").delete().eq("episode_id", ep.id);
         await admin.from("episode_scenes").insert(list.map((s: any, i: number) => ({ episode_id: ep.id, idx: i, ...s })));

@@ -782,9 +782,9 @@ function srRender(){
     <label class="lbl">ဇာတ်လမ်းအကြောင်း</label><textarea id="srPremise" maxlength="1500">${esc(p.premise_mm)}</textarea>
     <label class="lbl">နေရာ / ခေတ်</label><textarea id="srSetting" maxlength="1500" style="min-height:70px">${esc(p.setting_mm)}</textarea>
     ${done.length ? `<label class="lbl">အခုလက်ရှိ အခြေအနေ (နောက်ဆုံးအပိုင်းအပြီး)</label><textarea id="srState" maxlength="1500" style="min-height:80px">${esc(p.state_mm)}</textarea>` : ""}
-    <label class="lbl">👥 ဇာတ်ကောင်များ — ပုံထည့်ရင် အပိုင်းတိုင်း ရုပ်မပြောင်းပါ</label>
+    <label class="lbl">👥 ဇာတ်ကောင်များ (၃၀ ယောက်အထိ) — ပုံထည့်ရင် အပိုင်းတိုင်း ရုပ်မပြောင်းပါ</label>
     <div id="srChars">${chars.map((c, i) => srCharHtml(c, i)).join("")}</div>
-    <button class="btn ghost sm" id="srAddChar" ${chars.length >= 8 ? "disabled" : ""}>＋ ဇာတ်ကောင်</button>
+    <button class="btn ghost sm" id="srAddChar" ${chars.length >= 30 ? "disabled" : ""}>＋ ဇာတ်ကောင်</button>
     <div style="height:10px"></div><button class="btn" id="srSaveBible">💾 မှတ်တမ်း သိမ်းမည်</button></details></div>`;
 
   // episodes so far
@@ -850,7 +850,7 @@ function srCharHtml(c, i){
 function srSceneHtml(s, i, chars){
   return `<div class="vitem"><b>Scene ${i + 1}</b>
     <textarea data-scene="${i}" maxlength="900" style="min-height:80px;margin-top:6px">${esc(s.story_mm)}</textarea>
-    <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၃ ယောက်အထိ):
+    <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၆ ယောက်အထိ — ပုံပါတဲ့ ရှေ့ဆုံး ၃ ယောက်ကို ပုံအတိုင်း၊ ကျန်တာ ရုပ်ရည်စာအတိုင်း ဆွဲပါတယ်):
       ${chars.map(c => `<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" data-scast="${i}" value="${esc(c.name)}" ${s.cast_names?.includes(c.name) ? "checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
     <button class="btn ghost sm" data-sdel="${i}" style="margin-top:6px">🗑️ ဖယ်</button></div>`;
 }
@@ -860,7 +860,7 @@ function srReadChars(){ return sr.characters.map((c, i) => ({ ...c,
   age: $q(`[data-cage="${i}"]`)?.value ?? c.age, look_mm: $q(`[data-clook="${i}"]`)?.value ?? c.look_mm,
   personality_mm: $q(`[data-cpers="${i}"]`)?.value ?? c.personality_mm })); }
 function srReadScenes(){ return sr.scenes.map((s, i) => ({ story_mm: $q(`[data-scene="${i}"]`)?.value ?? s.story_mm,
-  cast_names: [...document.querySelectorAll(`[data-scast="${i}"]:checked`)].map(x => x.value).slice(0, 3) })); }
+  cast_names: [...document.querySelectorAll(`[data-scast="${i}"]:checked`)].map(x => x.value).slice(0, 6) })); }
 const $q = sel => document.querySelector(sel);
 
 function srBind(){
@@ -911,7 +911,7 @@ function srBind(){
   // review scenes, then pay and produce
   const open = sr.episodes.find(e => e.id === sr.scenes_episode);
   document.querySelectorAll("[data-scast]").forEach(cb => cb.onchange = () => {
-    if (document.querySelectorAll(`[data-scast="${cb.dataset.scast}"]:checked`).length > 3) { cb.checked = false; toast("Scene တစ်ခုမှာ ဇာတ်ကောင် ၃ ယောက်အထိ"); } });
+    if (document.querySelectorAll(`[data-scast="${cb.dataset.scast}"]:checked`).length > 6) { cb.checked = false; toast("Scene တစ်ခုမှာ ဇာတ်ကောင် ၆ ယောက်အထိ"); } });
   document.querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => { sr.scenes = srReadScenes(); sr.scenes.splice(Number(b.dataset.sdel), 1); srRender(); });
   if ($("srAddScene")) $("srAddScene").onclick = () => { sr.scenes = srReadScenes(); sr.scenes.push({ story_mm:"", cast_names:[] }); srRender(); };
   const saveScenes = async () => {
