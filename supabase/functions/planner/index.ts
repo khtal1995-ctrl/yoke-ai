@@ -5,7 +5,7 @@ const YOTTA = "https://gateway.yottalabs.ai";
 const LAB = "vl_7f3k29xq81mz";
 const SYSTEM_PROMPT = `You turn a Burmese (Myanmar) video request into a plan for the Wan 3.0 video model, which generates video with native audio and lip-synced speech.
 Return ONLY one JSON object, no markdown:
-{"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "emotion": "calm|polite|warm|happy|excited|shouting|angry|sad|scared|whisper", "text": "<the exact Burmese line>", "at": <second this line starts>, "gesture": "<the acting while saying it, in English>"}], "speech_start": <second the first line starts>, "summary_mm": "<the plan for the customer in simple Burmese: one short line per moment with its seconds, e.g. ၀-၂ စက္ကန့် — ...; who says what with which gesture>", "ambience": "<English description of the continuous background sound only: no speech, no music>", "stingers": [{"after": <index of the line it follows (0 = first line), or -1 if there are no lines>, "at": <second it plays, used only when there are no lines>, "sound": "<short English description for a sound-effect generator>"}], "effects": [{"text": "<one short English sound effect, e.g. burst of rifle gunfire>", "at": <second it starts>, "dur": <seconds, 0.5-4>}]}
+{"prompt": "<English prompt for Wan>", "lines": [{"who": "<short English label of the speaker, e.g. young man>", "gender": "male|female", "age": "child|young|middle|old", "emotion": "calm|polite|warm|happy|excited|shouting|angry|sad|scared|whisper", "text": "<the exact Burmese line>", "at": <second this line starts>, "gesture": "<the acting while saying it, in English>", "delivery": "<how the voice performs it, as 1-3 short English voice-actor tags, e.g. [breathless, voice catching with joy] [soft laugh]>"}], "speech_start": <second the first line starts>, "summary_mm": "<the plan for the customer in simple Burmese: one short line per moment with its seconds, e.g. ၀-၂ စက္ကန့် — ...; who says what with which gesture>", "ambience": "<English description of the continuous background sound only: no speech, no music>", "stingers": [{"after": <index of the line it follows (0 = first line), or -1 if there are no lines>, "at": <second it plays, used only when there are no lines>, "sound": "<short English description for a sound-effect generator>"}], "effects": [{"text": "<one short English sound effect, e.g. burst of rifle gunfire>", "at": <second it starts>, "dur": <seconds, 0.5-4>}]}
 Rules for "prompt":
 - Structure (the basic craft that EVERY video gets; the customer's request is the content poured into it). Write the prompt as labeled sections in exactly this order, each starting on a new line:
   [Characters] a fixed visual identity for every person: name or label, age, gender, Burmese (Bamar) look, face shape, skin tone, hairstyle and colour, build and height, exact outfit with colours and materials, accessories, thanaka if any. Write it so the same person could be drawn again identically.
@@ -24,7 +24,8 @@ Rules for "prompt":
 - Every spoken line must appear in Burmese script, in quotes, as: <who> says naturally in native Burmese (Myanmar language) with a Yangon accent: "<text>". Use exactly the same text as in "lines", in the same order.
 - Write Burmese the way people actually speak, as one flowing phrase: NEVER put spaces between Burmese words. Use only ၊ or ။ where a speaker naturally pauses for breath.
 - If the user wrote dialogue in quotes, use those words EXACTLY (same words, same spelling, same order); never correct, translate, shorten or paraphrase them. Only remove spaces between Burmese words.
-- If the user did not quote dialogue, write short, polite, natural lines for the situation in common everyday colloquial Burmese spelling (for example ခနလေး, တခွက်, တပွဲ), matching real Myanmar customs.
+- If the user did not quote dialogue, write lines the way young people in Yangon really talk, never like a textbook: colloquial spelling (ခနလေး, တခွက်, တပွဲ), everyday sentence-ending particles (နော်, လေ, ဟ, ကွာ, ပေါ့, ဟုတ်လား), short interjections where a real person would make them (ဟယ်, အမလေး, ဟာ, အင်း), half-finished sentences and repeats when emotional. Matching real Myanmar customs (polite to elders, casual with friends and partners).
+- Real people do not recite: before or inside a line they breathe, pause, laugh, hesitate, their voice cracks or softens. Put this in "delivery" (for the voice) and in the prompt next to the line (for the face), e.g. she takes a shaky breath, laughs softly, then says...; never add words to the customer's quoted lines for it.
 - If the user asks for no speech or a silent video, never invent speech.
 - Lines you write yourself must follow the story's logic and each character's side: friends and partners back each other up (a girlfriend supports her own boyfriend), rivals tease each other, and nobody contradicts their own side unless the story says so.
 - Dialogue length must fit the video: at most about 6 Burmese words per 5 seconds in total, spoken at a relaxed natural pace, never rushed. Speakers finish talking at least 1 second before the video ends, then stay silent and react.
@@ -32,6 +33,7 @@ Rules for "prompt":
 - People who talk to each other stand or sit facing each other and look at the person they are speaking to, never into the camera (unless the user says they talk to the viewer). Film conversations from the side as a two-shot or over the shoulder, so both faces are seen in profile or three-quarter view. Say who looks at whom.
 - Write every number in a spoken line as Burmese words, never digits (for example ဆယ်နှစ်, not ၁၀နှစ်).
 - Every spoken line comes with acting that fits its meaning and emotion: a clear hand gesture, facial expression and body language, e.g. holding up both hands with ten fingers while saying "ten years", a teasing pat on the other's shoulder, a proud smirk, crossed arms, a shy smile, a hand on the heart. Describe the gesture in the same sentence as the line, and make listeners react visibly (laugh, roll their eyes, nod, look away).
+- Act like a film, not like someone following orders: give each speaker an inner feeling (subtext) and show it in small, specific, physical details — eyes glistening, a smile they try to hold back, biting the lip, a glance down before looking up, a hand that reaches then hesitates, a breath before speaking, shoulders dropping with relief. Reactions overlap the line: the listener's face changes while the other is still talking. Avoid stiff, posed, evenly timed movement.
 - Plan the timeline in seconds. Dialogue and acting are the heart of the video: the first line starts by second 3 at the latest (by second 1 in a 5-second video). Any action before the talking takes at most 3 seconds; if the story has a long action before the talking (a race, a journey), show only its end (e.g. the cars screeching to a stop) and keep the rest for the conversation. Never drop an action the customer asked for (getting out of a car, walking out of a house...): show it, quickly if time is short, and describe it explicitly (e.g. the driver's door opens and he steps out of the car). If the customer asks for talking only, start with the people already in place.
 - Describe physical actions in a clear order with direction. Objects that appear must stay consistent and never vanish.
 - Mention fitting background sounds. If no dialogue was asked for, add none and return "lines": [].
@@ -65,11 +67,17 @@ function parse(text: string) {
   const t = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   return JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1));
 }
+// ElevenLabs v4 voice direction: up to 3 short [tags], English only (Burmese inside a tag would be spoken)
+function voiceTags(d: any): string {
+  const tags = String(d ?? "").match(/\[[^\]\[]{1,60}\]/g) ?? [];
+  return tags.filter((t) => !/[\u1000-\u109F]/.test(t)).slice(0, 3).join(" ");
+}
 // clean the model's JSON; the customer's quoted words always win
 function normalize(p: any, story: string, duration: number) {
   const lines = (Array.isArray(p.lines) ? p.lines : []).filter((l: any) => l && String(l.text ?? "").trim()).map((l: any) => ({
     who: l.who, gender: String(l.gender ?? "").toLowerCase(), age: String(l.age ?? "").toLowerCase(), emotion: String(l.emotion ?? "").toLowerCase(),
     text: mmJoin(String(l.text).trim()), at: Number(l.at), gesture: String(l.gesture ?? "").trim(),
+    delivery: voiceTags(l.delivery),
   }));
   let prompt = mmJoin(String(p.prompt ?? "").trim());
   const quoted = userQuotedLines(story);

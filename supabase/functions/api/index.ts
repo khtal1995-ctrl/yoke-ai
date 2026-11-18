@@ -148,8 +148,10 @@ const EMOTION: Record<string, { tag: string; stability: number }> = {
   angry: { tag: "[angry] ", stability: 0.4 }, sad: { tag: "[sad] ", stability: 0.5 }, scared: { tag: "[scared] ", stability: 0.4 },
   whisper: { tag: "[whispers] ", stability: 0.55 },
 };
-async function tts(key: string, voice: string, text: string, emotion?: string, calmer = 0): Promise<Int16Array> {
-  const e = EMOTION[emotion ?? ""] ?? EMOTION.calm;
+async function tts(key: string, voice: string, text: string, emotion?: string, calmer = 0, delivery = ""): Promise<Int16Array> {
+  const e0 = EMOTION[emotion ?? ""] ?? EMOTION.calm;
+  // the planner's own voice direction (e.g. "[breathless, voice catching with joy] [soft laugh]") is richer than one emotion word
+  const e = delivery ? { tag: `${e0.tag}${delivery} `, stability: Math.max(0.3, e0.stability - 0.05) } : e0;
   const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=pcm_24000`, {
     method: "POST", headers: { "xi-api-key": key, "Content-Type": "application/json" },
     body: JSON.stringify({ text: e.tag + text, model_id: "eleven_v4", voice_settings: { stability: Math.min(0.85, e.stability + calmer), similarity_boost: 0.8, speed: 1.05 } }),
@@ -184,8 +186,10 @@ async function speechTurns(key: string, url: string, speakers: number): Promise<
   const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": key }, body: fd });
   if (!r.ok) throw new Error("stt " + r.status + " " + (await r.text()).slice(0, 200));
   const j: any = await r.json();
-  const segs: { start: number; end: number; spk: string }[] = [];
-  for (const w of (j.words ?? []).filter((w: any) => w.type === "word")) {
+  const segs: { start: number; end: number; spk: string; words?: any[] }[] = [];
+  const words = (j.words ?? []).filter((w: any) => w.type === "word");
+  (segs as any).words = words; // kept for matching lines by their text (matchLines)
+  for (const w of words) {
     const last = segs[segs.length - 1];
     if (last && last.spk === w.speaker_id && w.start - last.end < 0.45) last.end = w.end;
     else segs.push({ start: w.start, end: w.end, spk: w.speaker_id });
@@ -205,6 +209,25 @@ function fitTurns(segs: { start: number; end: number; spk: string }[], n: number
     const m = (s[bi].start + s[bi].end) / 2; s.splice(bi + 1, 0, { start: m + 0.1, end: s[bi].end, spk: s[bi].spk }); s[bi].end = m - 0.1;
   }
   return s;
+}
+// find each line where Wan actually says it (by the words, in order). Wan sometimes says extra words
+// (a name, a sound) before the line; matching the text keeps the voice on the lips. null if a line can't be found.
+function matchLines(words: { start: number; end: number; text: string }[], lines: any[]) {
+  const out: { start: number; end: number; spk: string }[] = []; let from = 0;
+  for (const l of lines) {
+    const want = mmLetters(String(l.text ?? "")).length; let best = { score: 0, a: -1, b: -1 };
+    for (let a = from; a < words.length; a++) {
+      let txt = "";
+      for (let b = a; b < words.length && b < a + 40; b++) {
+        txt += words[b].text; const got = mmLetters(txt).length;
+        if (got > want * 1.6 + 2) break;
+        const sc = similar(txt, l.text); if (sc > best.score) best = { score: sc, a, b };
+      }
+    }
+    if (best.score < 0.45) return null;
+    out.push({ start: words[best.a].start, end: words[best.b].end, spk: "" }); from = best.b + 1;
+  }
+  return out;
 }
 // decode a 16-bit PCM WAV and resample to 24 kHz mono
 function wavTo24k(b: Uint8Array): Int16Array {
@@ -292,7 +315,7 @@ async function voiceLine(key: string, l0: any, voice: string): Promise<Int16Arra
   // check the words came out right; one more try if not, keep the clearer take
   let best: Int16Array | null = null, bestScore = -1;
   for (let t = 0; t < 2; t++) {
-    const out = trim(await tts(key, voice, l.text, l.emotion, voice === YOKE_MALE_1 ? 0.1 : 0));
+    const out = trim(await tts(key, voice, l.text, l.emotion, voice === YOKE_MALE_1 ? 0.1 : 0, String(l.delivery ?? "")));
     if (voice === SU) return levelVoice(out, l.emotion); // Su is a library voice: always clear
     const score = similar(await heard(key, out), l.text);
     if (score > bestScore) { best = out; bestScore = score; }
@@ -312,7 +335,9 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     (async () => { const out: (Int16Array | null)[] = []; // one at a time: ElevenLabs allows only 3 requests at once
       for (const x of stingSpec) out.push(await sfxGen(key, x.sound, 1.6).catch(() => null)); return out; })(),
   ]);
-  const turns = turnsRaw.length ? fitTurns(turnsRaw, lines.length) : [];
+  const matched = (turnsRaw as any).words ? matchLines((turnsRaw as any).words, lines) : null;
+  const turns = matched ?? (turnsRaw.length ? fitTurns(turnsRaw, lines.length) : []);
+  console.log("dub timing", g.id, matched ? "by text" : "by turns", JSON.stringify(turns.map((t) => [+t.start.toFixed(2), +t.end.toFixed(2)])));
   // match each voice to the acting in the picture: calmer than usual on screen -> one step calmer, much stronger -> one step stronger
   const energy = turns.map((t) => (wan ? rmsOf(wan, t.start, t.end) : 0));
   const known = energy.filter((e) => e > 0).sort((a, b) => a - b); const med = known.length ? known[Math.floor(known.length / 2)] : 0;
@@ -474,6 +499,19 @@ const HOUSE_LOOK = "\nSignature look: warm golden cinematic palette, amber and h
 // always appended: keeps people, clothes and signs Burmese (video models otherwise drift to South Asian looks)
 const MYANMAR_LOOK = "\nStyle: authentic Myanmar. All people are Burmese (Bamar) Southeast Asian people in everyday Myanmar clothing (longyi, htamein, eingyi, thanaka, or plain modern clothes). No readable text anywhere: shop signs, banners and posters are small, far in the background or softly out of focus, shown as colours and shapes, never as close-up legible lettering. No English, Chinese, Thai, Hindi or Devanagari writing. No Indian clothing, no saris.";
 
+// Wan reads Burmese text aloud: a name written before a line ("သီရိ says: ...") gets spoken and the voice lands early.
+// So outside the quoted lines every character name becomes a fixed label tied to its photo: Image 1 -> Character A, Image 2 -> Character B...
+// Labels never repeat, so two young women are never mixed up. Names inside quotes (someone calling "သီရိ") stay as spoken words.
+function labelCast(prompt: string, refs: any[]): string {
+  const names = (refs ?? []).map((r: any, i: number) => ({ name: String(r?.name ?? "").trim(), label: `Character ${String.fromCharCode(65 + i)}` }))
+    .filter((x) => x.name).sort((a, b) => b.name.length - a.name.length);
+  if (!names.length) return prompt;
+  return String(prompt).split(/("[^"]*")/).map((part) => {
+    if (part.startsWith('"')) return part;
+    for (const x of names) part = part.split(x.name).join(x.label);
+    return part;
+  }).join("");
+}
 // use the approved plan (or plan now for old clients), then submit to Wan (runs in the background after "create" has answered)
 async function startGeneration(admin: any, id: string) {
   const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
@@ -481,7 +519,7 @@ async function startGeneration(admin: any, id: string) {
     let plan: any = null;
     if (g.plan_id) plan = (await admin.from("plans").select("plan").eq("id", g.plan_id).single()).data?.plan;
     if (!plan) plan = await planVideo(g.prompt_mm, g.duration, refNames(g.refs));
-    const en = plan.prompt;
+    const en = labelCast(plan.prompt, isR2v(g) ? g.refs : []);
     let imageUrl: string | undefined;
     if (g.mode === "i2v") {
       const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
