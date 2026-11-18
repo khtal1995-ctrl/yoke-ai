@@ -722,7 +722,7 @@ async function watchRecreate(id, show){
 const srOpt = { ratio:"9:16", quality:"std" };
 const EP_ST = { planning:"Scene ခွဲနေ", ready:"စစ်ပြီး ထုတ်ရန်", producing:"ထုတ်နေ", stitching:"ဆက်နေ", done:"ပြီးပြီ", failed:"မအောင်မြင်" };
 const EP_BADGE = { planning:"running", ready:"pending", producing:"running", stitching:"running", done:"succeeded", failed:"failed" };
-const SC_ICON = { pending:"⏳", running:"🎬", done:"✅", failed:"❌" };
+const SC_ICON = { pending:"⏳", running:"🎬", checking:"🔍", done:"✅", failed:"❌" };
 const AGE_MM = { child:"ကလေး", young:"လူငယ်", middle:"လူလတ်", old:"အဘိုး/အဘွား" };
 let sr = null, srPoll = null, srEpMode = "idea", srBusy = false;
 function srSeg(id, key){ document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
@@ -815,7 +815,7 @@ function srRender(){
       const n = scenes.filter(s => s.status === "done").length;
       h += `<div class="status ${open.status === "failed" ? "bad" : "pending"}">${open.status === "stitching" ? `<span class="spin"></span>Scene တွေ ဆက်ပြီး video တစ်ခုတည်း လုပ်နေပါတယ်…`
           : open.status === "failed" ? esc(open.error || "မအောင်မြင်ပါ") : `<span class="spin"></span>ထုတ်နေပါတယ် — ${n}/${scenes.length} ပြီး (app ပိတ်ထားလည်း ရပါတယ်)`}</div>
-        <ol class="plan">${scenes.map(s => `<li>${SC_ICON[s.status]} ${esc(s.story_mm.slice(0, 70))}${s.story_mm.length > 70 ? "…" : ""}</li>`).join("")}</ol>
+        <ol class="plan">${scenes.map(s => `<li>${SC_ICON[s.status] ?? "⏳"} ${esc(s.story_mm.slice(0, 70))}${s.story_mm.length > 70 ? "…" : ""}${s.status === "checking" ? ` <span class="muted">(AI စစ်နေ)</span>` : ""}${s.qc_redos && (s.status === "pending" || s.status === "running") ? ` <span class="muted">(AI စစ်လို့ ပြန်ထုတ်နေ — အခမဲ့)</span>` : ""}</li>`).join("")}</ol>
         ${open.status === "failed" ? `<button class="btn" id="srResume">🔁 ပြန်ထုတ်မည်</button>` : ""}`;
     }
     if (open.status === "failed" && !scenes.some(s => s.status !== "pending")) h += `<div class="status bad">${esc(open.error || "Scene ခွဲမရပါ")}</div>${srNewEpHtml(open)}`;
@@ -834,7 +834,7 @@ function srNewEpHtml(ep){
     <button class="btn ghost sm" id="srSuggest">💡 နောက်အပိုင်း အကြံပေး</button>
     <div style="height:10px"></div>
     <button class="btn" id="srPlan" data-ep="${ep?.id ?? ""}">📋 Scene ခွဲပြီး ဈေးကြည့်မည်</button>
-    <p class="muted" style="margin-bottom:0">Scene ခွဲတာ အခမဲ့ပါ။ "ထုတ်မည်" နှိပ်မှ credit ဖြတ်ပါတယ်။</p>`;
+    <p class="muted" style="margin-bottom:0">Scene ခွဲတာ အခမဲ့ပါ။ "ထုတ်မည်" နှိပ်မှ credit ဖြတ်ပါတယ်။ Scene တိုင်းကို AI က စစ်ပြီး မကောင်းရင် အခမဲ့ ပြန်ထုတ်ပေးပါတယ်။</p>`;
 }
 function srCharHtml(c, i){
   return `<div class="vitem" data-char="${i}">
@@ -843,6 +843,7 @@ function srCharHtml(c, i){
       <button class="x" data-cdel="${i}">✕</button></div>
     <div class="seg" style="margin-top:8px"><select data-cgender="${i}" style="flex:1;width:auto"><option value="male" ${c.gender === "male" ? "selected" : ""}>ကျား</option><option value="female" ${c.gender === "female" ? "selected" : ""}>မ</option></select>
       <select data-cage="${i}" style="flex:1;width:auto">${Object.entries(AGE_MM).map(([k, v]) => `<option value="${k}" ${c.age === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    ${c.photo_warn?.length ? `<div class="status bad" style="font-size:13px">⚠️ ဒီပုံ ပြင်သင့်ပါတယ်<ul style="margin:4px 0 0;padding-left:18px">${c.photo_warn.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
     <input type="text" maxlength="300" placeholder="ရုပ်ရည် / ဝတ်စုံ" value="${esc(c.look_mm)}" data-clook="${i}" style="margin-top:8px">
     <input type="text" maxlength="400" placeholder="စရိုက် / ဆက်ဆံရေး" value="${esc(c.personality_mm)}" data-cpers="${i}" style="margin-top:8px">
   </div>`;
@@ -871,7 +872,12 @@ function srBind(){
   document.querySelectorAll("[data-cphoto]").forEach(inp => inp.onchange = async () => {
     const f = inp.files[0]; if (!f) return; if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
     const i = Number(inp.dataset.cphoto); sr.characters = srReadChars();
-    try { toast("ပုံ တင်နေပါတယ်…"); sr.characters[i].photo_path = await uploadTo("inputs", f); sr.characters[i].photo_url = URL.createObjectURL(f); srRender(); toast("ပုံ ထည့်ပြီး — သိမ်း နှိပ်ပါ"); }
+    try { toast("ပုံ တင်ပြီး AI က စစ်နေပါတယ်…"); const path = await uploadTo("inputs", f);
+      sr.characters[i].photo_path = path; sr.characters[i].photo_url = URL.createObjectURL(f); sr.characters[i].photo_warn = null; srRender();
+      const chk = await srCall({ action:"check_photo", path }).catch(() => ({ ok:true }));
+      const c = sr.characters.find(x => x.photo_path === path);
+      if (c && !chk.ok) { c.photo_warn = chk.problems_mm?.length ? chk.problems_mm : ["ပုံ ပြန်ရွေးကြည့်ပါ"]; sr.characters = srReadChars().map((x, k) => ({ ...x, photo_warn: sr.characters[k].photo_warn })); srRender(); toast("⚠️ ပုံ ပြင်သင့်ပါတယ် — အောက်မှာ ကြည့်ပါ"); }
+      else toast("✅ ပုံ ကောင်းပါတယ် — သိမ်း နှိပ်ပါ"); }
     catch (e) { toast(msgOf(e)); }
   });
   document.querySelectorAll("[data-cdel]").forEach(b => b.onclick = () => { sr.characters = srReadChars(); sr.characters.splice(Number(b.dataset.cdel), 1); srRender(); });

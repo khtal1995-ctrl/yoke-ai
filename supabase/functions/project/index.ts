@@ -12,6 +12,8 @@
 //   { action: "episode_update", episode_id, scenes: [{story_mm, cast_names}], summary_mm? }      edit before paying
 //   { action: "produce", episode_id } -> { ok }                               pays scene by scene in the background
 //   { action: "resume", episode_id }                                          try failed scenes again
+//   { action: "check_photo", path } -> { ok, problems_mm }                     AI checks a character photo right after upload
+// Every finished scene is checked by AI (preview frames vs. the character photos and the scene); a bad scene is re-made once at our cost.
 // Cron: x-cron-token + { action: "tick" } moves producing/stitching episodes forward.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -23,7 +25,8 @@ const MAX_SCENES = 30;          // one episode: at most 5 minutes (30 x 10 s)
 const PARALLEL = 3;             // scenes rendering at the same time per episode
 const MAX_ATTEMPTS = 2;         // a failed scene is refunded and tried once more
 const MAX_CHARS = 30;           // characters in one series
-const MAX_CAST = 6;             // named characters in one 10-second scene (the video model takes at most 3 photos)
+const MAX_CAST = 6;
+const QC_REDOS = 1;             // automatic re-renders after a failed AI check (credits refunded, so the customer pays once)             // named characters in one 10-second scene (the video model takes at most 3 photos)
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -75,6 +78,20 @@ async function llmJson(admin: any, system: string, user: string, maxTokens = 400
     const txt = String((await r.json())?.choices?.[0]?.message?.content ?? "").replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
     try { return JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1)); } catch { if (t) throw new Error("llm bad json"); }
   }
+}
+
+// grok with images: content = text + image urls
+async function visionJson(admin: any, system: string, text: string, images: string[]): Promise<any> {
+  const key = await yotta(admin);
+  const r = await fetch(`${YOTTA}/api/maas/chat/completions`, {
+    method: "POST", signal: AbortSignal.timeout(90000),
+    headers: { "X-API-KEY": key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "grok-4.7", temperature: 0.1, max_tokens: 800, reasoning_effort: "low",
+      messages: [{ role: "system", content: system }, { role: "user", content: [{ type: "text", text }, ...images.map((url) => ({ type: "image_url", image_url: { url } }))] }] }),
+  });
+  if (!r.ok) throw new Error(`vision ${r.status}`);
+  const txt = String((await r.json())?.choices?.[0]?.message?.content ?? "");
+  return JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
 }
 
 const BURMESE_STYLE = "Write everything for the customer in natural, simple Burmese (Myanmar Unicode). People and places are Burmese/Myanmar.";
@@ -196,6 +213,46 @@ async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
     body: JSON.stringify({ action: "start", id: gid }) });
 }
 
+// 3 frames of the scene side by side (Eachlabs ffmpeg), then grok compares them with the character photos and the scene text
+async function checkScene(admin: any, ep: any, s: any) {
+  const { data: g } = await admin.from("generations").select("id,video_path,cost").eq("id", s.generation_id).single();
+  const pass = async (qc: any) => { s.status = "done"; await admin.from("episode_scenes").update({ status: "done", qc }).eq("id", s.id); };
+  if (!s.qc_id) {
+    const { data: su } = await admin.storage.from("videos").createSignedUrl(g.video_path, 3600);
+    const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabsHeaders(admin),
+      body: JSON.stringify({ model: "eachlabs-video-api", version: "0.0.1", input: { mode: "run_ffmpeg", input_url: su!.signedUrl, output_format: "jpg",
+        argv: ["ffmpeg", "-i", "{input}", "-vf", "fps=0.3,scale=480:-2,tile=3x1", "-frames:v", "1", "{output}"] } }) });
+    const j: any = await r.json().catch(() => ({}));
+    const pid = j.predictionID ?? j.prediction_id ?? j.id;
+    if (!pid) return pass({ pass: true, skipped: "frames" });
+    s.qc_id = pid; await admin.from("episode_scenes").update({ qc_id: pid }).eq("id", s.id);
+    return;
+  }
+  const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${s.qc_id}`, { headers: await eachlabsHeaders(admin) });
+  const j: any = await r.json().catch(() => ({}));
+  if (j.status === "error" || j.status === "failed") return pass({ pass: true, skipped: "frames" });
+  if (!((j.status === "success" || j.status === "succeeded") && j.output)) return; // still making the frames
+  const frames = Array.isArray(j.output) ? j.output[0] : j.output;
+  const b = await loadBible(admin, ep.project_id);
+  const chars = b.chars.filter((c: any) => s.cast_names.includes(c.name));
+  const photos: string[] = [], labels: string[] = [];
+  for (const c of chars.filter((c: any) => c.photo_path).slice(0, 4)) {
+    const { data: u } = await admin.storage.from("inputs").createSignedUrl(c.photo_path, 3600);
+    if (u?.signedUrl) { photos.push(u.signedUrl); labels.push(c.name); }
+  }
+  const out = await visionJson(admin, `You check one AI-generated 10-second video scene before a paying customer sees it. Image 1 shows 3 frames of the scene side by side. ${photos.length ? `The next images are the reference photos of: ${labels.join(", ")} (in that order).` : ""}
+Return ONLY JSON: {"pass": true|false, "problems_mm": ["<each serious problem in simple Burmese>"]}
+Fail ONLY for serious problems a viewer would notice: a character's face clearly different from their reference photo; clearly the wrong number of main people; melted or deformed faces, extra arms or legs; large garbled or fake writing filling the screen; the scene shows something completely different from the description. Small flaws, style, lighting and background details pass.`,
+    `Scene description (Burmese): ${s.story_mm}\nCharacters who should appear: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}; ${c.look_mm ?? ""})`).join("; ") || "as described"}`, [frames, ...photos]);
+  const ok = out?.pass !== false;
+  const qc = { pass: ok, problems_mm: (Array.isArray(out?.problems_mm) ? out.problems_mm : []).map((x: any) => clip(x, 200)).slice(0, 4), frames };
+  if (ok || s.qc_redos >= QC_REDOS) return pass(qc);
+  // make it again; give the credits back first so the customer pays for this scene only once
+  await admin.rpc("_add_credits", { p_user: ep.user_id, p_delta: g.cost, p_reason: `အပိုင်း (${ep.num}) scene ${s.idx + 1} — AI စစ်ဆေးမှု မအောင် ပြန်ထုတ် (credit ပြန်အမ်း)`, p_ref: g.id });
+  s.status = "pending";
+  await admin.from("episode_scenes").update({ status: "pending", qc, qc_id: null, qc_redos: s.qc_redos + 1, attempts: 0 }).eq("id", s.id);
+}
+
 async function eachlabsHeaders(admin: any) {
   const { data: k } = await admin.rpc("get_app_secret", { p_name: "eachlabs_api_key" });
   return { "Content-Type": "application/json", "X-API-Key": k };
@@ -211,12 +268,16 @@ async function advance(admin: any, ep: any) {
       const { data: gens } = gids.length ? await admin.from("generations").select("id,status,error").in("id", gids) : { data: [] };
       for (const g of gens ?? []) {
         const s = scenes.find((x: any) => x.generation_id === g.id);
-        if (g.status === "succeeded") { s.status = "done"; await admin.from("episode_scenes").update({ status: "done" }).eq("id", s.id); }
+        if (g.status === "succeeded") { s.status = "checking"; await admin.from("episode_scenes").update({ status: "checking", qc_id: null }).eq("id", s.id); }
         if (g.status === "failed") { s.status = s.attempts < MAX_ATTEMPTS ? "pending" : "failed"; await admin.from("episode_scenes").update({ status: s.status }).eq("id", s.id); }
+      }
+      // 1b) AI check of finished scenes (preview frames -> vision); a bad scene is made again once, at our cost
+      for (const s of scenes.filter((x: any) => x.status === "checking")) {
+        try { await checkScene(admin, ep, s); } catch (e) { console.error("qc", s.id, e); s.status = "done"; await admin.from("episode_scenes").update({ status: "done" }).eq("id", s.id); }
       }
       // 2) start the next scenes (one or two per minute; the planner takes ~30-60 s)
       const b = await loadBible(admin, ep.project_id);
-      let running = scenes.filter((s: any) => s.status === "running").length;
+      let running = scenes.filter((s: any) => s.status === "running" || s.status === "checking").length;
       const t0 = Date.now();
       for (const s of scenes.filter((x: any) => x.status === "pending")) {
         if (running >= PARALLEL || Date.now() - t0 > 50000) break;
@@ -233,7 +294,7 @@ async function advance(admin: any, ep: any) {
       }
       // 3) everything finished?
       const { data: now } = await admin.from("episode_scenes").select("status,generation_id,idx").eq("episode_id", ep.id).order("idx");
-      if (now.some((s: any) => s.status === "pending" || s.status === "running")) return;
+      if (now.some((s: any) => ["pending", "running", "checking"].includes(s.status))) return;
       const bad = now.filter((s: any) => s.status === "failed").map((s: any) => s.idx + 1);
       if (bad.length) {
         await admin.from("episodes").update({ status: "failed", error: `Scene ${bad.join(", ")} မအောင်မြင်ပါ (credit ပြန်အမ်းပြီး) — "ပြန်ထုတ်" နှိပ်ပါ` }).eq("id", ep.id);
@@ -353,7 +414,7 @@ Deno.serve(async (req) => {
       const wantEp = isId(body.episode_id) ? (eps ?? []).find((e: any) => e.id === body.episode_id) : open;
       let scenes: any[] = [];
       if (wantEp) {
-        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,status,attempts").eq("episode_id", wantEp.id).order("idx");
+        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,status,attempts,qc_redos").eq("episode_id", wantEp.id).order("idx");
         scenes = data ?? [];
       }
       return json({ project: p, characters: chars ?? [], episodes: eps ?? [], scenes, scenes_episode: wantEp?.id ?? null });
@@ -446,6 +507,19 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       await admin.from("episodes").update({ status: "producing", cost, error: null }).eq("id", ep.id).eq("status", "ready");
       bg(advance(admin, { ...ep, status: "producing" }).catch((e) => console.error(e)));
       return json({ ok: true, cost });
+    }
+    case "check_photo": {
+      const path = String(body.path ?? "");
+      if (!path.startsWith(uid + "/") || path.includes("..")) return json({ error: "invalid photo" }, 400);
+      const { data: u } = await admin.storage.from("inputs").createSignedUrl(path, 600);
+      if (!u?.signedUrl) return json({ error: "not found" }, 404);
+      try {
+        const out = await visionJson(admin, `You check a character photo a customer uploaded for an AI video. The photo will be used to keep this one character's face and look the same in every scene.
+Return ONLY JSON: {"ok": true|false, "problems_mm": ["<each problem in short, simple Burmese, with what to do>"]}
+Not ok when: more than one person or character is clearly visible (should be one only); no face or head visible, face turned away or covered; very blurry, very dark or tiny face; it is not a photo or drawing of a character at all (e.g. a screenshot of text). Animal, cartoon and costume characters are fine. Otherwise ok with an empty list.`,
+          "Check this character photo.", [u.signedUrl]);
+        return json({ ok: out?.ok !== false, problems_mm: (Array.isArray(out?.problems_mm) ? out.problems_mm : []).map((x: any) => clip(x, 200)).slice(0, 3) });
+      } catch { return json({ ok: true, problems_mm: [] }); } // never block the customer because the checker is down
     }
     case "resume": {
       const ep = await ownEpisode(body.episode_id);
