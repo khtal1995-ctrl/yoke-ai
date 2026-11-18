@@ -199,6 +199,28 @@
         </div>
       </section>
 
+      <!-- SERIES (story projects made episode by episode) -->
+      <section id="seriesPage" class="hidden">
+        <div id="srList">
+          <div class="card">
+            <h2>📁 ဇာတ်လမ်းတွဲ အသစ်</h2>
+            <p class="muted" style="margin-top:0">Idea လေးတစ်ကြောင်းနဲ့ စလို့ရတယ်။ ဇာတ်ကောင်ရုပ်နဲ့ အသံကို တစ်ခါသတ်မှတ်ရင် အပိုင်းတိုင်းမှာ မပြောင်းတော့ဘူး။ အပိုင်း (၁)၊ (၂)… ကို ကိုယ့်အချိန်နဲ့ကိုယ် ထုတ်ပါ။</p>
+            <label class="lbl">ဇာတ်လမ်းနာမည်</label>
+            <input type="text" id="srTitle" maxlength="80" placeholder="ဥပမာ ရွာသူကြီးသမီး">
+            <label class="lbl">Idea / ဇာတ်လမ်းအကြမ်း</label>
+            <textarea id="srIdea" maxlength="3000" placeholder="ဥပမာ ရွာသူကြီးသမီး မမြက ချောပေမဲ့ မာနကြီးတယ်။ ဆင်းရဲတဲ့ ကိုအောင်ကို ချစ်မိသွားတယ်…"></textarea>
+            <label class="lbl">ပုံစံ</label>
+            <div class="seg" id="srRatio"><button data-v="9:16" class="on">📱 9:16</button><button data-v="16:9">🖥️ 16:9</button><button data-v="1:1">⬜ 1:1</button></div>
+            <label class="lbl">အရည်အသွေး</label>
+            <div class="seg" id="srQual"><button data-v="std" class="on">Standard<small>scene တစ်ခု 35 cr</small></button><button data-v="hd">HD<small>scene တစ်ခု 50 cr</small></button></div>
+            <div style="height:12px"></div>
+            <button class="btn" id="srCreate">✨ ဇာတ်လမ်းတွဲ စမည်</button>
+          </div>
+          <div class="card"><h2>ကျွန်ုပ်၏ ဇာတ်လမ်းတွဲများ</h2><div id="srProjects"><p class="muted">ဖွင့်နေပါတယ်…</p></div></div>
+        </div>
+        <div id="srDetail" class="hidden"></div>
+      </section>
+
       <!-- VIDEOS -->
       <section id="videosPage" class="hidden">
         <div class="card"><h2>ကျွန်ုပ်၏ Video များ</h2><div id="vlist"></div></div>
@@ -306,6 +328,7 @@
 
   <nav id="nav" class="hidden"><div class="in">
     <button data-p="createPage" class="on"><span class="ic">✨</span>ဖန်တီး</button>
+    <button data-p="seriesPage"><span class="ic">📁</span>ဇာတ်လမ်းတွဲ</button>
     <button data-p="videosPage"><span class="ic">🎬</span>Video များ</button>
     <button data-p="buyPage"><span class="ic">⚡</span>Credit ဝယ်</button>
     <button data-p="mePage"><span class="ic">👤</span>အကောင့်</button>
@@ -393,7 +416,7 @@ async function loadProfile(){
 }
 
 /* ================= NAV ================= */
-const PAGES = ["createPage","videosPage","buyPage","mePage","adminPage"];
+const PAGES = ["createPage","seriesPage","videosPage","buyPage","mePage","adminPage"];
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => go(b.dataset.p));
 $("creditChip").onclick = () => go("buyPage");
 function go(p){
@@ -401,6 +424,8 @@ function go(p){
   document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.p === p));
   scrollTo(0,0);
   if (p === "videosPage") loadVideos();
+  if (p === "seriesPage") srShowList();
+  else srStopPoll();
   if (p === "buyPage") { loadPacks(); loadMyTopups(); }
   if (p === "mePage") { loadProfile(); loadLedger(); }
   if (p === "adminPage") loadAdmin();
@@ -645,7 +670,7 @@ async function watchJob(id, showOnCreate){
   }
 }
 async function resumeJobs(){
-  const { data } = await sb.from("generations").select("id").in("status", ["queued","running"]);
+  const { data } = await sb.from("generations").select("id").is("episode_id", null).in("status", ["queued","running"]);
   (data || []).forEach(g => watchJob(g.id, false));
   const { data: rc } = await sb.from("recreates").select("id").eq("user_id", me.id).eq("status", "running");
   (rc || []).forEach(r => watchRecreate(r.id, false));
@@ -693,12 +718,232 @@ async function watchRecreate(id, show){
   }
 }
 
+/* ================= SERIES (story projects, episode by episode) ================= */
+const srOpt = { ratio:"9:16", quality:"std" };
+const EP_ST = { planning:"Scene ခွဲနေ", ready:"စစ်ပြီး ထုတ်ရန်", producing:"ထုတ်နေ", stitching:"ဆက်နေ", done:"ပြီးပြီ", failed:"မအောင်မြင်" };
+const EP_BADGE = { planning:"running", ready:"pending", producing:"running", stitching:"running", done:"succeeded", failed:"failed" };
+const SC_ICON = { pending:"⏳", running:"🎬", done:"✅", failed:"❌" };
+const AGE_MM = { child:"ကလေး", young:"လူငယ်", middle:"လူလတ်", old:"အဘိုး/အဘွား" };
+let sr = null, srPoll = null, srEpMode = "idea", srBusy = false;
+function srSeg(id, key){ document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
+  document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); srOpt[key] = b.dataset.v; }); }
+srSeg("srRatio","ratio"); srSeg("srQual","quality");
+const srCall = async (body) => { const { data, error } = await sb.functions.invoke("project", { body });
+  if (error) { let m = error.message; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); }
+  if (data?.error) throw new Error(data.error); return data; };
+function srStopPoll(){ clearTimeout(srPoll); srPoll = null; }
+
+async function srShowList(){
+  srStopPoll(); sr = null;
+  $("srList").classList.remove("hidden"); $("srDetail").classList.add("hidden");
+  try {
+    const { projects } = await srCall({ action:"list" });
+    $("srProjects").innerHTML = projects.length ? projects.map(p => `<div class="pack" data-open="${p.id}">
+        <div><div class="p">📁 ${esc(p.title)}</div><div class="muted" style="font-size:12px">${new Date(p.updated_at).toLocaleDateString()}</div></div><span>›</span></div>`).join("")
+      : `<p class="muted">ဇာတ်လမ်းတွဲ မရှိသေးပါ။</p>`;
+    document.querySelectorAll("[data-open]").forEach(x => x.onclick = () => srOpen(x.dataset.open));
+  } catch (e) { $("srProjects").innerHTML = `<p class="muted">${esc(msgOf(e))}</p>`; }
+}
+$("srCreate").onclick = async () => {
+  const title = $("srTitle").value.trim(), idea = $("srIdea").value.trim();
+  if (!title || !idea) return toast("ဇာတ်လမ်းနာမည်နဲ့ idea ထည့်ပါ");
+  $("srCreate").disabled = true;
+  try { const { id } = await srCall({ action:"create", title, idea, ratio: srOpt.ratio, quality: srOpt.quality });
+    $("srTitle").value = ""; $("srIdea").value = ""; srOpen(id); }
+  catch (e) { toast(msgOf(e)); }
+  $("srCreate").disabled = false;
+};
+
+async function srOpen(id, episodeId){
+  srStopPoll();
+  $("srList").classList.add("hidden"); $("srDetail").classList.remove("hidden");
+  if (!sr || sr.project.id !== id) $("srDetail").innerHTML = `<div class="card"><span class="spin"></span>ဖွင့်နေပါတယ်…</div>`;
+  try { sr = await srCall({ action:"get", id, episode_id: episodeId }); }
+  catch (e) { $("srDetail").innerHTML = `<div class="card">${esc(msgOf(e))}</div>`; return; }
+  srRender();
+  const busy = sr.project.status === "drafting" || sr.episodes.some(e => ["planning","producing","stitching"].includes(e.status));
+  if (busy) srPoll = setTimeout(() => { if (!srBusy && !$("seriesPage").classList.contains("hidden")) srOpen(id, sr.scenes_episode); }, 10000);
+}
+
+function srRender(){
+  const { project: p, characters: chars, episodes: eps, scenes } = sr;
+  const open = eps.find(e => e.id === sr.scenes_episode);
+  const done = eps.filter(e => e.status === "done");
+  const per = p.quality === "hd" ? 50 : 35;
+  let h = `<button class="btn ghost sm" id="srBack">‹ ဇာတ်လမ်းတွဲများ</button><div style="height:10px"></div>
+    <div class="card"><h2>📁 ${esc(p.title)}</h2>
+      <div class="muted">${p.ratio} · ${p.quality === "hd" ? "HD" : "Standard"} · scene တစ်ခု ${per} credits (10 စက္ကန့်)</div></div>`;
+  if (p.status === "drafting") { $("srDetail").innerHTML = h + `<div class="card"><span class="spin"></span>AI က ဇာတ်ကောင်တွေနဲ့ ဇာတ်လမ်းမှတ်တမ်း ရေးနေပါတယ် (၁ မိနစ်ခန့်)…</div>`; $("srBack").onclick = srShowList; return; }
+  if (p.status === "failed") { $("srDetail").innerHTML = h + `<div class="card"><div class="status bad">ဇာတ်လမ်းမှတ်တမ်း ရေးမရပါ — ${esc(p.error || "")}</div></div>`; $("srBack").onclick = srShowList; return; }
+
+  // Story Bible
+  h += `<div class="card"><details ${eps.length ? "" : "open"}><summary style="cursor:pointer"><b>📖 ဇာတ်လမ်းမှတ်တမ်း (Story Bible)</b> <span class="muted">· ဇာတ်ကောင် ${chars.length} ယောက်</span></summary>
+    <p class="muted" style="margin-top:0">အပိုင်းအသစ် ထုတ်တိုင်း AI က ဒီမှတ်တမ်းကို ဖတ်ပြီးမှ ရေးပါတယ်။ မှားတာရှိရင် ပြင်ပြီး သိမ်းပါ။</p>
+    <label class="lbl">ဇာတ်လမ်းအကြောင်း</label><textarea id="srPremise" maxlength="1500">${esc(p.premise_mm)}</textarea>
+    <label class="lbl">နေရာ / ခေတ်</label><textarea id="srSetting" maxlength="1500" style="min-height:70px">${esc(p.setting_mm)}</textarea>
+    ${done.length ? `<label class="lbl">အခုလက်ရှိ အခြေအနေ (နောက်ဆုံးအပိုင်းအပြီး)</label><textarea id="srState" maxlength="1500" style="min-height:80px">${esc(p.state_mm)}</textarea>` : ""}
+    <label class="lbl">👥 ဇာတ်ကောင်များ — ပုံထည့်ရင် အပိုင်းတိုင်း ရုပ်မပြောင်းပါ</label>
+    <div id="srChars">${chars.map((c, i) => srCharHtml(c, i)).join("")}</div>
+    <button class="btn ghost sm" id="srAddChar" ${chars.length >= 8 ? "disabled" : ""}>＋ ဇာတ်ကောင်</button>
+    <div style="height:10px"></div><button class="btn" id="srSaveBible">💾 မှတ်တမ်း သိမ်းမည်</button></details></div>`;
+
+  // episodes so far
+  if (eps.length) h += `<div class="card"><h2>🎞️ အပိုင်းများ</h2>${eps.map(e => `<div class="vitem">
+      <b>အပိုင်း (${e.num})</b> ${e.title ? esc(e.title) : ""} <span class="badge ${EP_BADGE[e.status]}">${EP_ST[e.status]}</span>
+      ${e.status === "done" ? `<div style="height:8px"></div>${videoHtml(e.video_url, { id: e.id })}
+        <label class="lbl">ဒီအပိုင်းမှာ ဖြစ်ခဲ့တာ (AI အကျဉ်းချုပ် — မှားရင် ပြင်ပါ)</label>
+        <textarea data-sum="${e.id}" maxlength="1200" style="min-height:70px">${esc(e.summary_mm)}</textarea>
+        <button class="btn ghost sm" data-savesum="${e.id}">💾 သိမ်း</button>` : ""}
+      ${e.id !== sr.scenes_episode && e.status !== "done" ? `<button class="btn ghost sm" data-ep="${e.id}">ကြည့်မည်</button>` : ""}
+    </div>`).join("")}</div>`;
+
+  // the open episode (planning / review / producing / failed)
+  if (open) {
+    h += `<div class="card"><h2>🎬 အပိုင်း (${open.num}) ${open.title ? "— " + esc(open.title) : ""}</h2>`;
+    if (open.status === "planning") h += `<div class="status pending"><span class="spin"></span>AI က scene တွေ ခွဲနေပါတယ် (၁–၂ မိနစ်)…</div>`;
+    if (open.warnings?.length) h += `<div class="status bad">⚠️ ဇာတ်လမ်း မကိုက်တာ ရှိနိုင်ပါတယ် — ငွေမဖြတ်ခင် စစ်ပါ<ul style="margin:6px 0 0;padding-left:18px">${open.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>`;
+    if (open.status === "ready") {
+      h += `<p class="muted">Scene တစ်ခု = ၁၀ စက္ကန့်။ စာကို ပြင်လို့ရပါတယ်။ ပြင်ပြီးရင် "သိမ်း" နှိပ်ပါ။</p>
+        <div id="srScenes">${scenes.map((s, i) => srSceneHtml(s, i, chars)).join("")}</div>
+        <button class="btn ghost sm" id="srAddScene" ${scenes.length >= 30 ? "disabled" : ""}>＋ Scene</button>
+        <button class="btn ghost sm" id="srSaveScenes">💾 Scene တွေ သိမ်း</button>
+        <div class="cost"><span>${scenes.length} scenes · ${scenes.length * 10} စက္ကန့်</span><b>${scenes.length * per} credits (${fmt(scenes.length * per * KS_PER_CREDIT)} ကျပ်)</b></div>
+        <button class="btn" id="srProduce">${profile && profile.credits < scenes.length * per ? "⚡ Credit မလောက် — ဝယ်ရန်" : "🎬 အပိုင်း (" + open.num + ") ထုတ်မည်"}</button>
+        <div style="height:8px"></div><button class="btn ghost" id="srReplan">✏️ Idea/Script ပြန်ရေးမည်</button>`;
+    }
+    if (["producing","stitching","failed"].includes(open.status) && scenes.some(s => s.status !== "pending")) {
+      const n = scenes.filter(s => s.status === "done").length;
+      h += `<div class="status ${open.status === "failed" ? "bad" : "pending"}">${open.status === "stitching" ? `<span class="spin"></span>Scene တွေ ဆက်ပြီး video တစ်ခုတည်း လုပ်နေပါတယ်…`
+          : open.status === "failed" ? esc(open.error || "မအောင်မြင်ပါ") : `<span class="spin"></span>ထုတ်နေပါတယ် — ${n}/${scenes.length} ပြီး (app ပိတ်ထားလည်း ရပါတယ်)`}</div>
+        <ol class="plan">${scenes.map(s => `<li>${SC_ICON[s.status]} ${esc(s.story_mm.slice(0, 70))}${s.story_mm.length > 70 ? "…" : ""}</li>`).join("")}</ol>
+        ${open.status === "failed" ? `<button class="btn" id="srResume">🔁 ပြန်ထုတ်မည်</button>` : ""}`;
+    }
+    if (open.status === "failed" && !scenes.some(s => s.status !== "pending")) h += `<div class="status bad">${esc(open.error || "Scene ခွဲမရပါ")}</div>${srNewEpHtml(open)}`;
+    h += `</div>`;
+  } else {
+    h += `<div class="card"><h2>➕ အပိုင်း (${(eps.at(-1)?.num ?? 0) + 1})</h2>${srNewEpHtml(null)}</div>`;
+  }
+  $("srDetail").innerHTML = h;
+  srBind();
+}
+function srNewEpHtml(ep){
+  return `<div class="seg" id="srEpMode"><button data-v="idea" class="${srEpMode === "idea" ? "on" : ""}">💡 Idea<small>AI က ချဲ့ရေး</small></button>
+      <button data-v="script" class="${srEpMode === "script" ? "on" : ""}">📄 Script အပြည့်<small>scene ခွဲရုံ</small></button></div>
+    <textarea id="srEpText" maxlength="12000" style="margin-top:10px" placeholder="${srEpMode === "idea" ? "ဒီအပိုင်းမှာ ဘာဖြစ်မလဲ — ဥပမာ ရေခပ်ဆင်းရင်း မမြက သူငယ်ချင်းကို နှိမ်ချတယ်၊ ကိုအောင်က မြင်သွားတယ်" : "Script အပြည့် ကူးထည့်ပါ (စကားပြောတွေကို \"…\" နဲ့)"}">${esc(ep?.input_mm ?? "")}</textarea>
+    <div id="srIdeas"></div>
+    <button class="btn ghost sm" id="srSuggest">💡 နောက်အပိုင်း အကြံပေး</button>
+    <div style="height:10px"></div>
+    <button class="btn" id="srPlan" data-ep="${ep?.id ?? ""}">📋 Scene ခွဲပြီး ဈေးကြည့်မည်</button>
+    <p class="muted" style="margin-bottom:0">Scene ခွဲတာ အခမဲ့ပါ။ "ထုတ်မည်" နှိပ်မှ credit ဖြတ်ပါတယ်။</p>`;
+}
+function srCharHtml(c, i){
+  return `<div class="vitem" data-char="${i}">
+    <div class="cast"><label class="ph">${c.photo_url ? `<img src="${esc(c.photo_url)}" alt="">` : "📷"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-cphoto="${i}"></label>
+      <input type="text" maxlength="30" placeholder="နာမည်" value="${esc(c.name)}" data-cname="${i}">
+      <button class="x" data-cdel="${i}">✕</button></div>
+    <div class="seg" style="margin-top:8px"><select data-cgender="${i}" style="flex:1;width:auto"><option value="male" ${c.gender === "male" ? "selected" : ""}>ကျား</option><option value="female" ${c.gender === "female" ? "selected" : ""}>မ</option></select>
+      <select data-cage="${i}" style="flex:1;width:auto">${Object.entries(AGE_MM).map(([k, v]) => `<option value="${k}" ${c.age === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    <input type="text" maxlength="300" placeholder="ရုပ်ရည် / ဝတ်စုံ" value="${esc(c.look_mm)}" data-clook="${i}" style="margin-top:8px">
+    <input type="text" maxlength="400" placeholder="စရိုက် / ဆက်ဆံရေး" value="${esc(c.personality_mm)}" data-cpers="${i}" style="margin-top:8px">
+  </div>`;
+}
+function srSceneHtml(s, i, chars){
+  return `<div class="vitem"><b>Scene ${i + 1}</b>
+    <textarea data-scene="${i}" maxlength="900" style="min-height:80px;margin-top:6px">${esc(s.story_mm)}</textarea>
+    <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၃ ယောက်အထိ):
+      ${chars.map(c => `<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" data-scast="${i}" value="${esc(c.name)}" ${s.cast_names?.includes(c.name) ? "checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
+    <button class="btn ghost sm" data-sdel="${i}" style="margin-top:6px">🗑️ ဖယ်</button></div>`;
+}
+// read the edited Story Bible / scenes back from the form
+function srReadChars(){ return sr.characters.map((c, i) => ({ ...c,
+  name: $q(`[data-cname="${i}"]`)?.value.trim() ?? c.name, gender: $q(`[data-cgender="${i}"]`)?.value ?? c.gender,
+  age: $q(`[data-cage="${i}"]`)?.value ?? c.age, look_mm: $q(`[data-clook="${i}"]`)?.value ?? c.look_mm,
+  personality_mm: $q(`[data-cpers="${i}"]`)?.value ?? c.personality_mm })); }
+function srReadScenes(){ return sr.scenes.map((s, i) => ({ story_mm: $q(`[data-scene="${i}"]`)?.value ?? s.story_mm,
+  cast_names: [...document.querySelectorAll(`[data-scast="${i}"]:checked`)].map(x => x.value).slice(0, 3) })); }
+const $q = sel => document.querySelector(sel);
+
+function srBind(){
+  const p = sr.project;
+  $("srBack").onclick = srShowList;
+  document.querySelectorAll("[data-ep]").forEach(b => { if (b.id !== "srPlan") b.onclick = () => srOpen(p.id, b.dataset.ep); });
+  // Story Bible
+  document.querySelectorAll("[data-cphoto]").forEach(inp => inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return; if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
+    const i = Number(inp.dataset.cphoto); sr.characters = srReadChars();
+    try { toast("ပုံ တင်နေပါတယ်…"); sr.characters[i].photo_path = await uploadTo("inputs", f); sr.characters[i].photo_url = URL.createObjectURL(f); srRender(); toast("ပုံ ထည့်ပြီး — သိမ်း နှိပ်ပါ"); }
+    catch (e) { toast(msgOf(e)); }
+  });
+  document.querySelectorAll("[data-cdel]").forEach(b => b.onclick = () => { sr.characters = srReadChars(); sr.characters.splice(Number(b.dataset.cdel), 1); srRender(); });
+  if ($("srAddChar")) $("srAddChar").onclick = () => { sr.characters = srReadChars(); sr.characters.push({ name:"", gender:"male", age:"young", look_mm:"", personality_mm:"" }); srRender(); };
+  $("srSaveBible").onclick = async () => {
+    const chars = srReadChars().filter(c => c.name);
+    if (new Set(chars.map(c => c.name)).size !== chars.length) return toast("ဇာတ်ကောင် နာမည်တွေ မတူအောင် ထည့်ပါ");
+    $("srSaveBible").disabled = true;
+    try { await srCall({ action:"update_bible", id: p.id, premise_mm: $("srPremise").value, setting_mm: $("srSetting").value,
+        ...($("srState") ? { state_mm: $("srState").value } : {}),
+        characters: chars.map(c => ({ id: c.id, name: c.name, gender: c.gender, age: c.age, look_mm: c.look_mm, personality_mm: c.personality_mm, photo_path: c.photo_path || null })) });
+      toast("သိမ်းပြီးပါပြီ"); srOpen(p.id, sr.scenes_episode); }
+    catch (e) { toast(msgOf(e)); $("srSaveBible").disabled = false; }
+  };
+  document.querySelectorAll("[data-savesum]").forEach(b => b.onclick = async () => {
+    try { await srCall({ action:"episode_update", episode_id: b.dataset.savesum, summary_mm: $q(`[data-sum="${b.dataset.savesum}"]`).value }); toast("သိမ်းပြီးပါပြီ"); }
+    catch (e) { toast(msgOf(e)); }
+  });
+  // new episode / re-plan
+  document.querySelectorAll("#srEpMode button").forEach(b => b.onclick = () => { srEpMode = b.dataset.v; const t = $("srEpText").value; srRender(); $("srEpText").value = t; });
+  if ($("srSuggest")) $("srSuggest").onclick = async () => {
+    $("srSuggest").disabled = true; $("srIdeas").innerHTML = `<p class="muted"><span class="spin"></span>စဉ်းစားနေပါတယ်…</p>`;
+    try { const { ideas } = await srCall({ action:"suggest", id: p.id });
+      $("srIdeas").innerHTML = ideas.map((x, i) => `<div class="pack" data-idea="${i}"><div><div class="p">${esc(x.title_mm)}</div><div class="muted" style="font-size:13px">${esc(x.idea_mm)}</div></div></div>`).join("");
+      document.querySelectorAll("[data-idea]").forEach(d => d.onclick = () => { srEpMode = "idea"; $("srEpText").value = ideas[Number(d.dataset.idea)].idea_mm;
+        document.querySelectorAll("#srEpMode button").forEach(x => x.classList.toggle("on", x.dataset.v === "idea")); }); }
+    catch (e) { $("srIdeas").innerHTML = ""; toast(msgOf(e)); }
+    $("srSuggest").disabled = false;
+  };
+  if ($("srPlan")) $("srPlan").onclick = async () => {
+    const text = $("srEpText").value.trim(); if (!text) return toast("ဒီအပိုင်းမှာ ဘာဖြစ်မလဲ ရေးပါ");
+    $("srPlan").disabled = true;
+    try { const { episode_id } = await srCall({ action:"episode_plan", id: p.id, mode: srEpMode, text, episode_id: $("srPlan").dataset.ep || undefined });
+      srOpen(p.id, episode_id); }
+    catch (e) { toast(msgOf(e)); $("srPlan").disabled = false; }
+  };
+  // review scenes, then pay and produce
+  const open = sr.episodes.find(e => e.id === sr.scenes_episode);
+  document.querySelectorAll("[data-scast]").forEach(cb => cb.onchange = () => {
+    if (document.querySelectorAll(`[data-scast="${cb.dataset.scast}"]:checked`).length > 3) { cb.checked = false; toast("Scene တစ်ခုမှာ ဇာတ်ကောင် ၃ ယောက်အထိ"); } });
+  document.querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => { sr.scenes = srReadScenes(); sr.scenes.splice(Number(b.dataset.sdel), 1); srRender(); });
+  if ($("srAddScene")) $("srAddScene").onclick = () => { sr.scenes = srReadScenes(); sr.scenes.push({ story_mm:"", cast_names:[] }); srRender(); };
+  const saveScenes = async () => {
+    const scenes = srReadScenes().filter(s => s.story_mm.trim());
+    if (!scenes.length) throw new Error("scene အနည်းဆုံး ၁ ခု");
+    await srCall({ action:"episode_update", episode_id: open.id, scenes });
+  };
+  if ($("srSaveScenes")) $("srSaveScenes").onclick = async () => { srBusy = true;
+    try { await saveScenes(); toast("သိမ်းပြီးပါပြီ"); await srOpen(p.id, open.id); } catch (e) { toast(msgOf(e)); } srBusy = false; };
+  if ($("srProduce")) $("srProduce").onclick = async () => {
+    const per = p.quality === "hd" ? 50 : 35, n = srReadScenes().filter(s => s.story_mm.trim()).length;
+    if (profile && profile.credits < n * per) return go("buyPage");
+    if (!confirm(`အပိုင်း (${open.num}) — scene ${n} ခု၊ ${n * per} credits (${fmt(n * per * KS_PER_CREDIT)} ကျပ်)။ ထုတ်မလား?\nမအောင်မြင်တဲ့ scene တွေရဲ့ credit ကို ပြန်အမ်းပါတယ်။`)) return;
+    $("srProduce").disabled = true; srBusy = true;
+    try { await saveScenes(); await srCall({ action:"produce", episode_id: open.id }); toast("ထုတ်နေပါပြီ — app ပိတ်ထားလည်း ရပါတယ်"); loadProfile(); }
+    catch (e) { toast(msgOf(e)); }
+    srBusy = false; srOpen(p.id, open.id);
+  };
+  if ($("srReplan")) $("srReplan").onclick = () => { sr.episodes = sr.episodes.map(e => e.id === open.id ? { ...e, status:"failed", error:"Idea/Script ပြန်ရေးပြီး Scene ပြန်ခွဲပါ" } : e); sr.scenes = []; srRender(); };
+  if ($("srResume")) $("srResume").onclick = async () => {
+    $("srResume").disabled = true;
+    try { await srCall({ action:"resume", episode_id: open.id }); toast("ပြန်ထုတ်နေပါပြီ"); } catch (e) { toast(msgOf(e)); }
+    srOpen(p.id, open.id);
+  };
+}
+
 /* ================= VIDEOS ================= */
 const ST = { queued:"စောင့်ဆိုင်း", running:"ဖန်တီးနေ", succeeded:"ပြီးပြီ", failed:"မအောင်မြင်" };
 const RST = { running:"running", done:"succeeded", failed:"failed" };
 async function loadVideos(){
   const [{ data: gens }, { data: rcs }] = await Promise.all([
-    sb.from("generations").select("*").order("created_at",{ascending:false}).limit(30),
+    sb.from("generations").select("*").is("episode_id", null).order("created_at",{ascending:false}).limit(30),
     sb.from("recreates").select("*, templates(title, emoji)").eq("user_id", me.id).order("created_at",{ascending:false}).limit(30)]);
   // recreates look like generations in the list
   const data = [...(gens || []), ...(rcs || []).map(r => ({ id: r.id, rc: true, status: RST[r.status], cost: r.cost, created_at: r.created_at,

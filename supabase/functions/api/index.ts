@@ -319,6 +319,8 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
     const l = lines[i]; let emotion = l.emotion;
     if (med > 0 && energy[i] > 0 && known.length >= 2) { const r = energy[i] / med; emotion = shiftEmotion(emotion, r < 0.65 ? -1 : r > 1.5 ? 1 : 0); }
     const who = String(l.who ?? "man").toLowerCase();
+    const fixed = g.dialogue?.voices?.[String(l.who ?? "")]; // series characters keep one voice in every episode
+    if (!cast.has(who) && fixed) { cast.set(who, fixed); pitch.set(who, 1); }
     if (!cast.has(who)) {
       const opts = voiceChoices(l, who); const taken = [...cast.values()];
       const v = opts.find((o) => !taken.includes(o)) ?? opts[0];
@@ -464,7 +466,7 @@ async function startGeneration(admin: any, id: string) {
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
       dialogue: plan.lines?.length || (g.sfx && plan.stingers?.length)
-        ? { lines: plan.lines ?? [], ambience: plan.ambience ?? null, effects: plan.effects ?? [], stingers: g.sfx ? plan.stingers ?? [] : [] } : null,
+        ? { lines: plan.lines ?? [], ambience: plan.ambience ?? null, effects: plan.effects ?? [], stingers: g.sfx ? plan.stingers ?? [] : [], voices: plan.voices ?? null } : null,
     }).eq("id", id);
   } catch (e) {
     console.error("create failed:", e);
@@ -542,6 +544,14 @@ Deno.serve(async (req) => {
     const { data: want } = await admin0.rpc("get_app_secret", { p_name: "cron_token" });
     if (!want || cronTok !== want) return json({ error: "bad token" }, 401);
     await loadYottaKey(admin0);
+    // the "project" function starts each scene of an episode here (same pipeline as a single video)
+    const cb: any = await req.clone().json().catch(() => ({}));
+    if (cb.action === "start" && /^[0-9a-f-]{36}$/i.test(String(cb.id ?? ""))) {
+      const work = startGeneration(admin0, cb.id);
+      // @ts-ignore EdgeRuntime is provided by Supabase
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else await work;
+      return json({ ok: true });
+    }
     // jobs that never started (e.g. phone lost connection) → refund after 4 minutes
     const { data: stuck } = await admin0.from("generations").select("id").eq("status", "queued").lt("created_at", new Date(Date.now() - 240000).toISOString());
     for (const q of stuck ?? []) await admin0.rpc("finish_generation", { p_id: q.id, p_ok: false, p_error: "never started" });
