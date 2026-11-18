@@ -118,3 +118,5 @@ select cron.schedule('episode-tick', '* * * * *', $c$
     body := '{"action":"tick"}'::jsonb, timeout_milliseconds := 120000)
   where exists (select 1 from public.episodes where status in ('producing','stitching'));
 $c$);
+
+alter table public.episodes add column if not exists stitch_tries int not null default 0;

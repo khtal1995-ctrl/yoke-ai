@@ -310,8 +310,29 @@ async function advance(admin: any, ep: any) {
         urls.push(su!.signedUrl);
       }
       if (urls.length === 1) { await saveEpisode(admin, ep, urls[0]); return; }
+      if ((ep.stitch_tries ?? 0) >= 2) {
+        await admin.from("episodes").update({ status: "failed", error: "Scene တွေ ဆက်တာ မအောင်မြင်ပါ — \"ပြန်ထုတ်\" နှိပ်ပါ (scene တွေ ပြန်မထုတ်ပါ၊ ဆက်ရုံပဲ)" }).eq("id", ep.id);
+        return;
+      }
+      // join with our own ffmpeg: every scene scaled/padded to one size, one frame rate, one audio format
+      // (scenes differ: dubbed ones come from the merge step, others are Wan's own file)
+      const { data: pr } = await admin.from("projects").select("ratio,quality").eq("id", ep.project_id).single();
+      const base = pr?.quality === "hd" ? 720 : 480;
+      const long = Math.round(base * 16 / 9 / 2) * 2;
+      const [W, H] = pr?.ratio === "16:9" ? [long, base] : pr?.ratio === "1:1" ? [base, base] : [base, long];
+      const argv: string[] = ["ffmpeg", "-y"];
+      urls.forEach((_, i) => argv.push("-i", `{input${i}}`));
+      const fc: string[] = [];
+      urls.forEach((_, i) => {
+        fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p[v${i}]`);
+        fc.push(`[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+      });
+      fc.push(urls.map((_, i) => `[v${i}][a${i}]`).join("") + `concat=n=${urls.length}:v=1:a=1[v][a]`);
+      argv.push("-filter_complex", fc.join(";"), "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "{output}");
+      await admin.from("episodes").update({ stitch_tries: (ep.stitch_tries ?? 0) + 1 }).eq("id", ep.id);
       const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabsHeaders(admin),
-        body: JSON.stringify({ model: "eachlabs-video-api", version: "0.0.1", input: { capability: "concat", input_urls: urls, params: {} } }) });
+        body: JSON.stringify({ model: "eachlabs-video-api", version: "0.0.1", input: { mode: "run_ffmpeg", input_urls: urls, output_format: "mp4", argv } }) });
       const j: any = await r.json().catch(() => ({}));
       const pid = j.predictionID ?? j.prediction_id ?? j.id;
       if (!r.ok || !pid) throw new Error("concat submit " + r.status + " " + JSON.stringify(j).slice(0, 200));
@@ -528,8 +549,8 @@ Not ok when: more than one person or character is clearly visible (should be one
       const { count } = await admin.from("episode_scenes").select("id", { count: "exact", head: true }).eq("episode_id", ep.id).neq("status", "pending");
       if (!count) return json({ error: "nothing to resume" }, 400); // never started: plan again instead
       await admin.from("episode_scenes").update({ status: "pending", attempts: 0 }).eq("episode_id", ep.id).eq("status", "failed");
-      await admin.from("episodes").update({ status: "producing", error: null }).eq("id", ep.id);
-      bg(advance(admin, { ...ep, status: "producing" }).catch((e) => console.error(e)));
+      await admin.from("episodes").update({ status: "producing", error: null, stitch_tries: 0 }).eq("id", ep.id);
+      bg(advance(admin, { ...ep, status: "producing", stitch_tries: 0 }).catch((e) => console.error(e)));
       return json({ ok: true });
     }
   }
