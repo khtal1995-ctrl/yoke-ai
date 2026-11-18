@@ -463,6 +463,10 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
   return { state: "running" };
 }
 
+// always appended, word for word, to every video: our fixed quality base (exposure, lighting, camera, image quality).
+// The scene's own [Lighting]/[Camera] say what this shot is; this base makes every shot well exposed, sharp and stable.
+const QUALITY_BASE = "\nQuality (always): premium cinematic image as if shot on a professional cinema camera with prime lenses. Correct exposure: no blown-out highlights, no crushed blacks, rich detail in shadows. Faces are always well lit and clearly readable: soft key light at about 45 degrees, gentle fill on the shadow side, subtle rim light separating people from the background, catchlights in the eyes; even night and indoor scenes keep faces visible with motivated practical light. Natural, accurate Southeast Asian skin tones, neutral white balance, no colour cast. Pin-sharp focus on the speaking face, smooth shallow depth of field. Stable, smooth camera motion with no jitter, no shaking and no sudden zooms; natural 24 fps motion blur. Clean, high-detail image: no flicker, no warping, no morphing, no extra fingers or limbs, natural anatomy and hands, eyes and teeth rendered cleanly, faces and clothes stay identical from the first to the last frame.";
+
 // always appended: keeps people, clothes and signs Burmese (video models otherwise drift to South Asian looks)
 const MYANMAR_LOOK = "\nStyle: authentic Myanmar. All people are Burmese (Bamar) Southeast Asian people in everyday Myanmar clothing (longyi, htamein, eingyi, thanaka, or plain modern clothes). No readable text anywhere: shop signs, banners and posters are small, far in the background or softly out of focus, shown as colours and shapes, never as close-up legible lettering. No English, Chinese, Thai, Hindi or Devanagari writing. No Indian clothing, no saris.";
 
@@ -486,7 +490,7 @@ async function startGeneration(admin: any, id: string) {
       if (se || !s) throw new Error("character photo not found");
       refUrls.push(s.signedUrl);
     }
-    const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl, refUrls);
+    const sub = await submitVideo(g, en + QUALITY_BASE + MYANMAR_LOOK, imageUrl, refUrls);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, provider: sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
       dialogue: plan.lines?.length || (g.sfx && plan.stingers?.length)
