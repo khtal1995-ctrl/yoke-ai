@@ -32,6 +32,8 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 const RESOLUTION: Record<string, string> = { std: "480p", hd: "720p" };
+const GROUP_MODEL = "minimax-h3-lite-reference-to-video"; // scenes with 4-9 character photos (series group scenes)
+let ADMIN: any = null; // service client for helpers that need secrets
 
 // character photos (Wan 3.0 reference-to-video): [{path, name}] in Image 1..N order
 const refNames = (refs: any) => (Array.isArray(refs) ? refs : []).map((r: any) => String(r?.name ?? "").trim()).filter(Boolean);
@@ -415,6 +417,16 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: s
     if (!r.ok || !id) throw new Error(`submit ${model} failed (${r.status}): ${JSON.stringify(j).slice(0, 300)}`);
     return { id, model };
   };
+  // group scenes (4-9 character photos, from series episodes): Wan takes only 3 photos -> MiniMax H3 Lite on Eachlabs (up to 9)
+  if (refUrls.length > 3) {
+    const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(ADMIN!),
+      body: JSON.stringify({ model: GROUP_MODEL, version: "0.0.1", input: { prompt: prompt.slice(0, 7000), ratio: g.ratio,
+        duration: g.duration, resolution: g.quality === "hd" ? "768P" : "480P", reference_image_urls: refUrls.slice(0, 9) } }) });
+    const j: any = await r.json().catch(() => ({}));
+    const id = j.predictionID ?? j.prediction_id ?? j.id;
+    if (!r.ok || !id) throw new Error(`submit ${GROUP_MODEL} failed (${r.status}): ${JSON.stringify(j).slice(0, 300)}`);
+    return { id, model: GROUP_MODEL };
+  }
   // character photos: only Wan 3.0 keeps the faces; no fallback to a model that would ignore them
   if (isRef) return await tryModel("wan3.0-r2v", { enhance_prompt: false });
   try {
@@ -427,6 +439,13 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: s
 }
 
 async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"; url?: string; error?: string }> {
+  if (String(g.provider ?? "").includes(GROUP_MODEL)) {
+    const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.provider_request_id}`, { headers: await eachlabs(ADMIN!) });
+    const j: any = await r.json().catch(() => ({}));
+    if ((j.status === "success" || j.status === "succeeded") && j.output) return { state: "done", url: Array.isArray(j.output) ? j.output[0] : j.output };
+    if (j.status === "error" || j.status === "failed") return { state: "failed", error: String(j.error ?? j.output?.error_message ?? "failed").slice(0, 300) };
+    return { state: "running" };
+  }
   const path = isR2v(g) ? "reference-to-video" : g.mode === "i2v" ? "image-to-video" : "text-to-video";
   const r = await fetch(`${YOTTA}/api/maas/${path}/generations/${g.provider_request_id}`, {
     headers: { "X-API-KEY": YOTTA_KEY },
@@ -469,7 +488,7 @@ async function startGeneration(admin: any, id: string) {
     }
     const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl, refUrls);
     await admin.from("generations").update({
-      status: "running", prompt_en: en, provider_request_id: sub.id, provider: `yotta:${sub.model}`,
+      status: "running", prompt_en: en, provider_request_id: sub.id, provider: sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
       dialogue: plan.lines?.length || (g.sfx && plan.stingers?.length)
         ? { lines: plan.lines ?? [], ambience: plan.ambience ?? null, effects: plan.effects ?? [], stingers: g.sfx ? plan.stingers ?? [] : [], voices: plan.voices ?? null } : null,
     }).eq("id", id);
@@ -543,6 +562,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
   const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
+  ADMIN = admin0;
   // background tick (pg_cron every minute): keeps jobs moving even when the customer closed the app
   const cronTok = req.headers.get("x-cron-token");
   if (cronTok) {

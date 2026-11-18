@@ -132,10 +132,12 @@ async function planEpisode(admin: any, epId: string) {
   try {
     const b = await loadBible(admin, ep.project_id);
     const names = b.chars.map((c: any) => c.name);
+    const group = await groupScenesOn(admin);
     const out = await llmJson(admin, `You split one episode of a Burmese short-drama series into scenes for an AI video model that makes 10-second clips with native Burmese speech. ${BURMESE_STYLE}
 Return ONLY JSON: {"title_mm": "<short episode title>", "scenes": [{"story_mm": "<this 10-second scene in Burmese: where, who, what they do, the exact Burmese lines in quotes, their emotion>", "cast": ["<character names in this scene>"]}], "warnings_mm": ["<a problem with the story so far, in Burmese>"]}
 Rules:
 - One scene = one moment of about 10 seconds: one place, at most 6 named characters (crowds are fine as background), at most 2 short lines of dialogue (about 12 Burmese words in total). Long conversations go over several scenes.
+- ${group ? "Up to 9 named characters can be together in one shot." : "When more than 3 named characters are together (a family meal, a meeting), film it like a drama: one wide shot of the whole group where faces are small, then separate scenes with close-ups of at most 3 of them each; never more than 3 named characters close to the camera in one scene."}
 - Use the characters' names exactly. Keep their looks, personalities and relationships from the Story Bible. Continue from where the story is now.
 - Every scene must make sense on its own: say the place and the characters again in each scene (the video model sees one scene at a time).
 - Dialogue is the heart: punchlines, brags, twists and emotional lines are spoken by the characters themselves.
@@ -161,12 +163,17 @@ Rules:
   }
 }
 
+// group scenes (4-9 character photos in one frame, MiniMax H3 Lite) stay off until tested: vault secret group_scenes = "on"
+async function groupScenesOn(admin: any) {
+  return (await admin.rpc("get_app_secret", { p_name: "group_scenes" })).data === "on";
+}
+
 // ---------- producing: plan each scene with the planner, pay for it, start it through the api pipeline ----------
 async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
   const chars = b.chars.filter((c: any) => s.cast_names.includes(c.name));
   // the video model takes at most 3 photos: the first 3 characters (in the scene's order) with a photo; the rest are drawn from their saved looks
   const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
-  const refs = ordered.filter((c: any) => c.photo_path).slice(0, 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
+  const refs = ordered.filter((c: any) => c.photo_path).slice(0, (await groupScenesOn(admin)) ? 9 : 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
   const story = `[Series context, keep it consistent; do not show it as text]\n${bibleText(b, ep.num)}\n\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
     `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.`;
