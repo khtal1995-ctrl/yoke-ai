@@ -181,13 +181,16 @@ function rmsOf(x: Int16Array, a: number, b: number) {
 // when does each speaker talk in Wan's own audio? (ElevenLabs Scribe, word timings + speakers)
 async function speechTurns(key: string, url: string, speakers: number): Promise<{ start: number; end: number; spk: string }[]> {
   const fd = new FormData(); fd.append("model_id", "scribe_v1"); fd.append("cloud_storage_url", url);
-  fd.append("diarize", "true"); fd.append("timestamps_granularity", "word"); fd.append("tag_audio_events", "false");
+  fd.append("diarize", "true"); fd.append("timestamps_granularity", "word"); fd.append("tag_audio_events", "true");
   if (speakers > 0) fd.append("num_speakers", String(Math.min(speakers, 8)));
   const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": key }, body: fd });
   if (!r.ok) throw new Error("stt " + r.status + " " + (await r.text()).slice(0, 200));
   const j: any = await r.json();
   const segs: { start: number; end: number; spk: string; words?: any[] }[] = [];
-  const words = (j.words ?? []).filter((w: any) => w.type === "word");
+  // real words only (Scribe also returns "?", "။" as words); whispered/unclear speech comes back as an audio event
+  // like "[အလွန်လွမ်းနေတာ]" - it is still Wan talking, so it counts (to place our line and to mute Wan there)
+  const words = (j.words ?? []).filter((w: any) => (w.type === "word" || (w.type === "audio_event" && /[\u1000-\u109F]/.test(w.text)))
+    && /[\u1000-\u109Fa-zA-Z]/.test(w.text)).map((w: any) => ({ ...w, text: String(w.text).replace(/[\[\]()]/g, "") }));
   (segs as any).words = words; // kept for matching lines by their text (matchLines)
   for (const w of words) {
     const last = segs[segs.length - 1];
@@ -371,7 +374,7 @@ async function buildDubAudio(admin: any, g: any, srcUrl: string): Promise<Uint8A
       const ratio = Math.min(1, Math.max(0.83, (win * SR) / pcm.length));
       if (ratio < 0.995) out = stretch(pcm, ratio);
       start = Math.max(0, turns[i].start - 0.05);
-    } else { start = cursor; }
+    } else { start = Math.max(cursor, Math.min(total - 1.5, Number(lines[i]?.at) || 0)); } // no speech found: at the planned second
     const s0 = Math.round(start * SR); for (let k = 0; k < out.length && s0 + k < n; k++) speech[s0 + k] += out[k];
     const end = start + out.length / SR; placed.push({ start, end }); cursor = end + 0.3;
   });
