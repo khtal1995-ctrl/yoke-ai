@@ -16,7 +16,7 @@
   - "Yoke main character male" d4WXuYHO9Ot8KDdiOwIg, "Yoke main character female" 12GZ6E7rJLrs85C6m4J6
   - other young voices: "Young" RaXLAvAOptVErMcTikpw, "Yoke Young Man 1/2", "Yan", "Su - Calm" NBISYoQ4SVxq8eZxoHlV
   - "Yoke Male 1" B5MB163SdECMmHySTkLK = the owner's own voice; "Old man" uh7A30exzQsUAB5ovsOu; "Yoke child" uFPN3uAkEca3mQ6uRmBk
-- Speech must sound natural and acted, not read: real spoken Burmese, breaths, pauses, laughs (planner `delivery` → ElevenLabs v4 tags).
+- Voices: plain natural everyday speech by default (14 Nov style). At most ONE emotion tag per line, never stacked; extra direction only when the story clearly needs it (crying, shouting, whisper, shock). No added laughs/sighs/breaths. Over-acting = bad.
 
 ## Video quality
 - 18 Nov evening: the 8-section prompt + fixed quality base made Wan stiff ("doing what it's told"). REVERTED to the 14 Nov style:

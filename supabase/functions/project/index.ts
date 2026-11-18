@@ -199,7 +199,7 @@ Then, for every scene, decide:
    - "text": the customer's words EXACTLY as written (never change, add or remove words).
    - "spoken": the same words written as a Yangon person actually pronounces them for a Burmese voice engine: English loanwords written in Burmese script as Burmese people say them (baby -> ဘေဘီ, OK -> အိုကေ, sorry -> ဆောရီး), no spaces between Burmese words.
    - "feeling_mm": in simple Burmese, what this person truly feels inside at this moment and why (the subtext, not the surface).
-   - "voice": 1-3 short English voice-direction tags in square brackets that follow from that feeling, e.g. [soft, sincere, voice slightly shaking]. Truthful and restrained like real people; never over-act. Never laugh, giggle or sound excited on lines of longing, confession, sadness or apology. Never stretch or sing words.
+   - "voice": usually "" (plain, natural everyday speech, like real people talking). Only when the moment truly needs it (crying, shouting, a whispered secret, real shock) give ONE short English tag in square brackets, e.g. [quietly] or [holding back tears]. Never theatrical, never over-acted, no laughs, sighs or breaths, never stretch or sing words.
    - "face": English: the face and body while saying it (small, specific, real: eyes, breath, lips, hands) and how the listener reacts.
 3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
 Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","lines":[{"who":"...","text":"...","spoken":"...","feeling_mm":"...","voice":"...","face":"..."}]}]}`;
@@ -247,7 +247,7 @@ async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
   for (const l of j.plan.lines ?? []) {
     const m = dl.find((x) => x.who === l.who && sameWords(x.text, l.text)) ?? dl.find((x) => sameWords(x.text, l.text));
     if (!m) continue;
-    if (/^\s*\[/.test(String(m.voice ?? ""))) l.delivery = String(m.voice).match(/\[[^\]\[]{1,60}\]/g)!.filter((t) => !/[\u1000-\u109F]/.test(t)).slice(0, 3).join(" ");
+    if (/^\s*\[/.test(String(m.voice ?? ""))) l.delivery = String(m.voice).match(/\[[^\]\[]{1,60}\]/g)!.filter((t) => !/[\u1000-\u109F]/.test(t)).slice(0, 1).join(" ");
     if (m.spoken) l.spoken = String(m.spoken);
   }
   const { data: plan, error: pe } = await admin.from("plans").insert({ user_id: ep.user_id, prompt_mm: s.story_mm, duration: 10, mode: "t2v",

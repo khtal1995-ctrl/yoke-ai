@@ -151,7 +151,9 @@ const EMOTION: Record<string, { tag: string; stability: number }> = {
 async function tts(key: string, voice: string, text: string, emotion?: string, calmer = 0, delivery = ""): Promise<Int16Array> {
   const e0 = EMOTION[emotion ?? ""] ?? EMOTION.calm;
   // the planner's own voice direction (e.g. "[breathless, voice catching with joy] [soft laugh]") is richer than one emotion word
-  const e = delivery ? { tag: `${e0.tag}${delivery} `, stability: Math.max(0.3, e0.stability - 0.05) } : e0;
+  // one direction only (14 Nov style): the line's own tag replaces the emotion word, never stacked; voice steadiness unchanged
+  const one = (String(delivery).match(/\[[^\]\[]{1,60}\]/) ?? [""])[0];
+  const e = one ? { tag: `${one} `, stability: e0.stability } : e0;
   const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=pcm_24000`, {
     method: "POST", headers: { "xi-api-key": key, "Content-Type": "application/json" },
     body: JSON.stringify({ text: e.tag + text, model_id: "eleven_v4", voice_settings: { stability: Math.min(0.85, e.stability + calmer), similarity_boost: 0.8, speed: 1.05 } }),
