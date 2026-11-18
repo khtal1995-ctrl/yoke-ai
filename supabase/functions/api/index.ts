@@ -632,6 +632,33 @@ Deno.serve(async (req) => {
     await loadYottaKey(admin0);
     // the "project" function starts each scene of an episode here (same pipeline as a single video)
     const cb: any = await req.clone().json().catch(() => ({}));
+    // voice preview: the script's lines through the exact same voice step as a real video (same voice choice, tags,
+    // steadiness, loanwords, loudness, pitch), one WAV per line + the whole script in a row, for the owner to tune by ear
+    if (cb.action === "voice_preview" && Array.isArray(cb.lines)) {
+      const { data: key } = await admin0.rpc("get_app_secret", { p_name: "elevenlabs_api_key" });
+      const name = String(cb.name ?? "preview").replace(/[^a-z0-9_-]/gi, "").slice(0, 40) || "preview";
+      const cast = new Map<string, string>(); const pitch = new Map<string, number>(); const out: any[] = []; const all: Float32Array[] = [];
+      for (let i = 0; i < cb.lines.length && i < 12; i++) {
+        const l = cb.lines[i]; const who = String(l.who ?? "man").toLowerCase();
+        const fixed = cb.voices?.[String(l.who ?? "")];
+        if (!cast.has(who) && fixed) { const [vid, pp] = String(fixed).split("@"); cast.set(who, vid); pitch.set(who, Number(pp) || 1); }
+        if (!cast.has(who)) { const opts = voiceChoices(l, who); const taken = [...cast.values()]; const v = opts.find((o) => !taken.includes(o)) ?? opts[0];
+          cast.set(who, v); pitch.set(who, PITCH_VARIANTS[Math.min(2, taken.filter((t) => t === v).length)]); }
+        const pcm = pitchShift(await voiceLine(key, l, cast.get(who)!), pitch.get(who) ?? 1);
+        const f = Float32Array.from(pcm); all.push(f, new Float32Array(Math.round(0.5 * SR)));
+        const path = `lab/preview/${name}/${String(i + 1).padStart(2, "0")}.wav`;
+        await admin0.storage.from("audio").upload(path, wavOf(f), { contentType: "audio/wav", upsert: true });
+        const { data: su } = await admin0.storage.from("audio").createSignedUrl(path, 7 * 24 * 3600);
+        const e = EMOTION[l.emotion ?? ""] ?? EMOTION.calm; const one = (String(l.delivery ?? "").match(/\[[^\]\[]{1,60}\]/) ?? [""])[0];
+        out.push({ who: l.who, text: l.text, said: sayable(spokenNumbers(String(l.spoken || l.text))), voice: cast.get(who), pitch: pitch.get(who),
+          emotion: l.emotion ?? "calm", tag: one || e.tag.trim(), stability: e.stability, seconds: +(pcm.length / SR).toFixed(2), url: su?.signedUrl });
+      }
+      const joined = new Float32Array(all.reduce((a, b) => a + b.length, 0)); let o = 0; for (const a of all) { joined.set(a, o); o += a.length; }
+      const jp = `lab/preview/${name}/all.wav`;
+      await admin0.storage.from("audio").upload(jp, wavOf(joined), { contentType: "audio/wav", upsert: true });
+      const { data: ju } = await admin0.storage.from("audio").createSignedUrl(jp, 7 * 24 * 3600);
+      return json({ lines: out, all: ju?.signedUrl });
+    }
     if (cb.action === "start" && /^[0-9a-f-]{36}$/i.test(String(cb.id ?? ""))) {
       const work = startGeneration(admin0, cb.id);
       // @ts-ignore EdgeRuntime is provided by Supabase
