@@ -120,3 +120,6 @@ select cron.schedule('episode-tick', '* * * * *', $c$
 $c$);
 
 alter table public.episodes add column if not exists stitch_tries int not null default 0;
+
+-- engine: null = Wan + ElevenLabs dubbing, omni = Gemini Omni (speech made by the video model)
+alter table public.generations add column if not exists engine text;
