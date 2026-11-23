@@ -150,10 +150,36 @@ function lint(plan: any, story: string, duration: number, cast?: string[]): stri
   return issues;
 }
 
+// ---- Gemini Omni writer (owner's rules, 23 Nov): the customer's Burmese story -> Omni prompt, in the format of the
+// reference video the owner showed (ChatGPT style: look + Dialogue (Myanmar) + motion paragraph). Omni speaks the lines itself.
+const OMNI_SYSTEM = `You turn a customer's Burmese video story into a prompt for Gemini Omni Flash, a video model that generates the picture and the characters' Burmese speech together.
+Rules (all of them):
+1. Translate the customer's Burmese story faithfully into English. Keep the meaning exactly.
+2. Leave nothing out: every action, its order, and every cause and effect the customer describes (for example "the car is about to hit her -> so he stops time -> he saves her") must be clearly in the prompt, so the story reads clearly.
+3. Dialogue stays exactly as the customer wrote it, in Burmese, word for word, with who says it. Never translate or change the spoken words.
+4. Write it in three parts, like this:
+   Look: one short paragraph: the characters' appearance (if given) and the overall look, e.g. natural light, cinematic composition, shallow depth of field, emotional storytelling, realistic photography, soft bokeh.
+   Dialogue (Myanmar): one line per spoken line: <who> — "<Burmese words exactly>"
+   Motion Video Prompt: one natural story paragraph, in the order of events: where it happens, how the camera moves, what each person does and feels shown through face and body, who speaks when (say "speaks in Burmese" and repeat the exact Burmese line in quotes). No timestamps, no seconds, no headings inside it.
+5. Characters with reference photos are referred to as "the <young woman/young man/...> in Image N".
+Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>"}`;
+
+async function planOmni(key: string, story: string, duration: number, names: string[], effort: string) {
+  const user = `Video length: ${duration} seconds.\n${names.length ? `Reference photos: ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n` : ""}\nCustomer's story (Burmese):\n${story}`;
+  const out = parse(await llm(key, [{ role: "system", content: OMNI_SYSTEM }, { role: "user", content: user }], effort));
+  const plan = { prompt: String(out.prompt ?? "").trim(), lines: Array.isArray(out.lines) ? out.lines : [], summary_mm: String(out.summary_mm ?? "").trim(), engine: "omni" };
+  const issues: string[] = [];
+  if (!plan.prompt) issues.push("empty prompt");
+  for (const q of String(story).match(/[\"“”]([^\"“”]{1,200})[\"“”]/g) ?? []) {
+    const w = q.slice(1, -1).trim(); if (w && !plan.prompt.includes(w)) issues.push(`Customer's line not in the prompt exactly: ${w}`);
+  }
+  return { plan, issues };
+}
+
 Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   if (req.headers.get("x-lab-token") !== LAB && auth !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return new Response("no", { status: 401 });
-  const { story, duration = 10, effort = "low", cast = [] } = await req.json();
+  const { story, duration = 10, effort = "low", cast = [], engine = "" } = await req.json();
   const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, 30)).filter(Boolean).slice(0, 9);
   const t0 = Date.now();
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/get_app_secret`, { method: "POST",
@@ -161,6 +187,11 @@ Deno.serve(async (req) => {
     body: JSON.stringify({ p_name: "yotta_api_key" }) });
   const key = await r.json();
   try {
+    if (engine === "omni") {
+      let r1 = await planOmni(key, story, duration, names, effort);
+      if (r1.issues.length && Date.now() - t0 < 60000) r1 = await planOmni(key, story, duration, names, effort);
+      return Response.json({ plan: r1.plan, issues: r1.issues, passes: 1, ms: Date.now() - t0 });
+    }
     const messages: any[] = [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\n${names.length ? `Characters with reference photos (use their names exactly as written): ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n\n` : ""}Request:\n${story}` }];
     let raw = await llm(key, messages, effort);
     let plan = normalize(parse(raw), story, duration);

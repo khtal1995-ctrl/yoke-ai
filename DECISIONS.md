@@ -41,3 +41,10 @@
 ## Pricing notes
 - 1 cr = 100 Ks. std 10 s = 35 cr, HD 10 s = 50 cr.
 - Wan cost ≈ 3,000 Ks per 10 s std, ≈ 6,300 Ks per 10 s HD → HD loses money at 50 cr; review later.
+
+## Omni (Gemini Omni Flash via Eachlabs) — owner's rules, 23 Nov
+- Engine for quality: picture + Burmese speech made together by Omni; no ElevenLabs/dubbing. ~$1.02 per 10 s (≈4,600 Ks).
+- Tests go through the app's own path (planner engine="omni"), never prompts hand-written by Claude.
+- Planner (Omni writer) rules: faithful translation of the customer's Burmese; leave nothing out (every action, order, cause→effect);
+  dialogue in Burmese word for word with speaker; format like the owner's reference video: Look / Dialogue (Myanmar) / Motion Video Prompt
+  (story paragraph with camera movement and acting, no timestamps). The "add nothing" rule was REMOVED by the owner.
