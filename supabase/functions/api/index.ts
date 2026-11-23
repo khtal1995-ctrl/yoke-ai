@@ -502,7 +502,12 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
     const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.provider_request_id}`, { headers: await eachlabs(ADMIN!) });
     const j: any = await r.json().catch(() => ({}));
     if ((j.status === "success" || j.status === "succeeded") && j.output) return { state: "done", url: Array.isArray(j.output) ? j.output[0] : j.output };
-    if (j.status === "error" || j.status === "failed") return { state: "failed", error: String(j.error ?? j.output?.error_message ?? "failed").slice(0, 300) };
+    if (j.status === "error" || j.status === "failed") {
+      const msg = String(j.error ?? j.output?.error_message ?? (typeof j.output === "string" ? j.output : "") ?? "failed") || "failed";
+      // Google's safety filter: tell the customer in Burmese what to change (the charge is refunded either way)
+      if (/safety|declined|policy|blocked/i.test(msg)) return { state: "failed", error: "ဇာတ်လမ်းထဲက အကြောင်းအရာကို AI ရဲ့ ဘေးကင်းရေး စစ်ဆေးမှုက လက်မခံပါ (ဥပမာ ကလေးနဲ့ အကြမ်းဖက်မှု၊ သွေး၊ အဝတ်မဲ့)။ စာသားကို ပြင်ပြီး ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။" };
+      return { state: "failed", error: msg.slice(0, 300) };
+    }
     return { state: "running" };
   }
   const path = isR2v(g) ? "reference-to-video" : g.mode === "i2v" ? "image-to-video" : "text-to-video";
