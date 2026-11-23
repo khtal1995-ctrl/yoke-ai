@@ -48,3 +48,4 @@
 - Planner (Omni writer) rules: faithful translation of the customer's Burmese; leave nothing out (every action, order, cause→effect);
   dialogue in Burmese word for word with speaker; format like the owner's reference video: Look / Dialogue (Myanmar) / Motion Video Prompt
   (story paragraph with camera movement and acting, no timestamps). The "add nothing" rule was REMOVED by the owner.
+- Added 23 Nov: write 1-2 short Burmese lines if speech allowed but not given; never copy instructions-to-the-app into the prompt; fill in film details (place, light, effects, camera, reactions) that fit the story.

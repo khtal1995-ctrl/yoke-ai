@@ -162,6 +162,9 @@ Rules (all of them):
    Dialogue (Myanmar): one line per spoken line: <who> — "<Burmese words exactly>"
    Motion Video Prompt: one natural story paragraph, in the order of events: where it happens, how the camera moves, what each person does and feels shown through face and body, who speaks when (say "speaks in Burmese" and repeat the exact Burmese line in quotes). No timestamps, no seconds, no headings inside it.
 5. Characters with reference photos are referred to as "the <young woman/young man/...> in Image N".
+6. If the customer allows or asks for speech but gives no exact words, write 1-2 short, natural spoken Burmese lines yourself (everyday Yangon speech) that fit the moment, and put them in Dialogue (Myanmar).
+7. The customer's instructions to the app (length, "make a video", "a little speech is fine", style requests) are instructions to you, not part of the scene: never copy them into the prompt as text.
+8. Fill in the details the scene needs so it plays like a film: where it happens, time of day and light that fit the story, how the key visual effects look (e.g. how a transformation happens), how the camera moves, and the characters' reactions. The Look paragraph must fit this story; the words in the format example are only an example.
 Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>"}`;
 
 async function planOmni(key: string, story: string, duration: number, names: string[], effort: string) {
