@@ -9,7 +9,6 @@
 // Dialogue videos: Wan 3.0 makes picture + lip movement; its speech is replaced by native Burmese voices
 // placed on Wan's own speaking times, mixed with background sound, then merged (stages: dubbing → merging).
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -438,44 +437,22 @@ async function eachlabs(admin: any) {
 }
 
 // ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
-// ---- Gemini Omni (Google Cloud, Gemini Enterprise Agent Platform; Google's route for countries outside the Gemini API list) ----
+// ---- Gemini Omni Flash through Eachlabs (Google's model; Eachlabs serves Myanmar customers) ----
 // One model makes picture + Burmese speech + sound together (lips match by construction): no ElevenLabs, no dubbing.
-const OMNI_MODEL = "gemini-omni-1.2-flash";
-async function omniBase(admin: any) {
-  const [k, p] = await Promise.all([admin.rpc("get_app_secret", { p_name: "google_ai_key" }), admin.rpc("get_app_secret", { p_name: "google_project" })]);
-  if (!k.data || !p.data) throw new Error("Omni not configured (google_ai_key / google_project)");
-  return { url: `https://aiplatform.googleapis.com/v1beta1/projects/${p.data}/locations/global/interactions`, key: String(k.data) };
-}
+const OMNI_REF = "google-gemini-omni-flash-reference-to-video";     // character photos (1-10)
+const OMNI_I2V = "google-gemini-omni-1-1-flash-image-to-video";     // first frame
 async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = []): Promise<{ id: string; model: string }> {
-  const { url, key } = await omniBase(admin);
-  const input: any[] = [{ type: "text", text: prompt }];
-  for (const u of [...(imageUrl ? [imageUrl] : []), ...refUrls].slice(0, 5)) {
-    const r = await fetch(u); const b = new Uint8Array(await r.arrayBuffer());
-    input.push({ type: "image", data: encodeBase64(b), mime_type: r.headers.get("content-type")?.split(";")[0] || "image/jpeg" });
-  }
-  const body: any = { model: OMNI_MODEL, store: true, background: true, input,
-    response_format: { type: "video", delivery: "inline", aspect_ratio: g.ratio === "16:9" ? "16:9" : "9:16", resolution: "720p", duration: `${g.duration}s` } };
-  if (refUrls.length) body.generation_config = { video_config: { task: "reference_to_video" } };
-  else if (imageUrl) body.generation_config = { video_config: { task: "image_to_video" } };
-  const r = await fetch(url, { method: "POST", headers: { "x-goog-api-key": key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
+  let model: string; let input: any;
+  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 7), aspect_ratio: ratio, duration }; }
+  else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution: "720p" }; }
+  else throw new Error("Omni needs a character photo or a first frame");
+  const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
+    body: JSON.stringify({ model, version: "0.0.1", input }) });
   const j: any = await r.json().catch(() => ({}));
-  if (!r.ok || !j.id) throw new Error(`omni submit ${r.status}: ${JSON.stringify(j).slice(0, 400)}`);
-  return { id: j.id, model: OMNI_MODEL };
-}
-async function pollOmni(admin: any, g: any): Promise<{ state: "running" | "done" | "failed"; url?: string; error?: string }> {
-  const { url, key } = await omniBase(admin);
-  const r = await fetch(`${url}/${g.provider_request_id}`, { headers: { "x-goog-api-key": key } });
-  const j: any = await r.json().catch(() => ({}));
-  if (!r.ok) return r.status >= 500 ? { state: "running" } : { state: "failed", error: `omni ${r.status}: ${JSON.stringify(j).slice(0, 300)}` };
-  if (j.status === "completed") {
-    for (const st of j.steps ?? []) for (const c of st.content ?? []) {
-      if (c.type === "video" && c.data) return { state: "done", url: `data:${c.mime_type ?? "video/mp4"};base64,${c.data}` };
-      if (c.type === "video" && c.uri) return { state: "failed", error: "omni returned a gs:// uri; inline expected" };
-    }
-    return { state: "failed", error: "omni: no video in result" + (JSON.stringify(j.steps ?? []).includes("block") ? " (blocked)" : "") };
-  }
-  if (["failed", "cancelled", "incomplete"].includes(String(j.status))) return { state: "failed", error: `omni ${j.status}: ${JSON.stringify(j.error ?? j).slice(0, 300)}` };
-  return { state: "running" };
+  const id = j.predictionID ?? j.prediction_id ?? j.id;
+  if (!r.ok || !id) throw new Error(`submit ${model} failed (${r.status}): ${JSON.stringify(j).slice(0, 300)}`);
+  return { id, model };
 }
 
 async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: string[] = []): Promise<{ id: string; model: string }> {
@@ -521,8 +498,7 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: s
 }
 
 async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"; url?: string; error?: string }> {
-  if (String(g.provider ?? "").startsWith("google:")) return await pollOmni(ADMIN!, g);
-  if (String(g.provider ?? "").includes(GROUP_MODEL)) {
+  if (String(g.provider ?? "").includes(GROUP_MODEL) || String(g.provider ?? "").includes("gemini-omni")) {
     const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.provider_request_id}`, { headers: await eachlabs(ADMIN!) });
     const j: any = await r.json().catch(() => ({}));
     if ((j.status === "success" || j.status === "succeeded") && j.output) return { state: "done", url: Array.isArray(j.output) ? j.output[0] : j.output };
@@ -594,7 +570,7 @@ async function startGeneration(admin: any, id: string) {
     const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl, refUrls);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id,
-      provider: omni ? `google:${sub.model}` : sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
+      provider: omni || sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
       // Omni speaks the lines itself: nothing to dub (keep the lines only as a record)
       dialogue: omni ? null : plan.lines?.length || (g.sfx && plan.stingers?.length)
         ? { lines: plan.lines ?? [], ambience: plan.ambience ?? null, effects: plan.effects ?? [], stingers: g.sfx ? plan.stingers ?? [] : [], voices: plan.voices ?? null } : null,
