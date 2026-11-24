@@ -571,6 +571,8 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: s
 
 const SAFETY_MM = "ဇာတ်လမ်းထဲက အကြောင်းအရာကို AI ရဲ့ ဘေးကင်းရေး စစ်ဆေးမှုက လက်မခံပါ (ဥပမာ ကလေးနဲ့ အကြမ်းဖက်မှု၊ သွေး၊ အဝတ်မဲ့)။ စာသားကို ပြင်ပြီး ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။";
 const FAMOUS_MM = "ထည့်ထားတဲ့ ဓာတ်ပုံထဲက လူဟာ နာမည်ကြီး လူသိများသူနဲ့ တူလို့ AI က လက်မခံပါ။ ကိုယ်ပိုင်ပုံ (သို့) တခြားပုံနဲ့ ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။";
+// try 2 (rewording a customer line) stays off until the owner allows changing customer lines
+const SAFE_TRIES = 1;
 // Google declined an Omni prompt: the planner rewrites only the likely trigger (try 1: English only; try 2: may reword the
 // line that is the trigger, keeping its meaning), then the same job is sent again with the same photos.
 async function safeRetry(g: any, tryNo: number): Promise<boolean> {
@@ -625,7 +627,7 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
       if (/safety|declined|policy|blocked/i.test(msg)) {
         // a declined job costs nothing: rewrite the likely trigger and try again (twice at most) before giving up
         const tries = Number(g.post_data?.safe_tries ?? 0);
-        if (String(g.provider ?? "").includes("gemini-omni") && tries < 2) {
+        if (String(g.provider ?? "").includes("gemini-omni") && tries < SAFE_TRIES) {
           try { if (await safeRetry(g, tries + 1)) return { state: "running" }; }
           catch (e) { console.error("safe rewrite failed:", e); }
         }
