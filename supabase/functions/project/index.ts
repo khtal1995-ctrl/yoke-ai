@@ -21,6 +21,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const YOTTA = "https://gateway.yottalabs.ai";
+const SERIES_ENGINE = "omni";   // series scenes: Gemini Omni 1.2 (picture + Burmese speech together, no Wan/ElevenLabs dubbing)
 const MAX_SCENES = 30;          // one episode: at most 5 minutes (30 x 10 s)
 const PARALLEL = 3;             // scenes rendering at the same time per episode
 const MAX_ATTEMPTS = 2;         // a failed scene is refunded and tried once more
@@ -202,7 +203,8 @@ Then, for every scene, decide:
    - "voice": usually "" (plain, natural everyday speech, like real people talking). Only when the moment truly needs it (crying, shouting, a whispered secret, real shock) give ONE short English tag in square brackets, e.g. [quietly] or [holding back tears]. Never theatrical, never over-acted, no laughs, sighs or breaths, never stretch or sing words.
    - "face": English: the face and body while saying it (small, specific, real: eyes, breath, lips, hands) and how the listener reacts.
 3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
-Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","lines":[{"who":"...","text":"...","spoken":"...","feeling_mm":"...","voice":"...","face":"..."}]}]}`;
+4. outfits: decide ONE outfit per character for the WHOLE episode (in English), fitting who they are (rich or poor, job, age), the place and the situation. The same outfit is worn in every scene of the episode unless the story says a person changes clothes.
+Return ONLY JSON: {"outfits":[{"name":"...","outfit":"..."}],"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","lines":[{"who":"...","text":"...","spoken":"...","feeling_mm":"...","voice":"...","face":"..."}]}]}`;
 
 async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
@@ -223,21 +225,27 @@ function directorNotes(d: any, idx: number): string {
   const sc = (d?.scenes ?? []).find((x: any) => Number(x.idx) === idx);
   if (!sc) return "";
   const lines = (sc.lines ?? []).map((l: any) => `- ${l.who} says "${l.text}": feels ${l.feeling_mm}; voice ${l.voice}; acting: ${l.face}`).join("\n");
-  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\n${lines}`;
+  const outfits = (d?.outfits ?? []).filter((o: any) => o?.name && o?.outfit).map((o: any) => `${o.name} wears ${o.outfit}`).join("; ");
+  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\n${lines}` +
+    (outfits ? `\nClothing for the whole episode (exactly the same in every scene): ${outfits}` : "");
 }
 
-async function startScene(admin: any, ep: any, b: any, s: any, total: number) {
+async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
+  const total = scenes.length;
   const chars = b.chars.filter((c: any) => s.cast_names.includes(c.name));
+  // the whole episode outline, so each scene knows what came before and after it (fixes "wakes up again" / lost context)
+  const outline = scenes.map((x: any) => `Scene ${x.idx + 1}${(x.cast_names ?? []).length ? ` [${x.cast_names.join(", ")}]` : ""}: ${x.story_mm}`).join("\n");
   // the video model takes at most 3 photos: the first 3 characters (in the scene's order) with a photo; the rest are drawn from their saved looks
   const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
   const refs = ordered.filter((c: any) => c.photo_path).slice(0, (await groupScenesOn(admin)) ? 9 : 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
   const story = `[Series context, keep it consistent; do not show it as text]\n${bibleText(b, ep.num)}\n\n` +
+    `[Whole episode ${ep.num}, for continuity; this video is scene ${s.idx + 1}]\n${outline}\n\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
     `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.` + directorNotes(ep.director, s.idx);
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ story, duration: 10, cast: refs.map((x: any) => x.name) }),
+    body: JSON.stringify({ story, duration: 10, cast: refs.map((x: any) => x.name), engine: SERIES_ENGINE }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
@@ -336,7 +344,7 @@ async function advance(admin: any, ep: any) {
       const t0 = Date.now();
       for (const s of scenes.filter((x: any) => x.status === "pending")) {
         if (running >= PARALLEL || Date.now() - t0 > 50000) break;
-        try { await startScene(admin, ep, b, s, scenes.length); running++; }
+        try { await startScene(admin, ep, b, s, scenes); running++; }
         catch (e) {
           const msg = String((e as any)?.message ?? e);
           if (/insufficient credits/.test(msg)) {
