@@ -9,7 +9,7 @@
 Owner's test story (Kaung Khant, rich heir) — use as is for series tests:
 စံအိမ်ကြီးရဲ့ အပေါ်ကနေ Drone Camera ဖြတ်သွားမယ်။ Supercar တွေ၊ Private Jet တွေ၊ Helicopter တွေ၊ ကိုယ်ပိုင်ရေကန်တွေကို ပြမယ်။ အဲဒီနောက် ကောင်လေးရဲ့ အိပ်ခန်းထဲကို Camera က ဝင်လာမယ်။ ကောင်းခန့်က အိပ်ရာနိုးနေပြီ။ ဝန်ထမ်းသုံးယောက် သူ့ရှေ့မှာ ရပ်စောင့်နေကြတယ်။
 ဝန်ထမ်း: "သခင်လေး၊ ဒီနေ့အတွက် ကားဘယ်စီး ပြင်ပေးရမလဲခင်ဗျ။" ကောင်းခန့်: "မနေ့က မှာထားတဲ့ကား ရောက်ပြီလား။" ဝန်ထမ်း: "ရောက်ပါပြီ သခင်လေး။ ဒါပေမဲ့ သခင်လေးလိုချင်တဲ့ အရောင်တော့ မဟုတ်သေးပါဘူး။" ကောင်းခန့်က မျက်မှောင်ကြုတ်လိုက်တယ်။ ကောင်းခန့်: "ငါ အနက်ရောင်လိုချင်တယ်လို့ ပြောထားတယ်မဟုတ်လား။" ဝန်ထမ်း: "ဟုတ်ပါတယ် သခင်လေး။ အခုရောက်လာတာ အဖြူရောင်ဖြစ်နေလို့ပါ။" ကောင်းခန့်: "ဒါဆို အသစ်တစ်စီး ထပ်ဝယ်လိုက်လေ။ ဒီလောက်လေးတောင် ငါပြောမှ လုပ်တတ်ကြတာလား။" ဝန်ထမ်းတွေ တိတ်သွားကြတယ်။ ကောင်းခန့်က ထပြီး အဝတ်လဲခန်းထဲ ဝင်သွားမယ်။ Camera က သန်းချီတန်တဲ့ နာရီတွေ၊ ရှားပါးဖိနပ်တွေ၊ Luxury ပစ္စည်းတွေကို ဖြတ်ပြမယ်။ နောက်တော့ ကောင်းခန့်က မိဘနှစ်ယောက်ရှိတဲ့ မနက်စာစားခန်းထဲ ဝင်လာမယ်။ ဦးသီဟ: "မင်းကတော့ တစ်နေ့တစ်နေ့ ပိုပြီးကြီးကျယ်လာပြီနော်။" ကောင်းခန့်: "အဖေ့သားပဲဗျာ။ ဒီလောက်တော့ ရှိရမှာပေါ့။" ဒေါ်မေမြတ်: "သားရယ်… ပိုက်ဆံရှိတိုင်း အရာအားလုံးကို လုပ်လို့ရတာမဟုတ်ဘူးနော်။" ကောင်းခန့်: (ပြုံးရင်း) "အမေကလည်း… ဒီခေတ်မှာ ပိုက်ဆံနဲ့ မရတာ ဘာရှိလို့လဲ။"
-Photos: ကောင်းခန့် = lab_kaungkhant.jpg, ဒေါ်မေမြတ် = lab_mother.jpg; ဦးသီဟ = no approved photo yet (the sent one was a flagged famous face).
+Photos: ကောင်းခန့် = lab_kaungkhant.jpg, ဒေါ်မေမြတ် = lab_mother.jpg; young woman = lab_sr_sr_girl.jpg (owner-approved 25 Nov 02:28; any photo not listed here → no photo, let the AI draw the person); ဦးသီဟ = no approved photo yet (the sent one was a flagged famous face).
 
 # WHAT WORKED (owner-approved, 23–25 Nov) — keep doing exactly this
 Goal: customer videos look like a film — natural Burmese speech and acting, one click, no dubbing (owner's TikTok reference = Google Omni Flash).
@@ -64,6 +64,13 @@ Checks that caught real problems
 - Google safety declines (Omni): NO customer warnings/limits (owner). Instead the api rewrites the likely trigger and resubmits (declined jobs cost $0). `SAFE_TRIES = 1`: try 1 changes only the English, Burmese lines stay exact. Try 2 (may reword a customer line) is built but OFF until the owner allows changing customer lines.
 - Test 25 Nov 02:10 (mall story, 3 scenes 360p): scene 3 "ကျွန်တော် ဇေယျာပါ၊ ဖုန်းနံပါတ်လေး ရနိုင်မလား" was declined twice, then passed after try 1 with the line unchanged → asking for a phone number is fine; the English ("Neither takes out a phone") was the likely trigger. All 3 lines spoken right. Cost $0.7347 ≈ 3,306 Ks.
 
+## 25 Nov 02:30 — series acting and cuts (owner feedback on the mall test)
+- Owner: cuts between scenes unnatural; scene 2 stood still ~2 s before acting; the young woman looked happy for no reason.
+- Fix A: director cuts on action — each scene is already moving in its first second and continues the previous scene's movement; no held poses at start or end; something happens every second.
+- Fix B: director writes "reactions" per scene: each person's feeling step by step with its cause; nobody smiles without a reason.
+- Episode planning takes `max_scenes` (owner: tests ≤ 3 scenes).
+- Note: Claude's earlier mother/son and mall tests broke rule 3 (Claude wrote the stories and scene text) — do not repeat.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.
@@ -77,5 +84,5 @@ Checks that caught real problems
   - `labpeek` (lab): `x-cron-token` + `{action:"words", url|path}` → Burmese transcript of a video (check spoken lines). `labupload` (lab): `{action:"sign", paths:[...]}` → signed URLs of inputs-bucket files.
 - Admin/test user (owner's account) id `7b451c1f-fdba-4079-8f7c-dd48ea8f4eaa`. Give it test credits with `select public._add_credits(uid, 100, 'Admin test credit (...)', null)` — free, it is our own ledger.
 - To make a test video like a customer: insert into `plans` (status 'ready', plan from the planner response) and `generations` (engine 'omni', quality, duration 5|10, ratio, cost gen_cost(), plan_id, refs [{name, path}]), charge `_add_credits(u,-cost,...)`, then `net.http_post` api `{action:"start", id}`. Poll the row; Eachlabs output/cost: GET `https://api.eachlabs.ai/v1/prediction/<provider_request_id>` with `X-API-Key` from vault `eachlabs_api_key` (metrics.cost = real $).
-- Character photos already uploaded (inputs bucket, under the admin user): lab_kaungkhant.jpg, lab_mother.jpg (lab_father.jpg = flagged famous face, do not use).
+- Character photos already uploaded (inputs bucket, under the admin user): lab_kaungkhant.jpg, lab_mother.jpg, lab_sr_sr_girl.jpg (owner-approved young woman) (lab_father.jpg = flagged famous face, do not use; any other lab_* photo is NOT approved → no photo).
 - Always: show the owner the cost in Kyat and get OK first; then verify (transcript, cost) before saying it worked. Push code to `main` (not a side branch) and deploy edge functions as one-line shims importing the pinned commit.

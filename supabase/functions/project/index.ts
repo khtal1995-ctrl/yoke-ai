@@ -146,7 +146,7 @@ Rules: keep every name, place and fact the customer wrote; only add what is miss
 }
 
 // ---------- episode planning: scenes of about 10 seconds each ----------
-async function planEpisode(admin: any, epId: string) {
+async function planEpisode(admin: any, epId: string, maxScenes = MAX_SCENES) {
   const { data: ep } = await admin.from("episodes").select("*").eq("id", epId).single();
   try {
     const b = await loadBible(admin, ep.project_id);
@@ -161,12 +161,12 @@ Rules:
 - Every scene must make sense on its own: say the place and the characters again in each scene (the video model sees one scene at a time).
 - Dialogue is the heart: punchlines, brags, twists and emotional lines are spoken by the characters themselves.
 - If the customer gave a full script (mode "script"): keep their story, order and quoted words exactly; only split it into scenes.
-- If the customer gave only an idea (mode "idea"): write a complete, dramatic episode from it with a hook at the start and a cliffhanger at the end; 6 to 12 scenes unless the idea asks for more.
-- At most ${MAX_SCENES} scenes.
+- If the customer gave only an idea (mode "idea"): write a complete, dramatic episode from it with a hook at the start and a cliffhanger at the end; ${maxScenes < 6 ? `exactly ${maxScenes} scenes (a short episode: tell the whole idea in them)` : "6 to 12 scenes unless the idea asks for more"}.
+- At most ${maxScenes} scenes.
 - "warnings_mm": list real contradictions with the Story Bible (a character who left or died appears again, a broken relationship, a wrong place). Empty list if none. Never warn about style.
 - "cast" may only contain these names: ${names.join(", ") || "(none yet)"}. Other people (a seller, a crowd) are described in story_mm but not listed.`,
       `${bibleText(b, ep.num)}\n\nEpisode ${ep.num}. Mode: ${ep.input_mode}.\nCustomer's ${ep.input_mode === "script" ? "script" : "idea"}:\n${ep.input_mm}`, 8000);
-    const scenes = (Array.isArray(out?.scenes) ? out.scenes : []).filter((s: any) => clip(s?.story_mm, 900)).slice(0, MAX_SCENES);
+    const scenes = (Array.isArray(out?.scenes) ? out.scenes : []).filter((s: any) => clip(s?.story_mm, 900)).slice(0, maxScenes);
     if (!scenes.length) throw new Error("no scenes");
     await admin.from("episode_scenes").delete().eq("episode_id", epId).eq("status", "pending");
     await admin.from("episode_scenes").insert(scenes.map((s: any, i: number) => ({
@@ -195,14 +195,15 @@ const DIRECTOR_SYSTEM = `You are an experienced Myanmar film director and acting
 Always refer to characters by their exact names as given, in every field (never transliterate or translate a name).
 Read the WHOLE story first: who these people are to each other, what happened before, what each moment means to them.
 Then, for every scene, decide:
-1. continuity: exactly where everyone is, what they hold, how they stand and where props/vehicles are at the START and at the END of the scene (in English). Each scene must start exactly where the previous one ended. Never cut in the middle of an action; end each scene on a stable moment.
+1. continuity: exactly where everyone is, what they hold, how they stand and where props/vehicles are at the START and at the END of the scene (in English). Each scene starts exactly where the previous one ended and is already moving in its first second: never open on people standing or sitting still, waiting. End a scene in the middle of a movement or right after a line, and the next scene continues that same movement at once (cut on action). No pauses: something happens in every second.
 2. for every spoken line:
    - "text": the customer's words EXACTLY as written (never change, add or remove words).
    - "feeling_mm": in simple Burmese, what this person truly feels inside at this moment and why (the subtext, not the surface).
    - "face": English: the face and body while saying it (small, specific, real: eyes, breath, lips, hands) and how the listener reacts.
 3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
-4. same place and time: when a scene continues in the same place and time as the scene before it, the same people keep the same clothing, and the same staff and rooms stay the same.
-Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","lines":[{"who":"...","text":"...","feeling_mm":"...","face":"..."}]}]}`;
+4. "reactions" (English): for each person in the scene, how their feeling changes step by step and WHY, caused by what just happened to them (e.g. bumped into by a stranger -> startled, a little annoyed or embarrassed -> softens when he apologises kindly -> a small smile only once there is a reason). Nobody smiles or looks happy without a reason in the story; people react to what just happened.
+5. same place and time: when a scene continues in the same place and time as the scene before it, the same people keep the same clothing, and the same staff and rooms stay the same.
+Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","reactions":"...","lines":[{"who":"...","text":"...","feeling_mm":"...","face":"..."}]}]}`;
 
 async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
@@ -223,7 +224,7 @@ function directorNotes(d: any, idx: number): string {
   const sc = (d?.scenes ?? []).find((x: any) => Number(x.idx) === idx);
   if (!sc) return "";
   const lines = (sc.lines ?? []).map((l: any) => `- ${l.who} says "${l.text}": feels ${l.feeling_mm}; acting: ${l.face}`).join("\n");
-  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\n${lines}`;
+  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts (already moving, no pause): ${sc.start}\nScene ends (cut on action): ${sc.end}\nReactions and why: ${sc.reactions ?? ""}\n${lines}`;
 }
 
 async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
@@ -556,7 +557,8 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
         if (error) return json({ error: error.message }, 400);
         epId = e.id;
       }
-      bg(planEpisode(admin, epId));
+      const maxScenes = Math.min(MAX_SCENES, Math.max(1, Math.round(Number(body.max_scenes) || MAX_SCENES)));
+      bg(planEpisode(admin, epId, maxScenes));
       return json({ episode_id: epId });
     }
     case "episode_update": {
