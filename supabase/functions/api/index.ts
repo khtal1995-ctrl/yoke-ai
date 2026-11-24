@@ -439,13 +439,14 @@ async function eachlabs(admin: any) {
 // ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
 // ---- Gemini Omni Flash through Eachlabs (Google's model; Eachlabs serves Myanmar customers) ----
 // One model makes picture + Burmese speech + sound together (lips match by construction): no ElevenLabs, no dubbing.
-const OMNI_REF = "google-gemini-omni-flash-reference-to-video";     // character photos (1-10)
+const OMNI_REF = "google-gemini-omni-1-1-flash-reference-to-video"; // character/costume photos; 1.1 has resolution: std=360p, hd=720p
 const OMNI_I2V = "google-gemini-omni-1-1-flash-image-to-video";     // first frame
 async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = []): Promise<{ id: string; model: string }> {
   const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
   let model: string; let input: any;
-  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 7), aspect_ratio: ratio, duration }; }
-  else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution: "720p" }; }
+  const resolution = g.quality === "hd" ? "720p" : "360p";
+  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 7), aspect_ratio: ratio, duration, resolution }; }
+  else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution }; }
   else throw new Error("Omni needs a character photo or a first frame");
   const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
     body: JSON.stringify({ model, version: "0.0.1", input }) });
