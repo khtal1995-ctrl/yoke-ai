@@ -64,6 +64,15 @@
 - Eachlabs: balance < $10 → max 2 concurrent jobs (429). Owner to keep > $10.
 - (23:14) App on Omni **1.2** (owner: keep 1.2; the pool tests were 1.2). Planner now writes each person's clothing to fit who they are (rich/poor, job), the place and situation; photos give face only. MYANMAR_LOOK no longer says "plain everyday clothes". Tested on 1.2: pool scene (plain shirt/shorts) and "richest young master" pool scene (designer swim shorts, gold watch, silk shirt) — owner: Good.
 
+## 25 Nov — Series on Omni 1.2 (owner decisions + test results)
+- Series scenes now go through Omni 1.2 (`project` SERIES_ENGINE = "omni"). `episode_scene_generation` RPC does not set the engine, so `project` sets `generations.engine = "omni"` after it (without this scenes went to Wan — happened once, ~3 Wan videos made by mistake, not approved).
+- Series page: 1:1 ratio removed (Omni does not make it).
+- At most 2 scenes rendering at once (`PARALLEL = 2`): Eachlabs balance ≤ $10 gives a 2-job limit (429). Owner topped up on 25 Nov.
+- Clothing: series does NOT have its own clothing rules. Planner Omni rules (Clothing, Framing, Burmese lines) and api MYANMAR_LOOK are the only rules. Director only gives the whole-story context and: same place and time → same clothing, same staff and rooms.
+- Director still writes Wan-era voice tags and "spoken" fields into scene notes — to review; Omni does not need them.
+- Test 25 Nov (3 scenes, 360p, 9:16, Omni 1.2): all 3 succeeded, stitched. Eachlabs cost $0.7411 ≈ 3,335 Ks (owner OK 3,270). Transcript: scene 2 and 3 lines right; scene 1 line came out "မေမေ ဟေးအင်းနဲ့ အံကောင်းလိုက်တာ" (not "ဟင်းရနံ့ ကောင်းလိုက်တာ") — pronunciation problem to check.
+- Test projects "Omni series test" and "Omni series test 2" stay in the DB (owner: do not delete).
+
 ## NEXT (handoff, 25 Nov 00:45) — start here in a new chat
 State now:
 - Single video (✨ ဖန်တီး tab): Omni 1.2 on Eachlabs, 360p; HD = P-Video-Upscale to 720p; planner rules (clothing, framing, Burmese lines). Owner approved.

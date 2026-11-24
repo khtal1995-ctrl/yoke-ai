@@ -203,8 +203,8 @@ Then, for every scene, decide:
    - "voice": usually "" (plain, natural everyday speech, like real people talking). Only when the moment truly needs it (crying, shouting, a whispered secret, real shock) give ONE short English tag in square brackets, e.g. [quietly] or [holding back tears]. Never theatrical, never over-acted, no laughs, sighs or breaths, never stretch or sing words.
    - "face": English: the face and body while saying it (small, specific, real: eyes, breath, lips, hands) and how the listener reacts.
 3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
-4. outfits: decide ONE outfit per character for the WHOLE episode (in English), fitting who they are (rich or poor, job, age), the place and the situation. The same outfit is worn in every scene of the episode unless the story says a person changes clothes.
-Return ONLY JSON: {"outfits":[{"name":"...","outfit":"..."}],"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","lines":[{"who":"...","text":"...","spoken":"...","feeling_mm":"...","voice":"...","face":"..."}]}]}`;
+4. same place and time: when a scene continues in the same place and time as the scene before it, the same people keep the same clothing, and the same staff and rooms stay the same.
+Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","lines":[{"who":"...","text":"...","spoken":"...","feeling_mm":"...","voice":"...","face":"..."}]}]}`;
 
 async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
@@ -225,9 +225,7 @@ function directorNotes(d: any, idx: number): string {
   const sc = (d?.scenes ?? []).find((x: any) => Number(x.idx) === idx);
   if (!sc) return "";
   const lines = (sc.lines ?? []).map((l: any) => `- ${l.who} says "${l.text}": feels ${l.feeling_mm}; voice ${l.voice}; acting: ${l.face}`).join("\n");
-  const outfits = (d?.outfits ?? []).filter((o: any) => o?.name && o?.outfit).map((o: any) => `${o.name} wears ${o.outfit}`).join("; ");
-  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\n${lines}` +
-    (outfits ? `\nClothing for the whole episode (exactly the same in every scene): ${outfits}` : "");
+  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\n${lines}`;
 }
 
 async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
