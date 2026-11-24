@@ -175,7 +175,7 @@
           <label class="lbl">အရည်အသွေး</label>
           <div class="seg" id="qualSeg">
             <button data-v="std" class="on">Standard<small>35 cr</small></button>
-            <button data-v="hd">HD<small>60 cr · ပိုကြည်</small></button>
+            <button data-v="hd">HD<small>40 cr · 720p</small></button>
           </div>
           <div class="seg hidden" id="sfxSeg">
             <button data-v="0" class="on">မထည့်ဘူး</button>
@@ -215,7 +215,7 @@
             <label class="lbl">ပုံစံ</label>
             <div class="seg" id="srRatio"><button data-v="9:16" class="on">📱 9:16</button><button data-v="16:9">🖥️ 16:9</button><button data-v="1:1">⬜ 1:1</button></div>
             <label class="lbl">အရည်အသွေး</label>
-            <div class="seg" id="srQual"><button data-v="std" class="on">Standard<small>scene တစ်ခု 35 cr</small></button><button data-v="hd">HD<small>scene တစ်ခု 60 cr</small></button></div>
+            <div class="seg" id="srQual"><button data-v="std" class="on">Standard<small>scene တစ်ခု 35 cr</small></button><button data-v="hd">HD<small>scene တစ်ခု 40 cr</small></button></div>
             <div style="height:12px"></div>
             <button class="btn" id="srCreate">✨ ဇာတ်လမ်းတွဲ စမည်</button>
           </div>
@@ -348,7 +348,7 @@ const PAY_INFO = {                                   // <-- ကိုယ့် �
   kbzpay:  { name: "KBZPay",   phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
   wavepay: { name: "Wave Pay", phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
 };
-const RATE = { std: 3.0, hd: 6.0 };                 // credits per second (must match DB gen_cost)
+const RATE = { std: 3.0, hd: 4.0 };                 // credits per second (must match DB gen_cost)
 const KS_PER_CREDIT = 100;
 
 /* ================= SETUP ================= */
@@ -777,7 +777,7 @@ function srRender(){
   const { project: p, characters: chars, episodes: eps, scenes } = sr;
   const open = eps.find(e => e.id === sr.scenes_episode);
   const done = eps.filter(e => e.status === "done");
-  const per = p.quality === "hd" ? 60 : 35;
+  const per = p.quality === "hd" ? 40 : 35;
   let h = `<button class="btn ghost sm" id="srBack">‹ ဇာတ်လမ်းတွဲများ</button><div style="height:10px"></div>
     <div class="card"><h2>📁 ${esc(p.title)}</h2>
       <div class="muted">${p.ratio} · ${p.quality === "hd" ? "HD" : "Standard"} · scene တစ်ခု ${per} credits (10 စက္ကန့်)</div></div>`;
@@ -936,7 +936,7 @@ function srBind(){
   if ($("srSaveScenes")) $("srSaveScenes").onclick = async () => { srBusy = true;
     try { await saveScenes(); toast("သိမ်းပြီးပါပြီ"); await srOpen(p.id, open.id); } catch (e) { toast(msgOf(e)); } srBusy = false; };
   if ($("srProduce")) $("srProduce").onclick = async () => {
-    const per = p.quality === "hd" ? 60 : 35, n = srReadScenes().filter(s => s.story_mm.trim()).length;
+    const per = p.quality === "hd" ? 40 : 35, n = srReadScenes().filter(s => s.story_mm.trim()).length;
     if (profile && profile.credits < n * per) return go("buyPage");
     if (!confirm(`အပိုင်း (${open.num}) — scene ${n} ခု၊ ${n * per} credits (${fmt(n * per * KS_PER_CREDIT)} ကျပ်)။ ထုတ်မလား?\nမအောင်မြင်တဲ့ scene တွေရဲ့ credit ကို ပြန်အမ်းပါတယ်။`)) return;
     $("srProduce").disabled = true; srBusy = true;

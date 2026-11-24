@@ -173,7 +173,7 @@ Rules:
       cast_names: (Array.isArray(s.cast) ? s.cast : []).map((n: any) => clip(n, 30)).filter((n: string) => names.includes(n)).slice(0, MAX_CAST),
     })));
     const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
-    const per = pr.quality === "hd" ? 60 : 35;
+    const per = pr.quality === "hd" ? 40 : 35;
     await admin.from("episodes").update({ status: "ready", title: clip(out.title_mm, 80) || null, cost: per * scenes.length,
       warnings: (Array.isArray(out.warnings_mm) ? out.warnings_mm : []).map((w: any) => clip(w, 300)).filter(Boolean).slice(0, 5) }).eq("id", epId);
   } catch (e) {
@@ -568,7 +568,7 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
         await admin.from("episode_scenes").delete().eq("episode_id", ep.id);
         await admin.from("episode_scenes").insert(list.map((s: any, i: number) => ({ episode_id: ep.id, idx: i, ...s })));
         const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
-        await admin.from("episodes").update({ cost: (pr.quality === "hd" ? 60 : 35) * list.length }).eq("id", ep.id);
+        await admin.from("episodes").update({ cost: (pr.quality === "hd" ? 40 : 35) * list.length }).eq("id", ep.id);
       }
       return json({ ok: true });
     }
@@ -577,7 +577,7 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       if (!ep || ep.status !== "ready") return json({ error: "episode not ready" }, 400);
       const { count } = await admin.from("episode_scenes").select("id", { count: "exact", head: true }).eq("episode_id", ep.id);
       const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
-      const cost = (pr.quality === "hd" ? 60 : 35) * (count ?? 0);
+      const cost = (pr.quality === "hd" ? 40 : 35) * (count ?? 0);
       const { data: prof } = await admin.from("profiles").select("credits").eq("id", uid).single();
       if ((prof?.credits ?? 0) < cost) return json({ error: "insufficient credits", need: cost }, 400);
       await admin.from("episodes").update({ status: "producing", cost, error: null }).eq("id", ep.id).eq("status", "ready");
