@@ -49,3 +49,8 @@
   dialogue in Burmese word for word with speaker; format like the owner's reference video: Look / Dialogue (Myanmar) / Motion Video Prompt
   (story paragraph with camera movement and acting, no timestamps). The "add nothing" rule was REMOVED by the owner.
 - Added 23 Nov: write 1-2 short Burmese lines if speech allowed but not given; never copy instructions-to-the-app into the prompt; fill in film details (place, light, effects, camera, reactions) that fit the story.
+
+## 24 Nov — Omni live for customers
+- Single videos (t2v / i2v / template) now plan + produce with Gemini Omni 1.1 Flash (api CUSTOMER_ENGINE = "omni"). No photo → Omni text-to-video.
+- Price: Standard 35 cr (3,500 Ks, Omni 360p), HD 60 cr (6,000 Ks, Omni 720p). gen_cost hd = 6/s. Series HD also 60 cr/scene (series still on Wan).
+- Planner returns warnings_mm (too long / Google safety / copyrighted) and blocked=true when a story can't be made; app shows spoken lines + warnings and hides the produce button when blocked.
