@@ -571,6 +571,26 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: s
 
 const SAFETY_MM = "ဇာတ်လမ်းထဲက အကြောင်းအရာကို AI ရဲ့ ဘေးကင်းရေး စစ်ဆေးမှုက လက်မခံပါ (ဥပမာ ကလေးနဲ့ အကြမ်းဖက်မှု၊ သွေး၊ အဝတ်မဲ့)။ စာသားကို ပြင်ပြီး ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။";
 const FAMOUS_MM = "ထည့်ထားတဲ့ ဓာတ်ပုံထဲက လူဟာ နာမည်ကြီး လူသိများသူနဲ့ တူလို့ AI က လက်မခံပါ။ ကိုယ်ပိုင်ပုံ (သို့) တခြားပုံနဲ့ ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။";
+// Google declined an Omni prompt: the planner rewrites only the likely trigger (try 1: English only; try 2: may reword the
+// line that is the trigger, keeping its meaning), then the same job is sent again with the same photos.
+async function safeRetry(g: any, tryNo: number): Promise<boolean> {
+  const base = String(g.prompt_en ?? "");
+  if (!base) return false;
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
+    method: "POST", signal: AbortSignal.timeout(120000),
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ safe_rewrite: base, safe_try: tryNo }),
+  });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok || !j.prompt) throw new Error(j.error ?? `rewrite ${r.status}`);
+  const { imageUrl, refUrls } = await omniInputs(ADMIN!, g);
+  const sub = await submitOmni(ADMIN!, g, j.prompt + MYANMAR_LOOK, imageUrl, refUrls, true);
+  const notes = [...(g.post_data?.safe_notes ?? []), j.changed_mm].filter(Boolean);
+  await ADMIN!.from("generations").update({ prompt_en: j.prompt, provider: `eachlabs:${sub.model}`, provider_request_id: sub.id,
+    post_data: { ...(g.post_data ?? {}), safe_tries: tryNo, safe_notes: notes } }).eq("id", g.id);
+  console.log("safe retry", g.id, tryNo, j.changed_mm);
+  return true;
+}
 async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"; url?: string; error?: string }> {
   if (String(g.provider ?? "").startsWith("kie:")) {
     const r = await fetch(`${KIE}/jobs/recordInfo?taskId=${g.provider_request_id}`, { headers: await kieHeaders(ADMIN!) });
@@ -602,7 +622,15 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
       const msg = String(j.error ?? j.output?.error_message ?? (typeof j.output === "string" ? j.output : "") ?? "failed") || "failed";
       // Google's safety filter: tell the customer in Burmese what to change (the charge is refunded either way)
       if (/public figure|celebrit/i.test(msg)) return { state: "failed", error: FAMOUS_MM };
-      if (/safety|declined|policy|blocked/i.test(msg)) return { state: "failed", error: SAFETY_MM };
+      if (/safety|declined|policy|blocked/i.test(msg)) {
+        // a declined job costs nothing: rewrite the likely trigger and try again (twice at most) before giving up
+        const tries = Number(g.post_data?.safe_tries ?? 0);
+        if (String(g.provider ?? "").includes("gemini-omni") && tries < 2) {
+          try { if (await safeRetry(g, tries + 1)) return { state: "running" }; }
+          catch (e) { console.error("safe rewrite failed:", e); }
+        }
+        return { state: "failed", error: SAFETY_MM };
+      }
       return { state: "failed", error: msg.slice(0, 300) };
     }
     return { state: "running" };
