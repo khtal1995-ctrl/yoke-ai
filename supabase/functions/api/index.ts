@@ -439,11 +439,11 @@ async function eachlabs(admin: any) {
 // ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
 // ---- Gemini Omni Flash through Eachlabs (Google's model; Eachlabs serves Myanmar customers) ----
 // One model makes picture + Burmese speech + sound together (lips match by construction): no ElevenLabs, no dubbing.
-// Omni 1.1 (owner's choice, 24 Nov): 1.2 is 30% cheaper but copies the photo's clothes (e.g. day clothes in bed).
-// Google routes 1.1 to 1.2 from 3 Dec 2026; the planner's clothing rule is there for that.
-const OMNI_REF = "google-gemini-omni-1-1-flash-reference-to-video"; // character/costume photos: std=360p, hd=720p
-const OMNI_I2V = "google-gemini-omni-1-1-flash-image-to-video";
-const OMNI_T2V = "google-gemini-omni-1-1-flash-text-to-video"; // no photo
+// Omni 1.2 (owner's choice, 24 Nov 23:14): ~30% cheaper than 1.1, up to 10 photos. 1.2 copies a photo's clothes unless
+// the script names them, so the planner always writes each person's clothing (and keeps everyone in frame).
+const OMNI_REF = "google-gemini-omni-1-2-flash-reference-to-video"; // character/costume photos: std=360p, hd=720p
+const OMNI_I2V = "google-gemini-omni-1-2-flash-image-to-video";
+const OMNI_T2V = "google-gemini-omni-1-2-flash-text-to-video"; // no photo
 const CUSTOMER_ENGINE = "omni"; // customers' videos: Gemini Omni Flash (speaks Burmese itself, no dubbing)
 // ---- Kie.ai: the same Google Omni model (1.2), about half the price. Used for 0-2 character photos; anything else, or any
 // Kie failure except a blocked photo, goes to Eachlabs. Kie can't take face photos directly: each photo becomes a Kie
@@ -515,7 +515,7 @@ async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string,
   const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
   let model: string; let input: any;
   const resolution = g.quality === "hd" ? "720p" : "360p";
-  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 7), aspect_ratio: ratio, duration, resolution }; }
+  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 10), aspect_ratio: ratio, duration, resolution }; }
   else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution }; }
   else { model = OMNI_T2V; input = { prompt: prompt.slice(0, 19000), aspect_ratio: ratio, duration, resolution }; }
   const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
