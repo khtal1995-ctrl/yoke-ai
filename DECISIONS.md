@@ -69,7 +69,7 @@
 - Series page: 1:1 ratio removed (Omni does not make it).
 - At most 2 scenes rendering at once (`PARALLEL = 2`): Eachlabs balance ≤ $10 gives a 2-job limit (429). Owner topped up on 25 Nov.
 - Clothing: series does NOT have its own clothing rules. Planner Omni rules (Clothing, Framing, Burmese lines) and api MYANMAR_LOOK are the only rules. Director only gives the whole-story context and: same place and time → same clothing, same staff and rooms.
-- Director still writes Wan-era voice tags and "spoken" fields into scene notes — to review; Omni does not need them.
+- Wan-era voice tags and "spoken" fields removed from the director and from the scene plan (owner, 25 Nov). Director keeps only text, feeling and acting.
 - Test 25 Nov (3 scenes, 360p, 9:16, Omni 1.2): all 3 succeeded, stitched. Eachlabs cost $0.7411 ≈ 3,335 Ks (owner OK 3,270). Transcript: scene 2 and 3 lines right; scene 1 line came out "မေမေ ဟေးအင်းနဲ့ အံကောင်းလိုက်တာ" (not "ဟင်းရနံ့ ကောင်းလိုက်တာ") — pronunciation problem to check.
 - Test projects "Omni series test" and "Omni series test 2" stay in the DB (owner: do not delete).
 
