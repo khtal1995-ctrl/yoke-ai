@@ -213,7 +213,7 @@ Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   if (req.headers.get("x-lab-token") !== LAB && auth !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return new Response("no", { status: 401 });
   const { story, duration = 10, effort = "low", cast = [], engine = "", safe_rewrite = "", safe_try = 1 } = await req.json();
-  const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, 30)).filter(Boolean).slice(0, 9);
+  const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, 30)).filter(Boolean).slice(0, 10);
   const t0 = Date.now();
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/get_app_secret`, { method: "POST",
     headers: { apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },

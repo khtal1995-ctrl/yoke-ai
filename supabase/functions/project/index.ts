@@ -27,6 +27,7 @@ const PARALLEL = 2;             // scenes rendering at the same time per episode
 const MAX_ATTEMPTS = 2;         // a failed scene is refunded and tried once more
 const MAX_CHARS = 30;           // characters in one series
 const MAX_CAST = 6;
+const PORTRAIT_REDRAW_CR = 2;   // AI face portrait: the first one of a character is free, each redraw 2 credits (owner, 25 Nov)
 const SCENE_QC = false;         // AI check of every finished scene: off (re-making bad scenes for free would cost us; decide later)
 const QC_REDOS = 1;             // when SCENE_QC is on: automatic re-renders after a failed AI check (credits refunded, so the customer pays once)             // named characters in one 10-second scene (the video model takes at most 3 photos)
 
@@ -126,7 +127,7 @@ async function draftBible(admin: any, id: string) {
   try {
     const out = await llmJson(admin, `You plan a Burmese short-drama series from a customer's idea. ${BURMESE_STYLE}
 Return ONLY JSON: {"premise_mm": "<what the series is about, 2-4 sentences>", "setting_mm": "<main places and time, 1-3 sentences>",
-"characters": [{"name": "<Burmese name>", "gender": "male|female", "age": "child|young|middle|old", "look_mm": "<face, hair, usual clothes, 1 sentence>", "personality_mm": "<character and relationships to the others, 1-2 sentences>"}]}
+"characters": [{"name": "<Burmese name>", "gender": "male|female", "age": "child|young|middle|old", "look_mm": "<face, hair, usual clothes, 1 sentence>", "portrait_en": "<English: face, hair, skin and build only, for a portrait photo; no clothes, no names>", "personality_mm": "<character and relationships to the others, 1-2 sentences>"}]}
 Rules: keep every name, place and fact the customer wrote; only add what is missing. All the main and supporting characters the idea needs (usually 2 to 12). Realistic Myanmar names, clothes and places.`,
       `Series title: ${p.title}\nIdea: ${p.idea_mm}`);
     const chars = (Array.isArray(out?.characters) ? out.characters : []).slice(0, MAX_CHARS);
@@ -134,15 +135,62 @@ Rules: keep every name, place and fact the customer wrote; only add what is miss
     const rows = chars.filter((c: any) => clip(c?.name, 30)).map((c: any, i: number) => {
       const row = { project_id: id, name: clip(c.name, 30), gender: c.gender === "female" ? "female" : "male",
         age: ["child", "young", "middle", "old"].includes(c.age) ? c.age : "young",
-        look_mm: clip(c.look_mm, 300), personality_mm: clip(c.personality_mm, 400), sort: i, voice_id: "" };
+        look_mm: clip(c.look_mm, 300), personality_mm: clip(c.personality_mm, 400), portrait_en: clip(c.portrait_en, 500) || null, sort: i, voice_id: "" };
       row.voice_id = pickVoice(row, taken); taken.push(row.voice_id);
       return row;
     });
     if (rows.length) await admin.from("project_characters").upsert(rows, { onConflict: "project_id,name" });
+    // every character without a photo gets an AI face portrait (first one free), so faces stay the same in every scene
+    try { await drawPortraits(admin, id); } catch (e) { console.error("portraits", id, e); }
     await admin.from("projects").update({ premise_mm: clip(out?.premise_mm, 1200), setting_mm: clip(out?.setting_mm, 800), status: "ready", updated_at: new Date().toISOString() }).eq("id", id);
   } catch (e) {
     await admin.from("projects").update({ status: "failed", error: String(e).slice(0, 300) }).eq("id", id);
   }
+}
+
+// ---------- AI face portraits for characters without a photo (Seedream v5 lite, ~160 Ks a picture) ----------
+const PORTRAIT_MODEL = "bytedance-seedream-v5-lite-text-to-image";
+const AGE_EN: Record<string, string> = { child: "child of about ten", young: "young adult in their early twenties", middle: "middle-aged adult in their late forties", old: "elderly person in their late sixties" };
+function portraitPrompt(c: any) {
+  const who = `${c.gender === "female" ? "Burmese (Myanmar) woman" : "Burmese (Myanmar) man"}, ${AGE_EN[c.age] ?? AGE_EN.young}`;
+  return `Photorealistic head-and-shoulders portrait photo of one ordinary, non-famous ${who}. ${c.portrait_en ?? ""} ` +
+    `Face looking straight at the camera, neutral relaxed expression, plain simple top, plain light grey background, soft even daylight, sharp focus, natural skin. ` +
+    `One person only, no text, no logo, not a celebrity.`;
+}
+async function drawOne(admin: any, c: any, userId: string): Promise<string | null> {
+  const h = await eachlabsHeaders(admin);
+  const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: h,
+    body: JSON.stringify({ model: PORTRAIT_MODEL, version: "0.0.1", input: { prompt: portraitPrompt(c), aspect_ratio: "3:4", resolution: "2K", output_format: "jpeg" } }) });
+  const j: any = await r.json().catch(() => ({}));
+  const pid = j.predictionID ?? j.prediction_id ?? j.id;
+  if (!r.ok || !pid) throw new Error("portrait submit " + r.status + " " + JSON.stringify(j).slice(0, 200));
+  for (let t = 0; t < 40; t++) {
+    await new Promise((ok) => setTimeout(ok, 3000));
+    const pr = await fetch(`https://api.eachlabs.ai/v1/prediction/${pid}`, { headers: h });
+    const pj: any = await pr.json().catch(() => ({}));
+    if ((pj.status === "success" || pj.status === "succeeded") && pj.output) {
+      const url = Array.isArray(pj.output) ? pj.output[0] : pj.output;
+      const img = await fetch(url);
+      if (!img.ok) throw new Error(`portrait download ${img.status}`);
+      const path = `${userId}/ai_${c.id}_${Date.now()}.jpg`;
+      const { error } = await admin.storage.from("inputs").upload(path, new Uint8Array(await img.arrayBuffer()), { contentType: "image/jpeg", upsert: true });
+      if (error) throw error;
+      return path;
+    }
+    if (pj.status === "error" || pj.status === "failed") throw new Error("portrait failed: " + String(pj.output ?? pj.error ?? "").slice(0, 200));
+  }
+  throw new Error("portrait timeout");
+}
+// first portrait of each character without a photo: free (owner, 25 Nov)
+async function drawPortraits(admin: any, projectId: string) {
+  const { data: p } = await admin.from("projects").select("user_id").eq("id", projectId).single();
+  const { data: chars } = await admin.from("project_characters").select("*").eq("project_id", projectId).is("photo_path", null).eq("ai_draws", 0);
+  await Promise.all((chars ?? []).map(async (c: any) => {
+    try {
+      const path = await drawOne(admin, c, p.user_id);
+      await admin.from("project_characters").update({ photo_path: path, photo_ai: true, ai_draws: 1 }).eq("id", c.id).is("photo_path", null);
+    } catch (e) { console.error("portrait", c.id, e); }
+  }));
 }
 
 // ---------- episode planning: scenes of about 10 seconds each ----------
@@ -234,7 +282,7 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const outline = scenes.map((x: any) => `Scene ${x.idx + 1}${(x.cast_names ?? []).length ? ` [${x.cast_names.join(", ")}]` : ""}: ${x.story_mm}`).join("\n");
   // the video model takes at most 3 photos: the first 3 characters (in the scene's order) with a photo; the rest are drawn from their saved looks
   const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
-  const refs = ordered.filter((c: any) => c.photo_path).slice(0, (await groupScenesOn(admin)) ? 9 : 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
+  const refs = ordered.filter((c: any) => c.photo_path).slice(0, SERIES_ENGINE === "omni" ? 10 : (await groupScenesOn(admin)) ? 9 : 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
   const story = `[Series context, keep it consistent; do not show it as text]\n${bibleText(b, ep.num)}\n\n` +
     `[Whole episode ${ep.num}, for continuity; this video is scene ${s.idx + 1}]\n${outline}\n\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
@@ -517,6 +565,7 @@ Deno.serve(async (req) => {
           const row: any = { project_id: p.id, name, gender: c.gender === "female" ? "female" : "male",
             age: ["child", "young", "middle", "old"].includes(c.age) ? c.age : "young",
             look_mm: clip(c.look_mm, 300), personality_mm: clip(c.personality_mm, 400), photo_path: photo, sort: i };
+          row.photo_ai = !!(prev && prev.photo_ai && prev.photo_path === photo);
           row.voice_id = prev?.voice_id || pickVoice(row, taken); taken.push(row.voice_id);
           if (prev) await admin.from("project_characters").update(row).eq("id", prev.id);
           else await admin.from("project_characters").insert(row);
@@ -587,6 +636,27 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       await admin.from("episodes").update({ status: "producing", cost, error: null }).eq("id", ep.id).eq("status", "ready");
       bg(advance(admin, { ...ep, status: "producing" }).catch((e) => console.error(e)));
       return json({ ok: true, cost });
+    }
+    case "draw_photo": {
+      const p = await ownProject(body.id);
+      if (!p) return json({ error: "not found" }, 404);
+      const { data: c } = await admin.from("project_characters").select("*").eq("project_id", p.id).eq("id", body.char_id).maybeSingle();
+      if (!c) return json({ error: "not found" }, 404);
+      const price = c.ai_draws > 0 ? PORTRAIT_REDRAW_CR : 0;
+      if (price) {
+        const { data: prof } = await admin.from("profiles").select("credits").eq("id", uid).single();
+        if ((prof?.credits ?? 0) < price) return json({ error: "insufficient credits", need: price }, 400);
+        await admin.rpc("_add_credits", { p_user: uid, p_delta: -price, p_reason: `ဇာတ်ကောင်ပုံ ပြန်ဆွဲ — ${c.name}`, p_ref: null });
+      }
+      try {
+        const path = await drawOne(admin, c, uid);
+        await admin.from("project_characters").update({ photo_path: path, photo_ai: true, ai_draws: c.ai_draws + 1 }).eq("id", c.id);
+        return json({ ok: true, photo_path: path, photo_url: await sign("inputs", path), cost: price });
+      } catch (e) {
+        console.error("draw_photo", c.id, e);
+        if (price) await admin.rpc("_add_credits", { p_user: uid, p_delta: price, p_reason: `ဇာတ်ကောင်ပုံ ဆွဲမရ — credit ပြန်အမ်း (${c.name})`, p_ref: null });
+        return json({ error: "ပုံဆွဲလို့ မရပါ — ခဏနေ ပြန်ကြိုးစားပါ" + (price ? " (credit ပြန်အမ်းပြီး)" : "") }, 500);
+      }
     }
     case "check_photo": {
       const path = String(body.path ?? "");

@@ -781,7 +781,7 @@ function srRender(){
   let h = `<button class="btn ghost sm" id="srBack">‹ ဇာတ်လမ်းတွဲများ</button><div style="height:10px"></div>
     <div class="card"><h2>📁 ${esc(p.title)}</h2>
       <div class="muted">${p.ratio} · ${p.quality === "hd" ? "HD" : "Standard"} · scene တစ်ခု ${per} credits (10 စက္ကန့်)</div></div>`;
-  if (p.status === "drafting") { $("srDetail").innerHTML = h + `<div class="card"><span class="spin"></span>AI က ဇာတ်ကောင်တွေနဲ့ ဇာတ်လမ်းမှတ်တမ်း ရေးနေပါတယ် (၁ မိနစ်ခန့်)…</div>`; $("srBack").onclick = srShowList; return; }
+  if (p.status === "drafting") { $("srDetail").innerHTML = h + `<div class="card"><span class="spin"></span>AI က ဇာတ်ကောင်တွေနဲ့ ဇာတ်လမ်းမှတ်တမ်း ရေးပြီး ဇာတ်ကောင်ပုံတွေ ဆွဲနေပါတယ် (၁–၂ မိနစ်)…</div>`; $("srBack").onclick = srShowList; return; }
   if (p.status === "failed") { $("srDetail").innerHTML = h + `<div class="card"><div class="status bad">ဇာတ်လမ်းမှတ်တမ်း ရေးမရပါ — ${esc(p.error || "")}</div></div>`; $("srBack").onclick = srShowList; return; }
 
   // Story Bible
@@ -851,6 +851,8 @@ function srCharHtml(c, i){
       <button class="x" data-cdel="${i}">✕</button></div>
     <div class="seg" style="margin-top:8px"><select data-cgender="${i}" style="flex:1;width:auto"><option value="male" ${c.gender === "male" ? "selected" : ""}>ကျား</option><option value="female" ${c.gender === "female" ? "selected" : ""}>မ</option></select>
       <select data-cage="${i}" style="flex:1;width:auto">${Object.entries(AGE_MM).map(([k, v]) => `<option value="${k}" ${c.age === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+    ${c.id ? `<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${c.photo_ai ? `<span class="muted" style="font-size:12px">🎨 AI ဆွဲထားတဲ့ပုံ — 📷 ကိုနှိပ်ပြီး ကိုယ့်ပုံ ထည့်လို့ရပါတယ်</span>` : ""}
+      ${c.photo_ai || !c.photo_path ? `<button class="btn ghost sm" data-cdraw="${esc(c.id)}">🎨 ${c.ai_draws > 0 ? "ပြန်ဆွဲ (2 credits)" : "AI နဲ့ ပုံဆွဲ (အခမဲ့)"}</button>` : ""}</div>` : ""}
     ${c.photo_warn?.length ? `<div class="status bad" style="font-size:13px">⚠️ ဒီပုံ ပြင်သင့်ပါတယ်<ul style="margin:4px 0 0;padding-left:18px">${c.photo_warn.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : ""}
     <input type="text" maxlength="300" placeholder="ရုပ်ရည် / ဝတ်စုံ" value="${esc(c.look_mm)}" data-clook="${i}" style="margin-top:8px">
     <input type="text" maxlength="400" placeholder="စရိုက် / ဆက်ဆံရေး" value="${esc(c.personality_mm)}" data-cpers="${i}" style="margin-top:8px">
@@ -859,7 +861,7 @@ function srCharHtml(c, i){
 function srSceneHtml(s, i, chars){
   return `<div class="vitem"><b>Scene ${i + 1}</b>
     <textarea data-scene="${i}" maxlength="900" style="min-height:80px;margin-top:6px">${esc(s.story_mm)}</textarea>
-    <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၆ ယောက်အထိ — ပုံပါတဲ့ ရှေ့ဆုံး ၃ ယောက်ကို ပုံအတိုင်း၊ ကျန်တာ ရုပ်ရည်စာအတိုင်း ဆွဲပါတယ်):
+    <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၆ ယောက်အထိ — ပုံပါတဲ့ ရှေ့ဆုံး ၁၀ ယောက်ကို ပုံအတိုင်း၊ ကျန်တာ ရုပ်ရည်စာအတိုင်း ဆွဲပါတယ်):
       ${chars.map(c => `<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" data-scast="${i}" value="${esc(c.name)}" ${s.cast_names?.includes(c.name) ? "checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
     <button class="btn ghost sm" data-sdel="${i}" style="margin-top:6px">🗑️ ဖယ်</button></div>`;
 }
@@ -887,6 +889,13 @@ function srBind(){
       if (c && !chk.ok) { c.photo_warn = chk.problems_mm?.length ? chk.problems_mm : ["ပုံ ပြန်ရွေးကြည့်ပါ"]; sr.characters = srReadChars().map((x, k) => ({ ...x, photo_warn: sr.characters[k].photo_warn })); srRender(); toast("⚠️ ပုံ ပြင်သင့်ပါတယ် — အောက်မှာ ကြည့်ပါ"); }
       else toast("✅ ပုံ ကောင်းပါတယ် — သိမ်း နှိပ်ပါ"); }
     catch (e) { toast(msgOf(e)); }
+  });
+  document.querySelectorAll("[data-cdraw]").forEach(b => b.onclick = async () => {
+    const c = sr.characters.find(x => x.id === b.dataset.cdraw); if (!c) return;
+    if (c.ai_draws > 0 && !confirm(`${c.name} ပုံကို ပြန်ဆွဲမလား? 2 credits ကျပါမယ်`)) return;
+    b.disabled = true; b.innerHTML = `<span class="spin"></span>ဆွဲနေပါတယ်…`;
+    try { await srCall({ action:"draw_photo", id: p.id, char_id: c.id }); toast("✅ ပုံ ဆွဲပြီးပါပြီ"); if (typeof loadProfile === "function") loadProfile(); srOpen(p.id, sr.scenes_episode); }
+    catch (e) { toast(msgOf(e)); b.disabled = false; b.textContent = "🎨 ပြန်ကြိုးစားမည်"; }
   });
   document.querySelectorAll("[data-cdel]").forEach(b => b.onclick = () => { sr.characters = srReadChars(); sr.characters.splice(Number(b.dataset.cdel), 1); srRender(); });
   if ($("srAddChar")) $("srAddChar").onclick = () => { sr.characters = srReadChars(); sr.characters.push({ name:"", gender:"male", age:"young", look_mm:"", personality_mm:"" }); srRender(); };

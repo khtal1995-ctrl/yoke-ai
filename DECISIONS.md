@@ -71,6 +71,11 @@ Checks that caught real problems
 - Episode planning takes `max_scenes` (owner: tests ≤ 3 scenes).
 - Note: Claude's earlier mother/son and mall tests broke rule 3 (Claude wrote the stories and scene text) — do not repeat.
 
+## 25 Nov 02:40 — AI character portraits, 10 photos per scene (owner)
+- After the Story Bible, every character without a photo gets an AI face portrait (Seedream `bytedance-seedream-v5-lite-text-to-image`, 3:4, 2K, ~160 Ks each), saved as its photo (`photo_ai = true`). The Bible AI writes `portrait_en` (face/hair/build only, English) for it. Customer sees it and can upload their own photo or redraw.
+- Price (owner): first portrait of a character FREE (our cost), each redraw 2 credits (200 Ks), refunded if drawing fails. `ai_draws` counts drawings.
+- Series scenes: up to 10 photos per Omni scene (was 3). Scene cast is still at most 6 named characters (MAX_CAST) — ask the owner before raising it.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.
