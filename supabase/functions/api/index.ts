@@ -568,6 +568,8 @@ async function startGeneration(admin: any, id: string) {
     }
     const refUrls: string[] = [];
     for (const r of isR2v(g) ? g.refs : []) {
+      // a reference made by us on the Eachlabs CDN (e.g. a costume design) is used as is
+      if (/^https:\/\/cdn-us\.eachlabs\.ai\//.test(String(r.url ?? ""))) { refUrls.push(r.url); continue; }
       const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(r.path, 3600);
       if (se || !s) throw new Error("character photo not found");
       refUrls.push(s.signedUrl);
