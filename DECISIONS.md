@@ -11,6 +11,31 @@ Owner's test story (Kaung Khant, rich heir) — use as is for series tests:
 ဝန်ထမ်း: "သခင်လေး၊ ဒီနေ့အတွက် ကားဘယ်စီး ပြင်ပေးရမလဲခင်ဗျ။" ကောင်းခန့်: "မနေ့က မှာထားတဲ့ကား ရောက်ပြီလား။" ဝန်ထမ်း: "ရောက်ပါပြီ သခင်လေး။ ဒါပေမဲ့ သခင်လေးလိုချင်တဲ့ အရောင်တော့ မဟုတ်သေးပါဘူး။" ကောင်းခန့်က မျက်မှောင်ကြုတ်လိုက်တယ်။ ကောင်းခန့်: "ငါ အနက်ရောင်လိုချင်တယ်လို့ ပြောထားတယ်မဟုတ်လား။" ဝန်ထမ်း: "ဟုတ်ပါတယ် သခင်လေး။ အခုရောက်လာတာ အဖြူရောင်ဖြစ်နေလို့ပါ။" ကောင်းခန့်: "ဒါဆို အသစ်တစ်စီး ထပ်ဝယ်လိုက်လေ။ ဒီလောက်လေးတောင် ငါပြောမှ လုပ်တတ်ကြတာလား။" ဝန်ထမ်းတွေ တိတ်သွားကြတယ်။ ကောင်းခန့်က ထပြီး အဝတ်လဲခန်းထဲ ဝင်သွားမယ်။ Camera က သန်းချီတန်တဲ့ နာရီတွေ၊ ရှားပါးဖိနပ်တွေ၊ Luxury ပစ္စည်းတွေကို ဖြတ်ပြမယ်။ နောက်တော့ ကောင်းခန့်က မိဘနှစ်ယောက်ရှိတဲ့ မနက်စာစားခန်းထဲ ဝင်လာမယ်။ ဦးသီဟ: "မင်းကတော့ တစ်နေ့တစ်နေ့ ပိုပြီးကြီးကျယ်လာပြီနော်။" ကောင်းခန့်: "အဖေ့သားပဲဗျာ။ ဒီလောက်တော့ ရှိရမှာပေါ့။" ဒေါ်မေမြတ်: "သားရယ်… ပိုက်ဆံရှိတိုင်း အရာအားလုံးကို လုပ်လို့ရတာမဟုတ်ဘူးနော်။" ကောင်းခန့်: (ပြုံးရင်း) "အမေကလည်း… ဒီခေတ်မှာ ပိုက်ဆံနဲ့ မရတာ ဘာရှိလို့လဲ။"
 Photos: ကောင်းခန့် = lab_kaungkhant.jpg, ဒေါ်မေမြတ် = lab_mother.jpg; ဦးသီဟ = no approved photo yet (the sent one was a flagged famous face).
 
+# WHAT WORKED (owner-approved, 23–25 Nov) — keep doing exactly this
+Goal: customer videos look like a film — natural Burmese speech and acting, one click, no dubbing (owner's TikTok reference = Google Omni Flash).
+Engine
+- Gemini Omni **1.2** on Eachlabs (`google-gemini-omni-1-2-flash-{reference|image|text}-to-video`), input `{prompt, image_urls ≤10, aspect_ratio 9:16|16:9, duration "5s"|"10s", resolution "360p"}`. Omni speaks the Burmese lines itself; never dub Omni videos.
+- Real costs: 10 s 360p ≈ $0.24 (≈1,090 Ks); 1.1 was $0.345. HD = the same 360p video sharpened by `p-video-upscale` (target 720p) ≈ $0.11 per 10 s — customer sees the identical video, just sharper. Direct 720p was $0.70 and gives a *different* take (other clothes) — don't use it.
+- Video-extend (1.2) bills only the new seconds (3 s ≈ $0.10) — good for continuing a scene in the same place.
+- 1.2 copies the clothes in the reference photo unless the script names clothes → the clothing rule below is what makes 1.2 right.
+Script (planner, OMNI_SYSTEM) — the owner liked these results
+- Faithful translation; every action in order; every Burmese line word for word with its speaker; format Look / Dialogue (Myanmar) / Motion Video Prompt as a flowing story paragraph with camera and acting, no timestamps.
+- Refer to photos as "the young man in Image 1"; ကောင်လေး/ကောင်မလေး = adults (early twenties); never children in violence.
+- If speech is allowed but not given, write 1–2 short natural Burmese lines; a line never describes the speaker's own action. Never copy the customer's instructions-to-the-app into the prompt. Fill in film details (place, light, camera, reactions).
+- Clothing: the script AI decides and WRITES each person's clothes to fit who they are (very rich heir → visibly expensive designer clothes even at home/pool; staff → work uniforms), the place, the time and the situation (in bed → pyjamas). Photos give face/hair/build only. Same place + same time = same clothes; place/time changes → change clothes to fit. Tested: bedroom pyjamas ✓, pool shirt+shorts ✓, "richest young master" pool: designer swim shorts, gold watch, silk shirt ✓ ("Good").
+- Framing: everyone fully visible chest-up; never shoot past backs of heads (1.2 obeys camera words literally — "from the foot of the bed… their bowed heads" gave cut-off heads).
+- Continuation scenes: tell the planner "this continues the previous scene; don't show waking again" and give it what was said before (otherwise "the colour" became a random object instead of the car).
+- MYANMAR_LOOK must not say "plain/everyday clothes" (it made the rich heir look poor). It now says: dressed exactly as the script describes.
+- Warnings to the customer (warnings_mm): too long for the length, Google safety risks, copyrighted characters → original look; `blocked` when it can't be made (child bleeding etc.) — produce button hidden.
+What did NOT work
+- Wan + ElevenLabs dubbing (lip-sync, over-acting, "Baaaby", foreign-sounding clone) — replaced by Omni.
+- Kie.ai: half its jobs failed (timeout/internal error); faces need "characters" (max 2 per video). Code kept, USE_KIE=false.
+- Photos Google calls a "prominent public figure" are refused (the father photo). App shows a Burmese message and refunds.
+- Eachlabs balance < $10 → only 2 jobs at once (429). Start scenes one or two at a time.
+- Separate clips of the same place without context → clothes/room/staff change between clips.
+Checks that caught real problems
+- Transcribe every finished video (labpeek words) and compare with the script lines; read the real cost from the Eachlabs prediction; read the generation row's provider/engine (series once ran on Wan by mistake because engine wasn't set).
+
 # Owner's decisions — read before every task
 
 ## Working rules
