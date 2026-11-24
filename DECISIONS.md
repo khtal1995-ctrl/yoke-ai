@@ -52,7 +52,7 @@
 
 ## 24 Nov — Omni live for customers
 - Single videos (t2v / i2v / template) now plan + produce with Gemini Omni 1.1 Flash (api CUSTOMER_ENGINE = "omni"). No photo → Omni text-to-video.
-- Price: Standard 35 cr (3,500 Ks, Omni 360p), HD 40 cr (4,000 Ks = 360p + AI upscale to 720p; owner 24 Nov). gen_cost hd = 4/s. Series HD 40 cr/scene.
+- Price (owner, 24 Nov 23:24): 10s HD 40 cr (4,000 Ks) / 10s 360p 30 cr (3,000) / 5s HD 25 cr (2,500) / 5s 360p 15 cr (1,500). HD = 360p + AI upscale to 720p. Series scene: HD 40 / std 30.
 - Planner returns warnings_mm (too long / Google safety / copyrighted) and blocked=true when a story can't be made; app shows spoken lines + warnings and hides the produce button when blocked.
 
 ## 24 Nov (evening) — owner decisions
