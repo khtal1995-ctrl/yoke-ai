@@ -482,7 +482,7 @@ async function submitKie(admin: any, g: any, prompt: string, refUrls: string[]):
     ids.push(cj.data.characterId);
   }
   const input: any = { prompt: kiePrompt(prompt, ids.length).slice(0, 19000), duration: Math.min(15, Math.max(3, Number(g.duration) || 10)),
-    resolution: g.quality === "hd" ? "720p" : "360p", aspect_ratio: g.ratio === "16:9" ? "16:9" : "9:16" };
+    resolution: "360p", aspect_ratio: g.ratio === "16:9" ? "16:9" : "9:16" };
   if (ids.length) input.character_ids = ids;
   const r = await fetch(`${KIE}/jobs/createTask`, { method: "POST", headers: h, body: JSON.stringify({ model: KIE_MODEL, input }) });
   const j: any = await r.json().catch(() => ({}));
@@ -514,7 +514,8 @@ async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string,
   }
   const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
   let model: string; let input: any;
-  const resolution = g.quality === "hd" ? "720p" : "360p";
+  // always made at 360p: HD (720p) is the same video sharpened by an upscaler afterwards (owner's choice, 24 Nov)
+  const resolution = "360p";
   if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 10), aspect_ratio: ratio, duration, resolution }; }
   else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution }; }
   else { model = OMNI_T2V; input = { prompt: prompt.slice(0, 19000), aspect_ratio: ratio, duration, resolution }; }
@@ -693,7 +694,24 @@ async function step(admin: any, g: any) {
         const p = src ? { state: "done" as const, url: src } : await pollVideo(g);
         if (p.state === "done") {
           const lines = g.dialogue?.lines ?? [];
-          if (!lines.length && !g.dialogue?.stingers?.length) await saveFrom(p.url!);
+          if (!lines.length && !g.dialogue?.stingers?.length) {
+            if (g.engine === "omni" && g.quality === "hd") {
+              // HD: sharpen the finished 360p video to 720p (P-Video-Upscale, about $0.01 a second)
+              if (await admin.rpc("claim_post_stage", { p_id: g.id, p_from: null, p_to: "upscaling" }).then((r: any) => r.data)) {
+                try {
+                  const sub = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
+                    body: JSON.stringify({ model: UPSCALER, version: "0.0.1", input: { video: p.url, target: "720p", turbo: false, fps: 24 } }) });
+                  const sj: any = await sub.json().catch(() => ({}));
+                  const pid = sj.predictionID ?? sj.prediction_id ?? sj.id;
+                  if (!sub.ok || !pid) throw new Error("upscale submit " + sub.status + " " + JSON.stringify(sj).slice(0, 200));
+                  await admin.from("generations").update({ post_updated_at: new Date().toISOString(), post_data: { src: p.url, up_id: pid } }).eq("id", g.id);
+                } catch (e) {
+                  console.error("upscale failed to start, delivering 360p:", e);
+                  await upscaleFailed(admin, g, p.url!, String(e));
+                }
+              }
+            } else await saveFrom(p.url!);
+          }
           else if (await admin.rpc("claim_post_stage", { p_id: g.id, p_from: null, p_to: "dubbing" }).then((r: any) => r.data)) {
             await admin.from("generations").update({ post_data: { src: p.url } }).eq("id", g.id);
             try {
@@ -719,6 +737,12 @@ async function step(admin: any, g: any) {
         } else if (p.state === "failed" || age > JOB_TIMEOUT_MS) {
           await admin.rpc("finish_generation", { p_id: g.id, p_ok: false, p_error: p.error ?? "timeout" });
         }
+      } else if (g.post_stage === "upscaling") {
+        const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.post_data?.up_id}`, { headers: await eachlabs(admin) });
+        const j: any = await r.json().catch(() => ({}));
+        const waited = g.post_updated_at ? Date.now() - new Date(g.post_updated_at).getTime() : 0;
+        if ((j.status === "success" || j.status === "succeeded") && j.output) await saveFrom(Array.isArray(j.output) ? j.output[0] : j.output);
+        else if (j.status === "error" || j.status === "failed" || waited > 10 * 60 * 1000) await upscaleFailed(admin, g, g.post_data.src, String(j.error ?? "timeout"));
       } else if (g.post_stage === "merging") {
         const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.post_data?.merge_id}`, { headers: await eachlabs(admin) });
         const j: any = await r.json().catch(() => ({}));
@@ -729,6 +753,22 @@ async function step(admin: any, g: any) {
       console.error("status step failed:", e); // keep running; next poll retries
     }
   }
+
+const UPSCALER = "p-video-upscale";
+// the HD sharpening failed: the customer still gets the video (360p) and the HD part of the price back
+async function upscaleFailed(admin: any, g: any, src: string, why: string) {
+  console.error("upscale failed:", why);
+  const { data: hd } = await admin.rpc("gen_cost", { p_quality: "hd", p_duration: g.duration });
+  const { data: sd } = await admin.rpc("gen_cost", { p_quality: "std", p_duration: g.duration });
+  const back = Number(hd ?? 0) - Number(sd ?? 0);
+  if (back > 0) await admin.rpc("_add_credits", { p_user: g.user_id, p_delta: back, p_reason: "HD ပြောင်းမရလို့ HD ကွာခြားငွေ ပြန်အမ်း", p_ref: g.id });
+  const vr = await fetch(src);
+  if (!vr.ok) throw new Error(`download ${vr.status}`);
+  const path = `${g.user_id}/${g.id}.mp4`;
+  const { error: ue } = await admin.storage.from("videos").upload(path, new Uint8Array(await vr.arrayBuffer()), { contentType: "video/mp4", upsert: true });
+  if (ue) throw ue;
+  await admin.rpc("finish_generation", { p_id: g.id, p_ok: true, p_video_path: path });
+}
 
 // ---------- handler ----------
 Deno.serve(async (req) => {
