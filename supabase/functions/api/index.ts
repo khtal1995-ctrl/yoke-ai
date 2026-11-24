@@ -453,15 +453,12 @@ async function kieHeaders(admin: any) {
   if (!k) throw new Error("no kie key");
   return { "Content-Type": "application/json", Authorization: `Bearer ${k}` };
 }
-const NOT_A_LOOK = new Set(["the", "a", "an", "and", "with", "to", "at", "of", "toward", "towards", "behind", "beside", "near", "while", "as", "on", "into", "onto", "from", "for", "by", "at", "over", "under", "between", "past", "then", "is", "are", "who"]);
 export function kiePrompt(prompt: string, n: number): string {
+  // keep the story's own words ("the young man ...") so the model reads the scene exactly as on Eachlabs;
+  // only swap the photo number for the character's name: "the young man in Image 1" -> "the young man (Char1)"
   let p = prompt;
   for (let i = 1; i <= n; i++) {
-    const name = `Char${i}`;
-    // "the young man in Image 1" / "the older man from Image 2" -> "Char1" (look words only, never verbs or other people)
-    p = p.replace(new RegExp(`\\b[Tt]he\\s+((?:[\\w'-]+\\s+){0,4}?)(?:in|from)\\s+Image\\s*${i}\\b`, "g"), (m: string, words: string) =>
-      words.trim().split(/\s+/).filter(Boolean).some((w: string) => NOT_A_LOOK.has(w.toLowerCase())) ? m.replace(new RegExp(`(?:in|from)\\s+Image\\s*${i}\\b`), `(${name})`) : name);
-    p = p.replace(new RegExp(`\\bImage\\s*${i}\\b`, "g"), name);
+    p = p.replace(new RegExp(`\\s+(?:in|from)\\s+Image\\s*${i}\\b`, "g"), ` (Char${i})`).replace(new RegExp(`\\bImage\\s*${i}\\b`, "g"), `Char${i}`);
   }
   return p;
 }
@@ -476,7 +473,7 @@ async function submitKie(admin: any, g: any, prompt: string, refUrls: string[]):
     const url = uj?.data?.downloadUrl;
     if (!url) throw new Error(`kie upload failed: ${JSON.stringify(uj).slice(0, 200)}`);
     const cr = await fetch(`${KIE}/omni/character/create`, { method: "POST", headers: h,
-      body: JSON.stringify({ descriptions: `The person shown in photo ${i + 1}, exactly as they look.`, image_urls: [url], character_name: `Char${i + 1}` }) });
+      body: JSON.stringify({ descriptions: `The face, hair and build of the person in photo ${i + 1}. Clothing is not fixed: dress them as the story and the scene call for.`, image_urls: [url], character_name: `Char${i + 1}` }) });
     const cj: any = await cr.json().catch(() => ({}));
     if (!cj?.data?.characterId) throw new Error(`kie character failed: ${JSON.stringify(cj).slice(0, 200)}`);
     ids.push(cj.data.characterId);
