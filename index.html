@@ -879,6 +879,7 @@ function srNewEpHtml(ep){
   return `<div class="seg" id="srEpMode"><button data-v="idea" class="${srEpMode === "idea" ? "on" : ""}">💡 Idea<small>AI က ချဲ့ရေး</small></button>
       <button data-v="script" class="${srEpMode === "script" ? "on" : ""}">📄 Script အပြည့်<small>scene ခွဲရုံ</small></button></div>
     <textarea id="srEpText" maxlength="12000" style="margin-top:10px" placeholder="${srEpMode === "idea" ? "ဒီအပိုင်းမှာ ဘာဖြစ်မလဲ — ဥပမာ ရေခပ်ဆင်းရင်း မမြက သူငယ်ချင်းကို နှိမ်ချတယ်၊ ကိုအောင်က မြင်သွားတယ်" : "Script အပြည့် ကူးထည့်ပါ (စကားပြောတွေကို \"…\" နဲ့)"}">${esc(ep?.input_mm ?? "")}</textarea>
+    <div class="muted" style="font-size:13px;margin-top:8px">Scene အရေအတွက်: <select id="srEpMax" style="width:auto"><option value="">AI ဆုံးဖြတ် (၆–၁၂)</option>${[1,2,3,4,5,6,8,10,12].map(n => `<option value="${n}">${n} ခု</option>`).join("")}</select></div>
     <div id="srIdeas"></div>
     <button class="btn ghost sm" id="srSuggest">💡 နောက်အပိုင်း အကြံပေး</button>
     <div style="height:10px"></div>
@@ -980,7 +981,7 @@ function srBind(){
   if ($("srPlan")) $("srPlan").onclick = async () => {
     const text = $("srEpText").value.trim(); if (!text) return toast("ဒီအပိုင်းမှာ ဘာဖြစ်မလဲ ရေးပါ");
     $("srPlan").disabled = true;
-    try { const { episode_id } = await srCall({ action:"episode_plan", id: p.id, mode: srEpMode, text, episode_id: $("srPlan").dataset.ep || undefined });
+    try { const { episode_id } = await srCall({ action:"episode_plan", id: p.id, mode: srEpMode, text, episode_id: $("srPlan").dataset.ep || undefined, max_scenes: Number($("srEpMax")?.value) || undefined });
       srOpen(p.id, episode_id); }
     catch (e) { toast(msgOf(e)); $("srPlan").disabled = false; }
   };

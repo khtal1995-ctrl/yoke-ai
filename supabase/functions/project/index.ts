@@ -43,7 +43,8 @@ const bg = (work: Promise<unknown>) => {
   if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else return work;
 };
 const isId = (x: any) => /^[0-9a-f-]{36}$/i.test(String(x ?? ""));
-const clip = (x: any, n: number) => String(x ?? "").trim().slice(0, n);
+// NFC: Burmese marks typed in a different order (e.g. ့ and ်) become the same text, so names always match
+const clip = (x: any, n: number) => String(x ?? "").normalize("NFC").trim().slice(0, n);
 
 // the owner's voices (same ids as the api function's dubbing)
 const V = {
