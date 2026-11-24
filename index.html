@@ -172,8 +172,12 @@
           <div class="seg" id="durSeg">
             <button data-v="10" class="on">10 စက္ကန့်</button>
           </div>
-          <label class="lbl">Effect အသံ <span class="muted">(ဝမ်းနည်းရင် ဝမ်းနည်းသံ၊ အံ့သြရင် "ဒုန်း" စသဖြင့်)</span></label>
-          <div class="seg" id="sfxSeg">
+          <label class="lbl">အရည်အသွေး</label>
+          <div class="seg" id="qualSeg">
+            <button data-v="std" class="on">Standard<small>35 cr</small></button>
+            <button data-v="hd">HD<small>60 cr · ပိုကြည်</small></button>
+          </div>
+          <div class="seg hidden" id="sfxSeg">
             <button data-v="0" class="on">မထည့်ဘူး</button>
             <button data-v="1">🎭 ထည့်မယ်</button>
           </div>
@@ -183,7 +187,6 @@
             <div class="seg" id="ratioSeg">
               <button data-v="9:16" class="on">9:16<small>TikTok</small></button>
               <button data-v="16:9">16:9<small>YouTube</small></button>
-              <button data-v="1:1">1:1<small>Facebook</small></button>
             </div>
           </div>
           <div class="cost">
@@ -212,7 +215,7 @@
             <label class="lbl">ပုံစံ</label>
             <div class="seg" id="srRatio"><button data-v="9:16" class="on">📱 9:16</button><button data-v="16:9">🖥️ 16:9</button><button data-v="1:1">⬜ 1:1</button></div>
             <label class="lbl">အရည်အသွေး</label>
-            <div class="seg" id="srQual"><button data-v="std" class="on">Standard<small>scene တစ်ခု 35 cr</small></button><button data-v="hd">HD<small>scene တစ်ခု 50 cr</small></button></div>
+            <div class="seg" id="srQual"><button data-v="std" class="on">Standard<small>scene တစ်ခု 35 cr</small></button><button data-v="hd">HD<small>scene တစ်ခု 60 cr</small></button></div>
             <div style="height:12px"></div>
             <button class="btn" id="srCreate">✨ ဇာတ်လမ်းတွဲ စမည်</button>
           </div>
@@ -345,7 +348,7 @@ const PAY_INFO = {                                   // <-- ကိုယ့် �
   kbzpay:  { name: "KBZPay",   phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
   wavepay: { name: "Wave Pay", phone: "09-XXX-XXX-XXX", holder: "(အမည်)" },
 };
-const RATE = { std: 3.0, hd: 5.0 };                  // credits per second (must match DB gen_cost)
+const RATE = { std: 3.0, hd: 6.0 };                 // credits per second (must match DB gen_cost)
 const KS_PER_CREDIT = 100;
 
 /* ================= SETUP ================= */
@@ -521,7 +524,7 @@ function seg(id, key, num){
     opt[key] = num ? Number(b.dataset.v) : b.dataset.v; updateCost();
   });
 }
-seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true);
+seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true); seg("qualSeg","quality");
 const costOf = () => opt.quality === "std" && opt.duration >= 10 ? 35 : Math.ceil(RATE[opt.quality] * opt.duration); // must match DB gen_cost
 function updateCost(){
   const c = isRec() ? (tpl.price ?? 0) : costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
@@ -608,9 +611,14 @@ function showPlan(st){
   const warn = (st.issues || []).length ? `<div class="status pending">⚠️ ${long
       ? "စကားပြော များနေပါတယ် — ဗီဒီယိုထဲ အကုန်မဆံ့နိုင်ပါ။ စကားကို တိုအောင်ပြင်တာ (သို့) 10 စက္ကန့် ရွေးတာ ပိုကောင်းပါတယ်။"
       : "AI စစ်ဆေးချက်မှာ အားနည်းချက် အနည်းငယ် ကျန်နေပါတယ်။ ပြင်ရေးပြီး ပြန်စီစဉ်ရင် ပိုကောင်းနိုင်ပါတယ်။"}</div>` : "";
+  const ws = (st.warnings_mm || []).filter(Boolean);
+  const warn2 = ws.length ? `<div class="status pending">⚠️ ဖန်တီးခင် သတိပြုရန်<ul style="margin:6px 0 0 18px;padding:0">${ws.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>` : "";
+  const said = (st.lines || []).filter(l => l && l.text);
+  const talk = said.length ? `<div class="muted" style="margin:8px 0 4px">🗣️ ပြောမယ့် စကား</div><ol class="plan">${said.map(l => { const m = /Image\s*(\d)/i.exec(l.who || ""), r = m && (currentPlan?.refs || [])[m[1] - 1], who = r?.name || (/[က-႟]/.test(l.who || "") ? l.who : "");
+      return `<li>${who ? esc(who) + " — " : ""}“${esc(l.text)}”</li>`; }).join("")}</ol>` : "";
   showJob("📋 ဒီအစီအစဉ်နဲ့ ဖန်တီးမလား?", `
     <ol class="plan">${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>
-    ${warn}
+    ${talk}${warn2}${warn}
     <button class="btn" id="planOk">✅ ဒီအတိုင်း ဖန်တီးမည် (${costOf()} credits)</button>
     <button class="btn ghost" id="planEdit" style="margin-top:8px">✏️ ပြင်ရေးမည်</button>`);
   $("planOk").onclick = createFromPlan;
@@ -769,7 +777,7 @@ function srRender(){
   const { project: p, characters: chars, episodes: eps, scenes } = sr;
   const open = eps.find(e => e.id === sr.scenes_episode);
   const done = eps.filter(e => e.status === "done");
-  const per = p.quality === "hd" ? 50 : 35;
+  const per = p.quality === "hd" ? 60 : 35;
   let h = `<button class="btn ghost sm" id="srBack">‹ ဇာတ်လမ်းတွဲများ</button><div style="height:10px"></div>
     <div class="card"><h2>📁 ${esc(p.title)}</h2>
       <div class="muted">${p.ratio} · ${p.quality === "hd" ? "HD" : "Standard"} · scene တစ်ခု ${per} credits (10 စက္ကန့်)</div></div>`;
@@ -928,7 +936,7 @@ function srBind(){
   if ($("srSaveScenes")) $("srSaveScenes").onclick = async () => { srBusy = true;
     try { await saveScenes(); toast("သိမ်းပြီးပါပြီ"); await srOpen(p.id, open.id); } catch (e) { toast(msgOf(e)); } srBusy = false; };
   if ($("srProduce")) $("srProduce").onclick = async () => {
-    const per = p.quality === "hd" ? 50 : 35, n = srReadScenes().filter(s => s.story_mm.trim()).length;
+    const per = p.quality === "hd" ? 60 : 35, n = srReadScenes().filter(s => s.story_mm.trim()).length;
     if (profile && profile.credits < n * per) return go("buyPage");
     if (!confirm(`အပိုင်း (${open.num}) — scene ${n} ခု၊ ${n * per} credits (${fmt(n * per * KS_PER_CREDIT)} ကျပ်)။ ထုတ်မလား?\nမအောင်မြင်တဲ့ scene တွေရဲ့ credit ကို ပြန်အမ်းပါတယ်။`)) return;
     $("srProduce").disabled = true; srBusy = true;

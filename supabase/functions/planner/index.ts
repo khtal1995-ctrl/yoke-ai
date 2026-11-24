@@ -165,12 +165,21 @@ Rules (all of them):
 6. If the customer allows or asks for speech but gives no exact words, write 1-2 short, natural spoken Burmese lines yourself (everyday Yangon speech) that fit the moment, and put them in Dialogue (Myanmar). Write what a real person would actually say in that moment (a reaction, a feeling, a taunt, a warning, a call to someone), never a line that describes their own action or what the viewer can already see (wrong: "I'm turning into a robot now to protect you"; right: "ကဲ… လာခဲ့စမ်း!").
 7. The customer's instructions to the app (length, "make a video", "a little speech is fine", style requests) are instructions to you, not part of the scene: never copy them into the prompt as text.
 8. Fill in the details the scene needs so it plays like a film: where it happens, time of day and light that fit the story, how the key visual effects look (e.g. how a transformation happens), how the camera moves, and the characters' reactions. The Look paragraph must fit this story; the words in the format example are only an example.
-Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>"}`;
+9. Warn the customer (in simple Burmese, in "warnings_mm"; an empty list when all is fine) about:
+   a) too much for the video length: more events or more speech than fit in the given seconds (Burmese speech is about 5 syllables per second). Say what may be cut or rushed and suggest shortening it.
+   b) parts Google's safety check will likely refuse: a child in fighting, danger or violence; blood, wounds or gore; nudity or sexual content; real famous people or politicians; well-known copyrighted characters, costumes or brands (superheroes, cartoon characters, logos). Say which part and how to change it. Still write the full prompt, but give any copyrighted character an original look of your own.
+Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>","warnings_mm":["<Burmese warning>"]}`;
 
 async function planOmni(key: string, story: string, duration: number, names: string[], effort: string) {
   const user = `Video length: ${duration} seconds.\n${names.length ? `Reference photos: ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n` : ""}\nCustomer's story (Burmese):\n${story}`;
   const out = parse(await llm(key, [{ role: "system", content: OMNI_SYSTEM }, { role: "user", content: user }], effort));
-  const plan = { prompt: String(out.prompt ?? "").trim(), lines: Array.isArray(out.lines) ? out.lines : [], summary_mm: String(out.summary_mm ?? "").trim(), engine: "omni" };
+  const warnings_mm: string[] = (Array.isArray(out.warnings_mm) ? out.warnings_mm : []).map((w: any) => String(w ?? "").trim()).filter(Boolean).slice(0, 4);
+  const plan: any = { prompt: String(out.prompt ?? "").trim(), lines: Array.isArray(out.lines) ? out.lines : [], summary_mm: String(out.summary_mm ?? "").trim(), engine: "omni", warnings_mm };
+  // our own check of the speech length (the model's guess can miss it)
+  const lines = plan.lines.filter((l: any) => l && l.text);
+  const need = lines.reduce((s: number, l: any) => s + syllables(String(l.text)), 0) / SYL_PER_SEC + 0.5 * Math.max(0, lines.length - 1);
+  if (need > duration - 1.5 && !warnings_mm.some((w) => /စကား/.test(w)))
+    warnings_mm.push(`စကားပြော များနေပါတယ် (ပြောဖို့ ~${Math.ceil(need)} စက္ကန့် လိုပြီး video က ${duration} စက္ကန့်ပဲ ရှိပါတယ်)။ စကားကို တိုအောင် ပြင်ရင် ပိုကောင်းပါတယ်။`);
   const issues: string[] = [];
   if (!plan.prompt) issues.push("empty prompt");
   for (const q of String(story).match(/[\"“”]([^\"“”]{1,200})[\"“”]/g) ?? []) {

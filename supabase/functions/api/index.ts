@@ -54,11 +54,11 @@ const isR2v = (g: any) => Array.isArray(g.refs) && g.refs.length > 0;
 
 // ---------- planning: the "planner" function writes a checked plan (scene prompt, Burmese lines with acting, timeline,
 // Burmese summary for the customer). It runs before any money is spent, so the customer can approve it first.
-async function planVideo(mm: string, duration = 10, cast: string[] = []): Promise<any> {
+async function planVideo(mm: string, duration = 10, cast: string[] = [], engine = ""): Promise<any> {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ story: mm, duration, cast }),
+    body: JSON.stringify({ story: mm, duration, cast, engine }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
@@ -68,7 +68,7 @@ async function planVideo(mm: string, duration = 10, cast: string[] = []): Promis
 async function runPlan(admin: any, id: string) {
   const { data: p } = await admin.from("plans").select("*").eq("id", id).single();
   try {
-    const plan = await planVideo(p.prompt_mm, p.duration, refNames(p.refs));
+    const plan = await planVideo(p.prompt_mm, p.duration, refNames(p.refs), CUSTOMER_ENGINE);
     await admin.from("plans").update({ status: "ready", plan, issues: plan.issues }).eq("id", id);
   } catch (e) {
     console.error("plan failed:", e);
@@ -440,14 +440,16 @@ async function eachlabs(admin: any) {
 // ---- Gemini Omni Flash through Eachlabs (Google's model; Eachlabs serves Myanmar customers) ----
 // One model makes picture + Burmese speech + sound together (lips match by construction): no ElevenLabs, no dubbing.
 const OMNI_REF = "google-gemini-omni-1-1-flash-reference-to-video"; // character/costume photos; 1.1 has resolution: std=360p, hd=720p
-const OMNI_I2V = "google-gemini-omni-1-1-flash-image-to-video";     // first frame
+const OMNI_I2V = "google-gemini-omni-1-1-flash-image-to-video";
+const OMNI_T2V = "google-gemini-omni-1-1-flash-text-to-video"; // no photo: same price as the others
+const CUSTOMER_ENGINE = "omni"; // customers' videos: Gemini Omni Flash (speaks Burmese itself, no dubbing)
 async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = []): Promise<{ id: string; model: string }> {
   const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
   let model: string; let input: any;
   const resolution = g.quality === "hd" ? "720p" : "360p";
   if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 7), aspect_ratio: ratio, duration, resolution }; }
   else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution }; }
-  else throw new Error("Omni needs a character photo or a first frame");
+  else { model = OMNI_T2V; input = { prompt: prompt.slice(0, 19000), aspect_ratio: ratio, duration, resolution }; }
   const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
     body: JSON.stringify({ model, version: "0.0.1", input }) });
   const j: any = await r.json().catch(() => ({}));
@@ -559,7 +561,8 @@ async function startGeneration(admin: any, id: string) {
     let plan: any = null;
     if (g.plan_id) plan = (await admin.from("plans").select("plan").eq("id", g.plan_id).single()).data?.plan;
     if (!plan) plan = await planVideo(g.prompt_mm, g.duration, refNames(g.refs));
-    const en = labelCast(plan.prompt, isR2v(g) ? g.refs : []);
+    // Omni prompts already say "the young man in Image 1"; renaming would also change names inside the spoken Burmese lines
+    const en = g.engine === "omni" ? plan.prompt : labelCast(plan.prompt, isR2v(g) ? g.refs : []);
     let imageUrl: string | undefined;
     if (g.mode === "i2v") {
       const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
@@ -733,20 +736,20 @@ Deno.serve(async (req) => {
     const { data: p } = await userDb.from("plans").select("*").eq("id", body.plan_id).single();
     if (!p) return json({ error: "not found" }, 404);
     if (p.status === "planning" && Date.now() - new Date(p.created_at).getTime() > 200000) return json({ status: "failed", error: "timeout" });
-    return json({ status: p.status, error: p.error, summary_mm: p.plan?.summary_mm ?? null, issues: p.issues ?? [],
+    return json({ status: p.status, error: p.error, summary_mm: p.plan?.summary_mm ?? null, issues: p.issues ?? [], warnings_mm: p.plan?.warnings_mm ?? [],
       lines: (p.plan?.lines ?? []).map((l: any) => ({ who: l.who, gender: l.gender, text: l.text })) });
   }
 
   // ---- create ----
   if (body.action === "create") {
     if (!YOTTA_KEY) return json({ error: "AI service is not configured yet" }, 503);
-    let planId: string | null = null, planRefs: any = null;
+    let planId: string | null = null, planRefs: any = null, engine: string | null = null;
     if (body.plan_id) {
-      const { data: p } = await admin.from("plans").select("id,user_id,status,prompt_mm,duration,refs").eq("id", body.plan_id).single();
+      const { data: p } = await admin.from("plans").select("id,user_id,status,prompt_mm,duration,refs,plan").eq("id", body.plan_id).single();
       if (!p || p.user_id !== user.id || p.status !== "ready") return json({ error: "plan not ready" }, 400);
       if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 2000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
       if (!sameRefs(p.refs ?? [], cleanRefs(body.refs, user.id) ?? [])) return json({ error: "plan does not match" }, 400);
-      planId = p.id; planRefs = p.refs ?? null;
+      planId = p.id; planRefs = p.refs ?? null; engine = p.plan?.engine === "omni" ? "omni" : null;
     }
     const { data: id, error } = await userDb.rpc("create_generation", {
       p_mode: body.mode, p_prompt: String(body.prompt ?? "").slice(0, 2000),
@@ -760,7 +763,7 @@ Deno.serve(async (req) => {
       const { data: t } = await admin.from("templates").select("id").eq("id", body.template_id).eq("active", true).maybeSingle();
       tplId = t?.id ?? null;
     }
-    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs, template_id: tplId }).eq("id", id);
+    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs, template_id: tplId, engine }).eq("id", id);
 
     // submit in the background (old clients without a plan_id: plan first, ~1 minute)
     const work = startGeneration(admin, id);
