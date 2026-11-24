@@ -443,7 +443,75 @@ const OMNI_REF = "google-gemini-omni-1-1-flash-reference-to-video"; // character
 const OMNI_I2V = "google-gemini-omni-1-1-flash-image-to-video";
 const OMNI_T2V = "google-gemini-omni-1-1-flash-text-to-video"; // no photo: same price as the others
 const CUSTOMER_ENGINE = "omni"; // customers' videos: Gemini Omni Flash (speaks Burmese itself, no dubbing)
-async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = []): Promise<{ id: string; model: string }> {
+// ---- Kie.ai: the same Google Omni model (1.2), about half the price. Used for 0-2 character photos; anything else, or any
+// Kie failure except a blocked photo, goes to Eachlabs. Kie can't take face photos directly: each photo becomes a Kie
+// "character" first (free), and "the young man in Image 1" in the prompt becomes that character's name.
+const KIE = "https://api.kie.ai/api/v1";
+const KIE_MODEL = "google/gemini-omni-flash-1-2";
+async function kieHeaders(admin: any) {
+  const { data: k } = await admin.rpc("get_app_secret", { p_name: "kie_api_key" });
+  if (!k) throw new Error("no kie key");
+  return { "Content-Type": "application/json", Authorization: `Bearer ${k}` };
+}
+const NOT_A_LOOK = new Set(["the", "a", "an", "and", "with", "to", "at", "of", "toward", "towards", "behind", "beside", "near", "while", "as", "on", "into", "onto", "from", "for", "by", "at", "over", "under", "between", "past", "then", "is", "are", "who"]);
+export function kiePrompt(prompt: string, n: number): string {
+  let p = prompt;
+  for (let i = 1; i <= n; i++) {
+    const name = `Char${i}`;
+    // "the young man in Image 1" / "the older man from Image 2" -> "Char1" (look words only, never verbs or other people)
+    p = p.replace(new RegExp(`\\b[Tt]he\\s+((?:[\\w'-]+\\s+){0,4}?)(?:in|from)\\s+Image\\s*${i}\\b`, "g"), (m: string, words: string) =>
+      words.trim().split(/\s+/).filter(Boolean).some((w: string) => NOT_A_LOOK.has(w.toLowerCase())) ? m.replace(new RegExp(`(?:in|from)\\s+Image\\s*${i}\\b`), `(${name})`) : name);
+    p = p.replace(new RegExp(`\\bImage\\s*${i}\\b`, "g"), name);
+  }
+  return p;
+}
+async function submitKie(admin: any, g: any, prompt: string, refUrls: string[]): Promise<string> {
+  const h = await kieHeaders(admin);
+  const ids: string[] = [];
+  for (let i = 0; i < refUrls.length; i++) {
+    // Kie can't read our signed links while generating: copy the photo into Kie's own storage first
+    const up = await fetch("https://kieai.redpandaai.co/api/file-url-upload", { method: "POST", headers: h,
+      body: JSON.stringify({ fileUrl: refUrls[i], uploadPath: "yoke", fileName: `${g.id}_${i + 1}.jpg` }) });
+    const uj: any = await up.json().catch(() => ({}));
+    const url = uj?.data?.downloadUrl;
+    if (!url) throw new Error(`kie upload failed: ${JSON.stringify(uj).slice(0, 200)}`);
+    const cr = await fetch(`${KIE}/omni/character/create`, { method: "POST", headers: h,
+      body: JSON.stringify({ descriptions: `The person shown in photo ${i + 1}, exactly as they look.`, image_urls: [url], character_name: `Char${i + 1}` }) });
+    const cj: any = await cr.json().catch(() => ({}));
+    if (!cj?.data?.characterId) throw new Error(`kie character failed: ${JSON.stringify(cj).slice(0, 200)}`);
+    ids.push(cj.data.characterId);
+  }
+  const input: any = { prompt: kiePrompt(prompt, ids.length).slice(0, 19000), duration: Math.min(15, Math.max(3, Number(g.duration) || 10)),
+    resolution: g.quality === "hd" ? "720p" : "360p", aspect_ratio: g.ratio === "16:9" ? "16:9" : "9:16" };
+  if (ids.length) input.character_ids = ids;
+  const r = await fetch(`${KIE}/jobs/createTask`, { method: "POST", headers: h, body: JSON.stringify({ model: KIE_MODEL, input }) });
+  const j: any = await r.json().catch(() => ({}));
+  const id = j?.data?.taskId;
+  if (!r.ok || j?.code !== 200 || !id) throw new Error(`kie submit failed: ${JSON.stringify(j).slice(0, 200)}`);
+  return id;
+}
+// photos and first frame for a generation (fresh signed links), used at start and for the Eachlabs fallback
+async function omniInputs(admin: any, g: any): Promise<{ imageUrl?: string; refUrls: string[] }> {
+  let imageUrl: string | undefined;
+  if (g.mode === "i2v") {
+    const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
+    if (se || !s) throw new Error("image not found");
+    imageUrl = s.signedUrl;
+  }
+  const refUrls: string[] = [];
+  for (const r of isR2v(g) ? g.refs : []) {
+    if (/^https:\/\/cdn-us\.eachlabs\.ai\//.test(String(r.url ?? ""))) { refUrls.push(r.url); continue; }
+    const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(r.path, 3600);
+    if (se || !s) throw new Error("character photo not found");
+    refUrls.push(s.signedUrl);
+  }
+  return { imageUrl, refUrls };
+}
+async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = [], noKie = false): Promise<{ id: string; model: string }> {
+  if (!noKie && !imageUrl && refUrls.length <= 2 && refUrls.every((u) => !/cdn-us\.eachlabs\.ai/.test(u))) {
+    try { return { id: await submitKie(admin, g, prompt, refUrls), model: "kie" }; }
+    catch (e) { console.error("kie submit failed, using eachlabs:", e); }
+  }
   const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
   let model: string; let input: any;
   const resolution = g.quality === "hd" ? "720p" : "360p";
@@ -500,7 +568,31 @@ async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: s
   }
 }
 
+const SAFETY_MM = "ဇာတ်လမ်းထဲက အကြောင်းအရာကို AI ရဲ့ ဘေးကင်းရေး စစ်ဆေးမှုက လက်မခံပါ (ဥပမာ ကလေးနဲ့ အကြမ်းဖက်မှု၊ သွေး၊ အဝတ်မဲ့)။ စာသားကို ပြင်ပြီး ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။";
+const FAMOUS_MM = "ထည့်ထားတဲ့ ဓာတ်ပုံထဲက လူဟာ နာမည်ကြီး လူသိများသူနဲ့ တူလို့ AI က လက်မခံပါ။ ကိုယ်ပိုင်ပုံ (သို့) တခြားပုံနဲ့ ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။";
 async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"; url?: string; error?: string }> {
+  if (String(g.provider ?? "").startsWith("kie:")) {
+    const r = await fetch(`${KIE}/jobs/recordInfo?taskId=${g.provider_request_id}`, { headers: await kieHeaders(ADMIN!) });
+    const j: any = await r.json().catch(() => ({}));
+    const d = j?.data ?? {};
+    if (d.state === "success") {
+      let urls: string[] = [];
+      try { urls = JSON.parse(d.resultJson ?? "{}").resultUrls ?? []; } catch { /* below */ }
+      if (urls[0]) return { state: "done", url: urls[0] };
+    }
+    if (d.state === "fail" || (d.state === "success")) {
+      const msg = String(d.failMsg ?? "no video");
+      if (/public figure|celebrit/i.test(msg)) return { state: "failed", error: FAMOUS_MM };
+      if (/safety|policy|flagged|blocked|sensitive/i.test(msg)) return { state: "failed", error: SAFETY_MM };
+      // Kie's own trouble (timeout, internal error): make the same video on Eachlabs instead
+      console.error("kie failed, falling back to eachlabs:", msg);
+      const { imageUrl, refUrls } = await omniInputs(ADMIN!, g);
+      const sub = await submitOmni(ADMIN!, g, String(g.prompt_en ?? "") + MYANMAR_LOOK, imageUrl, refUrls, true);
+      await ADMIN!.from("generations").update({ provider: `eachlabs:${sub.model}`, provider_request_id: sub.id }).eq("id", g.id);
+      return { state: "running" };
+    }
+    return { state: "running" };
+  }
   if (String(g.provider ?? "").includes(GROUP_MODEL) || String(g.provider ?? "").includes("gemini-omni")) {
     const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${g.provider_request_id}`, { headers: await eachlabs(ADMIN!) });
     const j: any = await r.json().catch(() => ({}));
@@ -508,7 +600,8 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
     if (j.status === "error" || j.status === "failed") {
       const msg = String(j.error ?? j.output?.error_message ?? (typeof j.output === "string" ? j.output : "") ?? "failed") || "failed";
       // Google's safety filter: tell the customer in Burmese what to change (the charge is refunded either way)
-      if (/safety|declined|policy|blocked/i.test(msg)) return { state: "failed", error: "ဇာတ်လမ်းထဲက အကြောင်းအရာကို AI ရဲ့ ဘေးကင်းရေး စစ်ဆေးမှုက လက်မခံပါ (ဥပမာ ကလေးနဲ့ အကြမ်းဖက်မှု၊ သွေး၊ အဝတ်မဲ့)။ စာသားကို ပြင်ပြီး ပြန်ထုတ်ပါ — credit ပြန်အမ်းပြီးပါပြီ။" };
+      if (/public figure|celebrit/i.test(msg)) return { state: "failed", error: FAMOUS_MM };
+      if (/safety|declined|policy|blocked/i.test(msg)) return { state: "failed", error: SAFETY_MM };
       return { state: "failed", error: msg.slice(0, 300) };
     }
     return { state: "running" };
@@ -563,25 +656,12 @@ async function startGeneration(admin: any, id: string) {
     if (!plan) plan = await planVideo(g.prompt_mm, g.duration, refNames(g.refs));
     // Omni prompts already say "the young man in Image 1"; renaming would also change names inside the spoken Burmese lines
     const en = g.engine === "omni" ? plan.prompt : labelCast(plan.prompt, isR2v(g) ? g.refs : []);
-    let imageUrl: string | undefined;
-    if (g.mode === "i2v") {
-      const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
-      if (se || !s) throw new Error("image not found");
-      imageUrl = s.signedUrl;
-    }
-    const refUrls: string[] = [];
-    for (const r of isR2v(g) ? g.refs : []) {
-      // a reference made by us on the Eachlabs CDN (e.g. a costume design) is used as is
-      if (/^https:\/\/cdn-us\.eachlabs\.ai\//.test(String(r.url ?? ""))) { refUrls.push(r.url); continue; }
-      const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(r.path, 3600);
-      if (se || !s) throw new Error("character photo not found");
-      refUrls.push(s.signedUrl);
-    }
+    const { imageUrl, refUrls } = await omniInputs(admin, g);
     const omni = g.engine === "omni";
     const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl, refUrls);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id,
-      provider: omni || sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
+      provider: sub.model === "kie" ? `kie:${KIE_MODEL}` : omni || sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
       // Omni speaks the lines itself: nothing to dub (keep the lines only as a record)
       dialogue: omni ? null : plan.lines?.length || (g.sfx && plan.stingers?.length)
         ? { lines: plan.lines ?? [], ambience: plan.ambience ?? null, effects: plan.effects ?? [], stingers: g.sfx ? plan.stingers ?? [] : [], voices: plan.voices ?? null } : null,
