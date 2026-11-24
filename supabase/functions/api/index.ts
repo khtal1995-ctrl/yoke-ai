@@ -439,15 +439,17 @@ async function eachlabs(admin: any) {
 // ---------- Yotta Gateway: Wan 3.0 (native audio), PixVerse V6 fallback for i2v ----------
 // ---- Gemini Omni Flash through Eachlabs (Google's model; Eachlabs serves Myanmar customers) ----
 // One model makes picture + Burmese speech + sound together (lips match by construction): no ElevenLabs, no dubbing.
-const OMNI_REF = "google-gemini-omni-1-1-flash-reference-to-video"; // character/costume photos; 1.1 has resolution: std=360p, hd=720p
-const OMNI_I2V = "google-gemini-omni-1-1-flash-image-to-video";
-const OMNI_T2V = "google-gemini-omni-1-1-flash-text-to-video"; // no photo: same price as the others
+// Omni 1.2 (Nov 2026): ~30% cheaper than 1.1, steadier faces, up to 10 photos. Same input fields as 1.1.
+const OMNI_REF = "google-gemini-omni-1-2-flash-reference-to-video"; // character/costume photos: std=360p, hd=720p
+const OMNI_I2V = "google-gemini-omni-1-2-flash-image-to-video";
+const OMNI_T2V = "google-gemini-omni-1-2-flash-text-to-video"; // no photo
 const CUSTOMER_ENGINE = "omni"; // customers' videos: Gemini Omni Flash (speaks Burmese itself, no dubbing)
 // ---- Kie.ai: the same Google Omni model (1.2), about half the price. Used for 0-2 character photos; anything else, or any
 // Kie failure except a blocked photo, goes to Eachlabs. Kie can't take face photos directly: each photo becomes a Kie
 // "character" first (free), and "the young man in Image 1" in the prompt becomes that character's name.
 const KIE = "https://api.kie.ai/api/v1";
 const KIE_MODEL = "google/gemini-omni-flash-1-2";
+const USE_KIE = false; // off for now: about half of Kie's jobs failed with its own errors (24 Nov); Eachlabs is the main route
 async function kieHeaders(admin: any) {
   const { data: k } = await admin.rpc("get_app_secret", { p_name: "kie_api_key" });
   if (!k) throw new Error("no kie key");
@@ -505,14 +507,14 @@ async function omniInputs(admin: any, g: any): Promise<{ imageUrl?: string; refU
   return { imageUrl, refUrls };
 }
 async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = [], noKie = false): Promise<{ id: string; model: string }> {
-  if (!noKie && !imageUrl && refUrls.length <= 2 && refUrls.every((u) => !/cdn-us\.eachlabs\.ai/.test(u))) {
+  if (USE_KIE && !noKie && !imageUrl && refUrls.length <= 2 && refUrls.every((u) => !/cdn-us\.eachlabs\.ai/.test(u))) {
     try { return { id: await submitKie(admin, g, prompt, refUrls), model: "kie" }; }
     catch (e) { console.error("kie submit failed, using eachlabs:", e); }
   }
   const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
   let model: string; let input: any;
   const resolution = g.quality === "hd" ? "720p" : "360p";
-  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 7), aspect_ratio: ratio, duration, resolution }; }
+  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 10), aspect_ratio: ratio, duration, resolution }; }
   else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution }; }
   else { model = OMNI_T2V; input = { prompt: prompt.slice(0, 19000), aspect_ratio: ratio, duration, resolution }; }
   const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
