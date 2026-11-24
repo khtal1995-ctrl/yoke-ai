@@ -63,3 +63,15 @@
 - Photos flagged "prominent public figure" by Google are refused (Burmese message, refund). The father photo sent on 24 Nov was flagged; an AI father portrait was made instead (not yet approved).
 - Eachlabs: balance < $10 → max 2 concurrent jobs (429). Owner to keep > $10.
 - (23:14) App on Omni **1.2** (owner: keep 1.2; the pool tests were 1.2). Planner now writes each person's clothing to fit who they are (rich/poor, job), the place and situation; photos give face only. MYANMAR_LOOK no longer says "plain everyday clothes". Tested on 1.2: pool scene (plain shirt/shorts) and "richest young master" pool scene (designer swim shorts, gold watch, silk shirt) — owner: Good.
+
+## NEXT (handoff, 25 Nov 00:45) — start here in a new chat
+State now:
+- Single video (✨ ဖန်တီး tab): Omni 1.2 on Eachlabs, 360p; HD = P-Video-Upscale to 720p; planner rules (clothing, framing, Burmese lines). Owner approved.
+- Series (📁 ဇာတ်လမ်းတွဲ tab, `project` function): STILL Wan 3.0 + ElevenLabs dubbing. Prices already 30/40 cr per scene.
+Task: move series to Omni 1.2 so scenes connect like a film:
+  1. Each scene planned with the whole story as context (planner currently sees only its own scene — caused "wakes up again" / "colour of what?" errors).
+  2. Same clothing per character within the same place/time; same staff/rooms.
+  3. Consider Eachlabs Omni 1.2 video-extend for continuous scenes in the same place (3s test cost $0.10, bills only the new seconds).
+  4. Stitch all scenes into one video (existing ffmpeg join in `project`).
+  5. Show the owner the cost in Kyat and get OK before any paid test.
+Open items: AI father portrait for the Kaung Khant story not yet approved (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); Kie.ai off (USE_KIE=false, 12 free credits left); Eachlabs balance should stay > $10 (2-job limit below that); temp edge function `labupload` (lab only) exists.
