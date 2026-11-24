@@ -1,3 +1,16 @@
+# OWNER RULES — read first, follow always
+1. Reply in Burmese only. Short messages.
+2. Before ANY paid action (Eachlabs, Yotta, ElevenLabs, even 1 Ks) show the price in Kyat ($1 ≈ 4,500 Ks) and wait for the owner's OK.
+3. NEVER write video prompts, scene scripts or test stories yourself. Prompts/scripts come only from the app's own AI (planner / series director), exactly as a customer would get them. Test stories: use the owner's own text word for word (e.g. the Kaung Khant story below) or ask the owner for one. Do not invent a story and do not edit the planner's output by hand.
+4. Never ask the owner to test in the app, log in, or give a JWT/password — see "HOW CLAUDE TESTS WITHOUT THE OWNER" at the bottom.
+5. Verify (transcript, cost, status) before saying something worked. Commit to `main`, deploy pinned-commit shims.
+6. Only faces the owner owns/has consent for; no celebrities, no copyrighted characters.
+
+Owner's test story (Kaung Khant, rich heir) — use as is for series tests:
+စံအိမ်ကြီးရဲ့ အပေါ်ကနေ Drone Camera ဖြတ်သွားမယ်။ Supercar တွေ၊ Private Jet တွေ၊ Helicopter တွေ၊ ကိုယ်ပိုင်ရေကန်တွေကို ပြမယ်။ အဲဒီနောက် ကောင်လေးရဲ့ အိပ်ခန်းထဲကို Camera က ဝင်လာမယ်။ ကောင်းခန့်က အိပ်ရာနိုးနေပြီ။ ဝန်ထမ်းသုံးယောက် သူ့ရှေ့မှာ ရပ်စောင့်နေကြတယ်။
+ဝန်ထမ်း: "သခင်လေး၊ ဒီနေ့အတွက် ကားဘယ်စီး ပြင်ပေးရမလဲခင်ဗျ။" ကောင်းခန့်: "မနေ့က မှာထားတဲ့ကား ရောက်ပြီလား။" ဝန်ထမ်း: "ရောက်ပါပြီ သခင်လေး။ ဒါပေမဲ့ သခင်လေးလိုချင်တဲ့ အရောင်တော့ မဟုတ်သေးပါဘူး။" ကောင်းခန့်က မျက်မှောင်ကြုတ်လိုက်တယ်။ ကောင်းခန့်: "ငါ အနက်ရောင်လိုချင်တယ်လို့ ပြောထားတယ်မဟုတ်လား။" ဝန်ထမ်း: "ဟုတ်ပါတယ် သခင်လေး။ အခုရောက်လာတာ အဖြူရောင်ဖြစ်နေလို့ပါ။" ကောင်းခန့်: "ဒါဆို အသစ်တစ်စီး ထပ်ဝယ်လိုက်လေ။ ဒီလောက်လေးတောင် ငါပြောမှ လုပ်တတ်ကြတာလား။" ဝန်ထမ်းတွေ တိတ်သွားကြတယ်။ ကောင်းခန့်က ထပြီး အဝတ်လဲခန်းထဲ ဝင်သွားမယ်။ Camera က သန်းချီတန်တဲ့ နာရီတွေ၊ ရှားပါးဖိနပ်တွေ၊ Luxury ပစ္စည်းတွေကို ဖြတ်ပြမယ်။ နောက်တော့ ကောင်းခန့်က မိဘနှစ်ယောက်ရှိတဲ့ မနက်စာစားခန်းထဲ ဝင်လာမယ်။ ဦးသီဟ: "မင်းကတော့ တစ်နေ့တစ်နေ့ ပိုပြီးကြီးကျယ်လာပြီနော်။" ကောင်းခန့်: "အဖေ့သားပဲဗျာ။ ဒီလောက်တော့ ရှိရမှာပေါ့။" ဒေါ်မေမြတ်: "သားရယ်… ပိုက်ဆံရှိတိုင်း အရာအားလုံးကို လုပ်လို့ရတာမဟုတ်ဘူးနော်။" ကောင်းခန့်: (ပြုံးရင်း) "အမေကလည်း… ဒီခေတ်မှာ ပိုက်ဆံနဲ့ မရတာ ဘာရှိလို့လဲ။"
+Photos: ကောင်းခန့် = lab_kaungkhant.jpg, ဒေါ်မေမြတ် = lab_mother.jpg; ဦးသီဟ = no approved photo yet (the sent one was a flagged famous face).
+
 # Owner's decisions — read before every task
 
 ## Working rules
