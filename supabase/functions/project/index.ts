@@ -263,6 +263,11 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   if (pe) throw pe;
   const { data: gid, error } = await admin.rpc("episode_scene_generation", { p_scene: s.id, p_plan: plan.id, p_refs: refs });
   if (error) throw new Error(error.message);
+  // the RPC does not set the engine: without this the api starts the scene on Wan (engine null)
+  if (SERIES_ENGINE === "omni") {
+    const { error: ee } = await admin.from("generations").update({ engine: SERIES_ENGINE }).eq("id", gid);
+    if (ee) throw new Error(`set engine: ${ee.message}`);
+  }
   const tok = (await admin.rpc("get_app_secret", { p_name: "cron_token" })).data;
   await fetch(`${SUPABASE_URL}/functions/v1/api`, { method: "POST", headers: { "Content-Type": "application/json", "x-cron-token": tok, Authorization: `Bearer ${ANON_KEY}` },
     body: JSON.stringify({ action: "start", id: gid }) });
