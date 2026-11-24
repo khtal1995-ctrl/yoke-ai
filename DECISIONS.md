@@ -36,62 +36,13 @@ What did NOT work
 Checks that caught real problems
 - Transcribe every finished video (labpeek words) and compare with the script lines; read the real cost from the Eachlabs prediction; read the generation row's provider/engine (series once ran on Wan by mistake because engine wasn't set).
 
-# Owner's decisions — read before every task
-
-## Working rules
-- Reply in Burmese only. Money in Myanmar Kyat ($1 ≈ 4,500 Ks).
-- **Before anything that costs money (even 1 Ks): show the price in Kyat and wait for OK.** Never decide on my own.
-- Tests: standard quality and the shortest length that proves the point, unless the owner asks otherwise. Say the price first.
-- Discuss before acting; don't change the customer's story.
-- Verify results (frames, audio timing) before saying something works.
-- Never ask for passwords or login codes; payments and accounts are done by the owner.
-- Secrets live in the Supabase vault, never in chat or the repo.
-- Only faces the owner owns or has consent for; no celebrities, no copyrighted characters; no copyright-bypass tricks.
-- Avoid SQL DELETE. Empty the lab-tmp branch after imports.
-
-## Voices (ElevenLabs, owner's own)
-- Main young characters: the owner's separately made voices — **ask which ones if unsure; never guess.**
-  - "Yoke main character male" d4WXuYHO9Ot8KDdiOwIg, "Yoke main character female" 12GZ6E7rJLrs85C6m4J6
-  - other young voices: "Young" RaXLAvAOptVErMcTikpw, "Yoke Young Man 1/2", "Yan", "Su - Calm" NBISYoQ4SVxq8eZxoHlV
-  - "Yoke Male 1" B5MB163SdECMmHySTkLK = the owner's own voice; "Old man" uh7A30exzQsUAB5ovsOu; "Yoke child" uFPN3uAkEca3mQ6uRmBk
-- Voices: plain natural everyday speech by default (14 Nov style). At most ONE emotion tag per line, never stacked; extra direction only when the story clearly needs it (crying, shouting, whisper, shock). No added laughs/sighs/breaths. Over-acting = bad.
-
-## Video quality
-- 18 Nov evening: the 8-section prompt + fixed quality base made Wan stiff ("doing what it's told"). REVERTED to the 14 Nov style:
-  one natural story paragraph (what worked: tea shop, racing, podcast videos). Change prompt style only one thing at a time, tested.
-- The warm reference look (HOUSE_LOOK) is only an example — kept for a future style option, not forced.
-- Faces must stay the same in every scene.
-- Wan reads Burmese text aloud → no Burmese names outside quotes in the Wan prompt (Character A/B/C = Image 1/2/3).
-- Voice must sit on the lips: place each line where Wan actually says it (text match).
-
-## Series
-- Project per story, episodes made one by one, Story Bible so the AI remembers.
-- 3 input ways: full script, idea only, AI-suggested ideas. ≤30 characters, ≤3 photos per Wan scene.
-- Group scenes (4–9 people, MiniMax) built but OFF until tested.
-- Photo check on upload: on. Scene AI check + free redo: OFF (owner pays for redos).
-- Per-scene redo button, title card, help button: on hold — don't add.
-- Scenes must connect (positions, props, who holds what) — continuity fix pending owner's OK.
-
-## Recap (paused at ~70%)
-- Recap-channel style, casual and fast, one voice; not fairy-tale. Watching it = understanding the whole video.
-- Burmese subtitles: ass filter with shaping=complex.
-
-## Pricing notes
-- 1 cr = 100 Ks. std 10 s = 35 cr, HD 10 s = 50 cr.
-- Wan cost ≈ 3,000 Ks per 10 s std, ≈ 6,300 Ks per 10 s HD → HD loses money at 50 cr; review later.
-
-## Omni (Gemini Omni Flash via Eachlabs) — owner's rules, 23 Nov
-- Engine for quality: picture + Burmese speech made together by Omni; no ElevenLabs/dubbing. ~$1.02 per 10 s (≈4,600 Ks).
-- Tests go through the app's own path (planner engine="omni"), never prompts hand-written by Claude.
-- Planner (Omni writer) rules: faithful translation of the customer's Burmese; leave nothing out (every action, order, cause→effect);
-  dialogue in Burmese word for word with speaker; format like the owner's reference video: Look / Dialogue (Myanmar) / Motion Video Prompt
-  (story paragraph with camera movement and acting, no timestamps). The "add nothing" rule was REMOVED by the owner.
-- Added 23 Nov: write 1-2 short Burmese lines if speech allowed but not given; never copy instructions-to-the-app into the prompt; fill in film details (place, light, effects, camera, reactions) that fit the story.
-
-## 24 Nov — Omni live for customers
-- Single videos (t2v / i2v / template) now plan + produce with Gemini Omni 1.1 Flash (api CUSTOMER_ENGINE = "omni"). No photo → Omni text-to-video.
-- Price (owner, 24 Nov 23:24): 10s HD 40 cr (4,000 Ks) / 10s 360p 30 cr (3,000) / 5s HD 25 cr (2,500) / 5s 360p 15 cr (1,500). HD = 360p + AI upscale to 720p. Series scene: HD 40 / std 30.
-- Planner returns warnings_mm (too long / Google safety / copyrighted) and blocked=true when a story can't be made; app shows spoken lines + warnings and hides the produce button when blocked.
+# Product decisions still in force
+- Extra working rules: discuss before acting; never change the customer's story; tests use Standard and the shortest length that proves the point; secrets only in the Supabase vault; avoid SQL DELETE.
+- Prices (owner, 24 Nov 23:24; 1 cr = 100 Ks): 10 s HD 40 cr (4,000 Ks) / 10 s 360p 30 cr (3,000) / 5 s HD 25 cr (2,500) / 5 s 360p 15 cr (1,500). HD = 360p + AI upscale to 720p. Series scene: HD 40 / std 30.
+- Faces must stay the same in every scene. Photo check on upload: on.
+- Series: one project per story, episodes made one by one, Story Bible so the AI remembers; 3 input ways (full script, idea, AI-suggested ideas). Scene AI check + free redo: OFF (owner pays for redos). Per-scene redo button, title card, help button: on hold — don't add. Group scenes (4–9 people): off until tested on Omni.
+- Recap feature: paused at ~70% (recap-channel style, one casual voice; Burmese subtitles with ass filter shaping=complex). ElevenLabs voices are only for Recap now — Omni videos are never dubbed.
+- The old Wan 3.0 + ElevenLabs dubbing rules (voices, emotion tags, Character A/B naming, text-matched dub timing) are retired — do not use them for customer videos.
 
 ## 24 Nov (evening) — owner decisions
 - Customers: Eachlabs Omni **1.2** (360p 10s ≈ $0.24 ≈ 1,090 Ks; 1.1 was $0.345). Owner compared same scene: 1.2 OK.
@@ -113,17 +64,9 @@ Checks that caught real problems
 - Google safety declines (Omni): NO customer warnings/limits (owner). Instead the api rewrites the likely trigger and resubmits (declined jobs cost $0). `SAFE_TRIES = 1`: try 1 changes only the English, Burmese lines stay exact. Try 2 (may reword a customer line) is built but OFF until the owner allows changing customer lines.
 - Test 25 Nov 02:10 (mall story, 3 scenes 360p): scene 3 "ကျွန်တော် ဇေယျာပါ၊ ဖုန်းနံပါတ်လေး ရနိုင်မလား" was declined twice, then passed after try 1 with the line unchanged → asking for a phone number is fine; the English ("Neither takes out a phone") was the likely trigger. All 3 lines spoken right. Cost $0.7347 ≈ 3,306 Ks.
 
-## NEXT (handoff, 25 Nov 00:45) — start here in a new chat
-State now:
-- Single video (✨ ဖန်တီး tab): Omni 1.2 on Eachlabs, 360p; HD = P-Video-Upscale to 720p; planner rules (clothing, framing, Burmese lines). Owner approved.
-- Series (📁 ဇာတ်လမ်းတွဲ tab, `project` function): STILL Wan 3.0 + ElevenLabs dubbing. Prices already 30/40 cr per scene.
-Task: move series to Omni 1.2 so scenes connect like a film:
-  1. Each scene planned with the whole story as context (planner currently sees only its own scene — caused "wakes up again" / "colour of what?" errors).
-  2. Same clothing per character within the same place/time; same staff/rooms.
-  3. Consider Eachlabs Omni 1.2 video-extend for continuous scenes in the same place (3s test cost $0.10, bills only the new seconds).
-  4. Stitch all scenes into one video (existing ffmpeg join in `project`).
-  5. Show the owner the cost in Kyat and get OK before any paid test.
-Open items: AI father portrait for the Kaung Khant story not yet approved (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); Kie.ai off (USE_KIE=false, 12 free credits left); Eachlabs balance should stay > $10 (2-job limit below that); temp edge function `labupload` (lab only) exists.
+## CURRENT STATE (25 Nov, 02:30)
+- ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
+- Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.
 
 ## HOW CLAUDE TESTS WITHOUT THE OWNER (read this — never ask the owner to test, log in, or give a JWT/password)
 - Use the Supabase MCP `execute_sql` and `net.http_post` (pg_net) from SQL. Read results from `net._http_response` by id a few seconds later.
