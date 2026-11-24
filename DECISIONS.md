@@ -72,6 +72,8 @@
 - Wan-era voice tags and "spoken" fields removed from the director and from the scene plan (owner, 25 Nov). Director keeps only text, feeling and acting.
 - Test 25 Nov (3 scenes, 360p, 9:16, Omni 1.2): all 3 succeeded, stitched. Eachlabs cost $0.7411 ≈ 3,335 Ks (owner OK 3,270). Transcript: scene 2 and 3 lines right; scene 1 line came out "မေမေ ဟေးအင်းနဲ့ အံကောင်းလိုက်တာ" (not "ဟင်းရနံ့ ကောင်းလိုက်တာ") — pronunciation problem to check.
 - Test projects "Omni series test" and "Omni series test 2" stay in the DB (owner: do not delete).
+- Google safety declines (Omni): NO customer warnings/limits (owner). Instead the api rewrites the likely trigger and resubmits (declined jobs cost $0). `SAFE_TRIES = 1`: try 1 changes only the English, Burmese lines stay exact. Try 2 (may reword a customer line) is built but OFF until the owner allows changing customer lines.
+- Test 25 Nov 02:10 (mall story, 3 scenes 360p): scene 3 "ကျွန်တော် ဇေယျာပါ၊ ဖုန်းနံပါတ်လေး ရနိုင်မလား" was declined twice, then passed after try 1 with the line unchanged → asking for a phone number is fine; the English ("Neither takes out a phone") was the likely trigger. All 3 lines spoken right. Cost $0.7347 ≈ 3,306 Ks.
 
 ## NEXT (handoff, 25 Nov 00:45) — start here in a new chat
 State now:
