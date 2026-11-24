@@ -75,3 +75,15 @@ Task: move series to Omni 1.2 so scenes connect like a film:
   4. Stitch all scenes into one video (existing ffmpeg join in `project`).
   5. Show the owner the cost in Kyat and get OK before any paid test.
 Open items: AI father portrait for the Kaung Khant story not yet approved (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); Kie.ai off (USE_KIE=false, 12 free credits left); Eachlabs balance should stay > $10 (2-job limit below that); temp edge function `labupload` (lab only) exists.
+
+## HOW CLAUDE TESTS WITHOUT THE OWNER (read this — never ask the owner to test, log in, or give a JWT/password)
+- Use the Supabase MCP `execute_sql` and `net.http_post` (pg_net) from SQL. Read results from `net._http_response` by id a few seconds later.
+- Server-to-server auth: header `x-cron-token` = `(select decrypted_secret from vault.decrypted_secrets where name='cron_token')`.
+  - `api` has verify_jwt=true, so also send `Authorization: Bearer <legacy anon JWT>` (the eyJhbGciOiJIUzI1NiIs... anon key of project isceklnjifckepgumale; the sb_publishable key fails). `{action:"start", id}` starts a generation row.
+  - `planner` (verify_jwt=false): header `x-lab-token: vl_7f3k29xq81mz`, body `{engine:"omni", duration, cast:[names], story}` → `{plan:{prompt,lines,summary_mm,warnings_mm,blocked}}`.
+  - `project` (verify_jwt=false): `x-cron-token` + `{action:"tick"}` moves producing/stitching episodes forward (see top of project/index.ts for the rest).
+  - `labpeek` (lab): `x-cron-token` + `{action:"words", url|path}` → Burmese transcript of a video (check spoken lines). `labupload` (lab): `{action:"sign", paths:[...]}` → signed URLs of inputs-bucket files.
+- Admin/test user (owner's account) id `7b451c1f-fdba-4079-8f7c-dd48ea8f4eaa`. Give it test credits with `select public._add_credits(uid, 100, 'Admin test credit (...)', null)` — free, it is our own ledger.
+- To make a test video like a customer: insert into `plans` (status 'ready', plan from the planner response) and `generations` (engine 'omni', quality, duration 5|10, ratio, cost gen_cost(), plan_id, refs [{name, path}]), charge `_add_credits(u,-cost,...)`, then `net.http_post` api `{action:"start", id}`. Poll the row; Eachlabs output/cost: GET `https://api.eachlabs.ai/v1/prediction/<provider_request_id>` with `X-API-Key` from vault `eachlabs_api_key` (metrics.cost = real $).
+- Character photos already uploaded (inputs bucket, under the admin user): lab_kaungkhant.jpg, lab_mother.jpg (lab_father.jpg = flagged famous face, do not use).
+- Always: show the owner the cost in Kyat and get OK first; then verify (transcript, cost) before saying it worked. Push code to `main` (not a side branch) and deploy edge functions as one-line shims importing the pinned commit.
