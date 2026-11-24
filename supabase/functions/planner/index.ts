@@ -168,13 +168,15 @@ Rules (all of them):
 9. Warn the customer (in simple Burmese, in "warnings_mm"; an empty list when all is fine) about:
    a) too much for the video length: more events or more speech than fit in the given seconds (Burmese speech is about 5 syllables per second). Say what may be cut or rushed and suggest shortening it.
    b) parts Google's safety check will likely refuse: a child in fighting, danger or violence; blood, wounds or gore; nudity or sexual content; real famous people or politicians; well-known copyrighted characters, costumes or brands (superheroes, cartoon characters, logos). Say which part and how to change it. Still write the full prompt, but give any copyrighted character an original look of your own.
-Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>","warnings_mm":["<Burmese warning>"]}`;
+10. If the story cannot be made at all without breaking those safety limits (for example a child being hurt or bleeding), set "blocked": true, leave "prompt" empty, and explain in "warnings_mm" how to change the story.
+Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>","warnings_mm":["<Burmese warning>"],"blocked":false}`;
 
 async function planOmni(key: string, story: string, duration: number, names: string[], effort: string) {
   const user = `Video length: ${duration} seconds.\n${names.length ? `Reference photos: ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n` : ""}\nCustomer's story (Burmese):\n${story}`;
   const out = parse(await llm(key, [{ role: "system", content: OMNI_SYSTEM }, { role: "user", content: user }], effort));
   const warnings_mm: string[] = (Array.isArray(out.warnings_mm) ? out.warnings_mm : []).map((w: any) => String(w ?? "").trim()).filter(Boolean).slice(0, 4);
-  const plan: any = { prompt: String(out.prompt ?? "").trim(), lines: Array.isArray(out.lines) ? out.lines : [], summary_mm: String(out.summary_mm ?? "").trim(), engine: "omni", warnings_mm };
+  const plan: any = { prompt: String(out.prompt ?? "").trim(), lines: Array.isArray(out.lines) ? out.lines : [], summary_mm: String(out.summary_mm ?? "").trim(), engine: "omni", warnings_mm, blocked: out.blocked === true };
+  if (plan.blocked) { plan.prompt = ""; plan.lines = []; return { plan, issues: [] as string[] }; }
   // our own check of the speech length (the model's guess can miss it)
   const lines = plan.lines.filter((l: any) => l && l.text);
   const need = lines.reduce((s: number, l: any) => s + syllables(String(l.text)), 0) / SYL_PER_SEC + 0.5 * Math.max(0, lines.length - 1);
@@ -182,6 +184,7 @@ async function planOmni(key: string, story: string, duration: number, names: str
     warnings_mm.push(`စကားပြော များနေပါတယ် (ပြောဖို့ ~${Math.ceil(need)} စက္ကန့် လိုပြီး video က ${duration} စက္ကန့်ပဲ ရှိပါတယ်)။ စကားကို တိုအောင် ပြင်ရင် ပိုကောင်းပါတယ်။`);
   const issues: string[] = [];
   if (!plan.prompt) issues.push("empty prompt");
+  else if (/cannot be (turned|made|generated)|not generated/i.test(plan.prompt.slice(0, 300))) { plan.blocked = true; plan.prompt = ""; plan.lines = []; return { plan, issues: [] as string[] }; }
   for (const q of String(story).match(/[\"“”]([^\"“”]{1,200})[\"“”]/g) ?? []) {
     const w = q.slice(1, -1).trim(); if (w && !plan.prompt.includes(w)) issues.push(`Customer's line not in the prompt exactly: ${w}`);
   }

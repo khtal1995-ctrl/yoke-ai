@@ -61,7 +61,7 @@ async function planVideo(mm: string, duration = 10, cast: string[] = [], engine 
     body: JSON.stringify({ story: mm, duration, cast, engine }),
   });
   const j: any = await r.json().catch(() => ({}));
-  if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
+  if (!r.ok || (!j.plan?.prompt && !j.plan?.blocked)) throw new Error(j.error ?? `planner ${r.status}`);
   return { ...j.plan, issues: j.issues ?? [] };
 }
 // fill a waiting plan row in the background
@@ -736,7 +736,7 @@ Deno.serve(async (req) => {
     const { data: p } = await userDb.from("plans").select("*").eq("id", body.plan_id).single();
     if (!p) return json({ error: "not found" }, 404);
     if (p.status === "planning" && Date.now() - new Date(p.created_at).getTime() > 200000) return json({ status: "failed", error: "timeout" });
-    return json({ status: p.status, error: p.error, summary_mm: p.plan?.summary_mm ?? null, issues: p.issues ?? [], warnings_mm: p.plan?.warnings_mm ?? [],
+    return json({ status: p.status, error: p.error, summary_mm: p.plan?.summary_mm ?? null, issues: p.issues ?? [], warnings_mm: p.plan?.warnings_mm ?? [], blocked: p.plan?.blocked === true,
       lines: (p.plan?.lines ?? []).map((l: any) => ({ who: l.who, gender: l.gender, text: l.text })) });
   }
 
@@ -749,6 +749,7 @@ Deno.serve(async (req) => {
       if (!p || p.user_id !== user.id || p.status !== "ready") return json({ error: "plan not ready" }, 400);
       if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 2000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
       if (!sameRefs(p.refs ?? [], cleanRefs(body.refs, user.id) ?? [])) return json({ error: "plan does not match" }, 400);
+      if (p.plan?.blocked || !p.plan?.prompt) return json({ error: "ဒီဇာတ်လမ်းကို ဗီဒီယို လုပ်လို့ မရပါ။ ပြင်ရေးပြီး ပြန်စီစဉ်ပါ" }, 400);
       planId = p.id; planRefs = p.refs ?? null; engine = p.plan?.engine === "omni" ? "omni" : null;
     }
     const { data: id, error } = await userDb.rpc("create_generation", {

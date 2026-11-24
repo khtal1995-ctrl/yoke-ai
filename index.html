@@ -619,9 +619,9 @@ function showPlan(st){
   showJob("📋 ဒီအစီအစဉ်နဲ့ ဖန်တီးမလား?", `
     <ol class="plan">${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>
     ${talk}${warn2}${warn}
-    <button class="btn" id="planOk">✅ ဒီအတိုင်း ဖန်တီးမည် (${costOf()} credits)</button>
+    ${st.blocked ? `<div class="status bad">🚫 ဒီဇာတ်လမ်းကို AI က ဗီဒီယို လုပ်ပေးလို့ မရပါ။ အပေါ်က အကြံပြုချက်အတိုင်း ပြင်ရေးပါ (credit မကုန်ပါ)။</div>` : `<button class="btn" id="planOk">✅ ဒီအတိုင်း ဖန်တီးမည် (${costOf()} credits)</button>`}
     <button class="btn ghost" id="planEdit" style="margin-top:8px">✏️ ပြင်ရေးမည်</button>`);
-  $("planOk").onclick = createFromPlan;
+  if ($("planOk")) $("planOk").onclick = createFromPlan;
   $("planEdit").onclick = () => { currentPlan = null; $("jobCard").classList.add("hidden");
     const el = opt.mode === "tpl" ? $("tplPick") : $("prompt"); if (opt.mode !== "tpl") el.focus(); el.scrollIntoView({ behavior:"smooth", block:"center" }); };
 }
