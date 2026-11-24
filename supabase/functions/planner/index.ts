@@ -162,6 +162,7 @@ Rules (all of them):
    Dialogue (Myanmar): one line per spoken line: <who> — "<Burmese words exactly>"
    Motion Video Prompt: one natural story paragraph, in the order of events: where it happens, how the camera moves, what each person does and feels shown through face and body, who speaks when (say "speaks in Burmese" and repeat the exact Burmese line in quotes). No timestamps, no seconds, no headings inside it.
 5. Characters with reference photos are referred to as "the <young woman/young man/...> in Image N". In Burmese "ကောင်လေး" / "ကောင်မလေး" usually mean a young man / young woman (adults), not children: write "young man" / "young woman" (adult, early twenties) unless the story clearly says it is a child. Never put a child in fighting, danger or violence.
+   A reference photo whose name ends with "(place)" is a photo of a location, not a person: set the scene exactly in that place, matching its look, layout and light, and call it "the place in Image N".
 6. If the customer allows or asks for speech but gives no exact words, write 1-2 short, natural spoken Burmese lines yourself (everyday Yangon speech) that fit the moment, and put them in Dialogue (Myanmar). Write what a real person would actually say in that moment (a reaction, a feeling, a taunt, a warning, a call to someone), never a line that describes their own action or what the viewer can already see (wrong: "I'm turning into a robot now to protect you"; right: "ကဲ… လာခဲ့စမ်း!").
 7. The customer's instructions to the app (length, "make a video", "a little speech is fine", style requests) are instructions to you, not part of the scene: never copy them into the prompt as text.
 8. Fill in the details the scene needs so it plays like a film: where it happens, time of day and light that fit the story, how the key visual effects look (e.g. how a transformation happens), how the camera moves, and the characters' reactions. The Look paragraph must fit this story; the words in the format example are only an example.
@@ -213,7 +214,7 @@ Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   if (req.headers.get("x-lab-token") !== LAB && auth !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return new Response("no", { status: 401 });
   const { story, duration = 10, effort = "low", cast = [], engine = "", safe_rewrite = "", safe_try = 1 } = await req.json();
-  const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, 30)).filter(Boolean).slice(0, 10);
+  const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 10);
   const t0 = Date.now();
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/get_app_secret`, { method: "POST",
     headers: { apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },

@@ -212,6 +212,12 @@
             <input type="text" id="srTitle" maxlength="80" placeholder="ဥပမာ ရွာသူကြီးသမီး">
             <label class="lbl">Idea / ဇာတ်လမ်းအကြမ်း</label>
             <textarea id="srIdea" maxlength="3000" placeholder="ဥပမာ ရွာသူကြီးသမီး မမြက ချောပေမဲ့ မာနကြီးတယ်။ ဆင်းရဲတဲ့ ကိုအောင်ကို ချစ်မိသွားတယ်…"></textarea>
+            <label class="lbl">👥 ဇာတ်ကောင်ပုံ (မထည့်လည်းရ — မထည့်ရင် AI က ဆွဲပေးမယ်)</label>
+            <div id="srNewChars"></div>
+            <button class="btn ghost sm" id="srNewAddChar">＋ ဇာတ်ကောင်</button>
+            <label class="lbl">🏞️ နေရာပုံ (မထည့်လည်းရ — ထည့်ရင် အဲ့နေရာအတိုင်း ရိုက်မယ်၊ မထည့်ရင် AI က ဇာတ်လမ်းနဲ့ကိုက်တာ ရွေးမယ်)</label>
+            <div id="srNewPlaces"></div>
+            <button class="btn ghost sm" id="srNewAddPlace">＋ နေရာ</button>
             <label class="lbl">ပုံစံ</label>
             <div class="seg" id="srRatio"><button data-v="9:16" class="on">📱 9:16</button><button data-v="16:9">🖥️ 16:9</button></div>
             <label class="lbl">အရည်အသွေး</label>
@@ -752,12 +758,43 @@ async function srShowList(){
     document.querySelectorAll("[data-open]").forEach(x => x.onclick = () => srOpen(x.dataset.open));
   } catch (e) { $("srProjects").innerHTML = `<p class="muted">${esc(msgOf(e))}</p>`; }
 }
+// photos chosen on the "new series" form: characters (name + photo) and places (name + photo)
+const srNew = { chars: [], places: [] };
+function srNewRow(kind, x, i){
+  const ph = kind === "c" ? "ဇာတ်ကောင် နာမည်" : "နေရာ နာမည် (ဥပမာ ကုန်တိုက်)";
+  return `<div class="cast"><label class="ph">${x.url ? `<img src="${esc(x.url)}" alt="">` : (kind === "c" ? "📷" : "🏞️")}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-nphoto="${kind}${i}"></label>
+    <input type="text" maxlength="${kind === "c" ? 30 : 40}" placeholder="${ph}" value="${esc(x.name)}" data-nname="${kind}${i}">
+    <button class="x" data-ndel="${kind}${i}">✕</button></div>${x.warn?.length ? `<div class="status bad" style="font-size:13px">⚠️ ${x.warn.map(esc).join(" · ")}</div>` : ""}`;
+}
+function srNewRead(){ ["c","p"].forEach(k => (k === "c" ? srNew.chars : srNew.places).forEach((x, i) => { const el = $q(`[data-nname="${k}${i}"]`); if (el) x.name = el.value.trim(); })); }
+function srNewRender(){
+  $("srNewChars").innerHTML = srNew.chars.map((x, i) => srNewRow("c", x, i)).join("");
+  $("srNewPlaces").innerHTML = srNew.places.map((x, i) => srNewRow("p", x, i)).join("");
+  $("srNewAddChar").disabled = srNew.chars.length >= 10; $("srNewAddPlace").disabled = srNew.places.length >= 10;
+  document.querySelectorAll("[data-ndel]").forEach(b => b.onclick = () => { srNewRead(); const k = b.dataset.ndel[0], i = Number(b.dataset.ndel.slice(1)); (k === "c" ? srNew.chars : srNew.places).splice(i, 1); srNewRender(); });
+  document.querySelectorAll("[data-nphoto]").forEach(inp => inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return; if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
+    srNewRead(); const k = inp.dataset.nphoto[0], x = (k === "c" ? srNew.chars : srNew.places)[Number(inp.dataset.nphoto.slice(1))];
+    try { toast("ပုံ တင်နေပါတယ်…"); x.path = await uploadTo("inputs", f); x.url = URL.createObjectURL(f); x.warn = null; srNewRender();
+      if (k === "c") { const chk = await srCall({ action:"check_photo", path: x.path }).catch(() => ({ ok:true }));
+        if (!chk.ok) { x.warn = chk.problems_mm?.length ? chk.problems_mm : ["ပုံ ပြန်ရွေးကြည့်ပါ"]; srNewRead(); srNewRender(); } } }
+    catch (e) { toast(msgOf(e)); }
+  });
+}
+$("srNewAddChar").onclick = () => { srNewRead(); srNew.chars.push({ name:"" }); srNewRender(); };
+$("srNewAddPlace").onclick = () => { srNewRead(); srNew.places.push({ name:"" }); srNewRender(); };
 $("srCreate").onclick = async () => {
   const title = $("srTitle").value.trim(), idea = $("srIdea").value.trim();
   if (!title || !idea) return toast("ဇာတ်လမ်းနာမည်နဲ့ idea ထည့်ပါ");
+  srNewRead();
+  if (srNew.chars.some(x => x.path && !x.name) || srNew.places.some(x => x.path && !x.name)) return toast("ပုံထည့်ထားတဲ့ ဇာတ်ကောင်/နေရာ တိုင်းမှာ နာမည် ထည့်ပါ");
+  if (srNew.places.some(x => x.name && !x.path)) return toast("နေရာတိုင်းမှာ ပုံ ထည့်ပါ (ပုံမရှိရင် ✕ နဲ့ ဖယ်ပါ)");
+  const chars = srNew.chars.filter(x => x.name).map(x => ({ name: x.name, photo_path: x.path || null }));
+  if (new Set(chars.map(c => c.name)).size !== chars.length) return toast("ဇာတ်ကောင် နာမည်တွေ မတူအောင် ထည့်ပါ");
+  const places = srNew.places.filter(x => x.name && x.path).map(x => ({ name: x.name, photo_path: x.path }));
   $("srCreate").disabled = true;
-  try { const { id } = await srCall({ action:"create", title, idea, ratio: srOpt.ratio, quality: srOpt.quality });
-    $("srTitle").value = ""; $("srIdea").value = ""; srOpen(id); }
+  try { const { id } = await srCall({ action:"create", title, idea, ratio: srOpt.ratio, quality: srOpt.quality, characters: chars, places });
+    $("srTitle").value = ""; $("srIdea").value = ""; srNew.chars = []; srNew.places = []; srNewRender(); srOpen(id); }
   catch (e) { toast(msgOf(e)); }
   $("srCreate").disabled = false;
 };
@@ -793,6 +830,10 @@ function srRender(){
     <label class="lbl">👥 ဇာတ်ကောင်များ (၃၀ ယောက်အထိ) — ပုံထည့်ရင် အပိုင်းတိုင်း ရုပ်မပြောင်းပါ</label>
     <div id="srChars">${chars.map((c, i) => srCharHtml(c, i)).join("")}</div>
     <button class="btn ghost sm" id="srAddChar" ${chars.length >= 30 ? "disabled" : ""}>＋ ဇာတ်ကောင်</button>
+    <label class="lbl">🏞️ နေရာပုံများ — ပုံပါတဲ့နေရာမှာ ဖြစ်တဲ့ scene ကို အဲ့နေရာအတိုင်း ရိုက်ပါတယ်</label>
+    <div id="srPlaces">${(sr.places ?? []).map((x, i) => `<div class="cast"><label class="ph">${x.photo_url ? `<img src="${esc(x.photo_url)}" alt="">` : "🏞️"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-pphoto="${i}"></label>
+      <input type="text" maxlength="40" placeholder="နေရာ နာမည်" value="${esc(x.name)}" data-pname="${i}"><button class="x" data-pdel="${i}">✕</button></div>`).join("")}</div>
+    <button class="btn ghost sm" id="srAddPlace" ${(sr.places ?? []).length >= 10 ? "disabled" : ""}>＋ နေရာ</button>
     <div style="height:10px"></div><button class="btn" id="srSaveBible">💾 မှတ်တမ်း သိမ်းမည်</button></details></div>`;
 
   // episodes so far
@@ -863,6 +904,7 @@ function srSceneHtml(s, i, chars){
     <textarea data-scene="${i}" maxlength="900" style="min-height:80px;margin-top:6px">${esc(s.story_mm)}</textarea>
     <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၆ ယောက်အထိ — ပုံပါတဲ့ ရှေ့ဆုံး ၁၀ ယောက်ကို ပုံအတိုင်း၊ ကျန်တာ ရုပ်ရည်စာအတိုင်း ဆွဲပါတယ်):
       ${chars.map(c => `<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" data-scast="${i}" value="${esc(c.name)}" ${s.cast_names?.includes(c.name) ? "checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
+    ${(sr.places ?? []).length ? `<div class="muted" style="font-size:12px;margin-top:6px">🏞️ နေရာ: <select data-splace="${i}" style="width:auto"><option value="">AI ရွေးမယ်</option>${sr.places.map(x => `<option value="${esc(x.name)}" ${s.place === x.name ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>` : ""}
     <button class="btn ghost sm" data-sdel="${i}" style="margin-top:6px">🗑️ ဖယ်</button></div>`;
 }
 // read the edited Story Bible / scenes back from the form
@@ -870,8 +912,10 @@ function srReadChars(){ return sr.characters.map((c, i) => ({ ...c,
   name: $q(`[data-cname="${i}"]`)?.value.trim() ?? c.name, gender: $q(`[data-cgender="${i}"]`)?.value ?? c.gender,
   age: $q(`[data-cage="${i}"]`)?.value ?? c.age, look_mm: $q(`[data-clook="${i}"]`)?.value ?? c.look_mm,
   personality_mm: $q(`[data-cpers="${i}"]`)?.value ?? c.personality_mm })); }
+function srReadPlaces(){ return (sr.places ?? []).map((x, i) => ({ ...x, name: $q(`[data-pname="${i}"]`)?.value.trim() ?? x.name })); }
 function srReadScenes(){ return sr.scenes.map((s, i) => ({ story_mm: $q(`[data-scene="${i}"]`)?.value ?? s.story_mm,
-  cast_names: [...document.querySelectorAll(`[data-scast="${i}"]:checked`)].map(x => x.value).slice(0, 6) })); }
+  cast_names: [...document.querySelectorAll(`[data-scast="${i}"]:checked`)].map(x => x.value).slice(0, 6),
+  place: $q(`[data-splace="${i}"]`)?.value ?? s.place ?? "" })); }
 const $q = sel => document.querySelector(sel);
 
 function srBind(){
@@ -890,6 +934,14 @@ function srBind(){
       else toast("✅ ပုံ ကောင်းပါတယ် — သိမ်း နှိပ်ပါ"); }
     catch (e) { toast(msgOf(e)); }
   });
+  document.querySelectorAll("[data-pphoto]").forEach(inp => inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return; if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
+    sr.characters = srReadChars(); sr.places = srReadPlaces();
+    try { toast("ပုံ တင်နေပါတယ်…"); const x = sr.places[Number(inp.dataset.pphoto)]; x.photo_path = await uploadTo("inputs", f); x.photo_url = URL.createObjectURL(f); srRender(); toast("သိမ်း နှိပ်ပါ"); }
+    catch (e) { toast(msgOf(e)); }
+  });
+  document.querySelectorAll("[data-pdel]").forEach(b => b.onclick = () => { sr.characters = srReadChars(); sr.places = srReadPlaces(); sr.places.splice(Number(b.dataset.pdel), 1); srRender(); });
+  if ($("srAddPlace")) $("srAddPlace").onclick = () => { sr.characters = srReadChars(); sr.places = srReadPlaces(); sr.places.push({ name:"" }); srRender(); };
   document.querySelectorAll("[data-cdraw]").forEach(b => b.onclick = async () => {
     const c = sr.characters.find(x => x.id === b.dataset.cdraw); if (!c) return;
     if (c.ai_draws > 0 && !confirm(`${c.name} ပုံကို ပြန်ဆွဲမလား? 2 credits ကျပါမယ်`)) return;
@@ -905,7 +957,8 @@ function srBind(){
     $("srSaveBible").disabled = true;
     try { await srCall({ action:"update_bible", id: p.id, premise_mm: $("srPremise").value, setting_mm: $("srSetting").value,
         ...($("srState") ? { state_mm: $("srState").value } : {}),
-        characters: chars.map(c => ({ id: c.id, name: c.name, gender: c.gender, age: c.age, look_mm: c.look_mm, personality_mm: c.personality_mm, photo_path: c.photo_path || null })) });
+        characters: chars.map(c => ({ id: c.id, name: c.name, gender: c.gender, age: c.age, look_mm: c.look_mm, personality_mm: c.personality_mm, photo_path: c.photo_path || null })),
+        places: srReadPlaces().filter(x => x.name && x.photo_path).map(x => ({ name: x.name, photo_path: x.photo_path })) });
       toast("သိမ်းပြီးပါပြီ"); srOpen(p.id, sr.scenes_episode); }
     catch (e) { toast(msgOf(e)); $("srSaveBible").disabled = false; }
   };

@@ -76,6 +76,11 @@ Checks that caught real problems
 - Price (owner): first portrait of a character FREE (our cost), each redraw 2 credits (200 Ks), refunded if drawing fails. `ai_draws` counts drawings.
 - Series scenes: up to 10 photos per Omni scene (was 3). Scene cast is still at most 6 named characters (MAX_CAST) — ask the owner before raising it.
 
+## 25 Nov 02:50 — customer photos of characters and places (owner)
+- "New series" form: optional 👥 character photos (name + photo, up to 10; photo check runs on upload) and 🏞️ place photos (name + photo, up to 10). Story Bible keeps those exact names; only characters without a photo get an AI portrait.
+- A scene in one of the customer's places uses that place photo as an Omni reference ("<name> (place)", counted in the 10) → the video is shot in exactly that location. No place photo → the AI chooses a place that fits the story.
+- Scene splitting writes each scene's `place`; the customer can change it per scene (dropdown) and edit places in the Story Bible. Table `project_places`, column `episode_scenes.place`.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

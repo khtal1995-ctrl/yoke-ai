@@ -101,12 +101,13 @@ const BURMESE_STYLE = "Write everything for the customer in natural, simple Burm
 
 // ---------- Story Bible ----------
 async function loadBible(admin: any, projectId: string) {
-  const [{ data: p }, { data: chars }, { data: eps }] = await Promise.all([
+  const [{ data: p }, { data: chars }, { data: eps }, { data: places }] = await Promise.all([
     admin.from("projects").select("*").eq("id", projectId).single(),
     admin.from("project_characters").select("*").eq("project_id", projectId).order("sort"),
     admin.from("episodes").select("num,title,summary_mm,status").eq("project_id", projectId).order("num"),
+    admin.from("project_places").select("*").eq("project_id", projectId).order("sort"),
   ]);
-  return { p, chars: chars ?? [], eps: eps ?? [] };
+  return { p, chars: chars ?? [], eps: eps ?? [], places: places ?? [] };
 }
 function bibleText(b: any, beforeNum?: number) {
   const done = b.eps.filter((e: any) => e.status === "done" && e.summary_mm && (beforeNum == null || e.num < beforeNum));
@@ -114,6 +115,7 @@ function bibleText(b: any, beforeNum?: number) {
     `Series title: ${b.p.title}`,
     b.p.premise_mm ? `Story: ${b.p.premise_mm}` : "",
     b.p.setting_mm ? `Places and time: ${b.p.setting_mm}` : "",
+    (b.places ?? []).length ? `The customer's own places (with photos; use these exact names): ${b.places.map((x: any) => x.name).join(", ")}` : "",
     "Characters (keep their names, looks and personalities exactly):",
     ...b.chars.map((c: any) => `- ${c.name} (${c.gender}, ${c.age}): looks: ${c.look_mm ?? "-"}; personality and relationships: ${c.personality_mm ?? "-"}`),
     done.length ? "What happened so far:" : "This is the first episode.",
@@ -124,12 +126,16 @@ function bibleText(b: any, beforeNum?: number) {
 
 async function draftBible(admin: any, id: string) {
   const { data: p } = await admin.from("projects").select("*").eq("id", id).single();
+  const given = ((await admin.from("project_characters").select("name").eq("project_id", id)).data ?? []).map((c: any) => c.name);
+  const gplaces = ((await admin.from("project_places").select("name").eq("project_id", id)).data ?? []).map((x: any) => x.name);
   try {
     const out = await llmJson(admin, `You plan a Burmese short-drama series from a customer's idea. ${BURMESE_STYLE}
 Return ONLY JSON: {"premise_mm": "<what the series is about, 2-4 sentences>", "setting_mm": "<main places and time, 1-3 sentences>",
 "characters": [{"name": "<Burmese name>", "gender": "male|female", "age": "child|young|middle|old", "look_mm": "<face, hair, usual clothes, 1 sentence>", "portrait_en": "<English: face, hair, skin and build only, for a portrait photo; no clothes, no names>", "personality_mm": "<character and relationships to the others, 1-2 sentences>"}]}
 Rules: keep every name, place and fact the customer wrote; only add what is missing. All the main and supporting characters the idea needs (usually 2 to 12). Realistic Myanmar names, clothes and places.`,
-      `Series title: ${p.title}\nIdea: ${p.idea_mm}`);
+      `Series title: ${p.title}\nIdea: ${p.idea_mm}` +
+      (given.length ? `\nCharacters the customer already named (they have photos; include each one with exactly this name and decide gender, age, looks and personality from the idea): ${given.join(", ")}` : "") +
+      (gplaces.length ? `\nPlaces the customer gave (with photos; use these exact names in setting_mm): ${gplaces.join(", ")}` : ""));
     const chars = (Array.isArray(out?.characters) ? out.characters : []).slice(0, MAX_CHARS);
     const taken: string[] = [];
     const rows = chars.filter((c: any) => clip(c?.name, 30)).map((c: any, i: number) => {
@@ -201,7 +207,7 @@ async function planEpisode(admin: any, epId: string, maxScenes = MAX_SCENES) {
     const names = b.chars.map((c: any) => c.name);
     const group = await groupScenesOn(admin);
     const out = await llmJson(admin, `You split one episode of a Burmese short-drama series into scenes for an AI video model that makes 10-second clips with native Burmese speech. ${BURMESE_STYLE}
-Return ONLY JSON: {"title_mm": "<short episode title>", "scenes": [{"story_mm": "<this 10-second scene in Burmese: where, who, what they do, the exact Burmese lines in quotes, their emotion>", "cast": ["<character names in this scene>"]}], "warnings_mm": ["<a problem with the story so far, in Burmese>"]}
+Return ONLY JSON: {"title_mm": "<short episode title>", "scenes": [{"story_mm": "<this 10-second scene in Burmese: where, who, what they do, the exact Burmese lines in quotes, their emotion>", "cast": ["<character names in this scene>"], "place": "<one of the customer's place names if the scene happens there, else empty>"}], "warnings_mm": ["<a problem with the story so far, in Burmese>"]}
 Rules:
 - One scene = one moment of about 10 seconds: one place, at most 6 named characters (crowds are fine as background), at most 2 short lines of dialogue (about 12 Burmese words in total). Long conversations go over several scenes.
 - ${group ? "Up to 9 named characters can be together in one shot." : "When more than 3 named characters are together (a family meal, a meeting), film it like a drama: one wide shot of the whole group where faces are small, then separate scenes with close-ups of at most 3 of them each; never more than 3 named characters close to the camera in one scene."}
@@ -212,6 +218,7 @@ Rules:
 - If the customer gave only an idea (mode "idea"): write a complete, dramatic episode from it with a hook at the start and a cliffhanger at the end; ${maxScenes < 6 ? `exactly ${maxScenes} scenes (a short episode: tell the whole idea in them)` : "6 to 12 scenes unless the idea asks for more"}.
 - At most ${maxScenes} scenes.
 - "warnings_mm": list real contradictions with the Story Bible (a character who left or died appears again, a broken relationship, a wrong place). Empty list if none. Never warn about style.
+- "place": ${(b.places ?? []).length ? `when a scene happens in one of the customer's places (${b.places.map((x: any) => x.name).join(", ")}), write that exact name; otherwise "" and choose a fitting place yourself in story_mm.` : `always "".`}
 - "cast" may only contain these names: ${names.join(", ") || "(none yet)"}. Other people (a seller, a crowd) are described in story_mm but not listed.`,
       `${bibleText(b, ep.num)}\n\nEpisode ${ep.num}. Mode: ${ep.input_mode}.\nCustomer's ${ep.input_mode === "script" ? "script" : "idea"}:\n${ep.input_mm}`, 8000);
     const scenes = (Array.isArray(out?.scenes) ? out.scenes : []).filter((s: any) => clip(s?.story_mm, 900)).slice(0, maxScenes);
@@ -220,6 +227,7 @@ Rules:
     await admin.from("episode_scenes").insert(scenes.map((s: any, i: number) => ({
       episode_id: epId, idx: i, story_mm: clip(s.story_mm, 900),
       cast_names: (Array.isArray(s.cast) ? s.cast : []).map((n: any) => clip(n, 30)).filter((n: string) => names.includes(n)).slice(0, MAX_CAST),
+      place: (b.places ?? []).some((x: any) => x.name === s.place) ? s.place : null,
     })));
     const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
     const per = pr.quality === "hd" ? 40 : 30;
@@ -256,7 +264,7 @@ Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"..."
 async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
     b.chars.map((c: any) => `- ${c.name} (${c.gender}, ${c.age}): ${c.look_mm ?? ""}. Personality: ${c.personality_mm ?? ""}`).join("\n") +
-    `\n\nScenes of episode ${ep.num} (about 10 seconds each):\n` + scenes.map((s: any) => `${s.idx}. [${(s.cast_names ?? []).join(", ")}] ${s.story_mm}`).join("\n");
+    `\n\nScenes of episode ${ep.num} (about 10 seconds each):\n` + scenes.map((s: any) => `${s.idx}. [${(s.cast_names ?? []).join(", ")}]${s.place ? ` (at ${s.place})` : ""} ${s.story_mm}`).join("\n");
   const r = await fetch("https://api.eachlabs.ai/v1/chat/completions", { method: "POST", signal: AbortSignal.timeout(100000),
     headers: { Authorization: `Bearer ${(await admin.rpc("get_app_secret", { p_name: "eachlabs_api_key" })).data}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: DIRECTOR_MODEL, max_tokens: 6000, messages: [{ role: "system", content: DIRECTOR_SYSTEM }, { role: "user", content: user }] }) });
@@ -282,10 +290,14 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const outline = scenes.map((x: any) => `Scene ${x.idx + 1}${(x.cast_names ?? []).length ? ` [${x.cast_names.join(", ")}]` : ""}: ${x.story_mm}`).join("\n");
   // the video model takes at most 3 photos: the first 3 characters (in the scene's order) with a photo; the rest are drawn from their saved looks
   const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
-  const refs = ordered.filter((c: any) => c.photo_path).slice(0, SERIES_ENGINE === "omni" ? 10 : (await groupScenesOn(admin)) ? 9 : 3).map((c: any) => ({ path: c.photo_path, name: c.name }));
+  const place = (b.places ?? []).find((x: any) => x.name === s.place && x.photo_path);
+  const maxRefs = SERIES_ENGINE === "omni" ? 10 : (await groupScenesOn(admin)) ? 9 : 3;
+  const refs = ordered.filter((c: any) => c.photo_path).slice(0, place && SERIES_ENGINE === "omni" ? maxRefs - 1 : maxRefs).map((c: any) => ({ path: c.photo_path, name: c.name }));
+  if (place && SERIES_ENGINE === "omni") refs.push({ path: place.photo_path, name: `${place.name} (place)` });
   const story = `[Series context, keep it consistent; do not show it as text]\n${bibleText(b, ep.num)}\n\n` +
     `[Whole episode ${ep.num}, for continuity; this video is scene ${s.idx + 1}]\n${outline}\n\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
+    (place && SERIES_ENGINE === "omni" ? `Place: this scene happens at ${place.name}; Image ${refs.length} is a photo of this place: use exactly this location.\n` : "") +
     `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.` + directorNotes(ep.director, s.idx);
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
@@ -523,6 +535,11 @@ Deno.serve(async (req) => {
       const { data: p, error } = await admin.from("projects").insert({ user_id: uid, title, idea_mm: idea,
         ratio: ["9:16", "16:9", "1:1"].includes(body.ratio) ? body.ratio : "9:16", quality: body.quality === "hd" ? "hd" : "std" }).select("id").single();
       if (error) return json({ error: error.message }, 400);
+      const okPath = (x: any) => { const ph = String(x ?? ""); return ph.startsWith(uid + "/") && !ph.includes("..") ? ph : null; };
+      const gc = (Array.isArray(body.characters) ? body.characters : []).map((c: any) => ({ name: clip(c?.name, 30), photo: okPath(c?.photo_path) })).filter((c: any) => c.name).slice(0, 10);
+      const gp = (Array.isArray(body.places) ? body.places : []).map((x: any) => ({ name: clip(x?.name, 40), photo: okPath(x?.photo_path) })).filter((x: any) => x.name && x.photo).slice(0, 10);
+      if (gc.length) await admin.from("project_characters").upsert(gc.map((c: any, i: number) => ({ project_id: p.id, name: c.name, photo_path: c.photo, sort: i, voice_id: "" })), { onConflict: "project_id,name" });
+      if (gp.length) await admin.from("project_places").upsert(gp.map((x: any, i: number) => ({ project_id: p.id, name: x.name, photo_path: x.photo, sort: i })), { onConflict: "project_id,name" });
       bg(draftBible(admin, p.id));
       return json({ id: p.id });
     }
@@ -536,15 +553,17 @@ Deno.serve(async (req) => {
       const { data: chars } = await admin.from("project_characters").select("*").eq("project_id", p.id).order("sort");
       const { data: eps } = await admin.from("episodes").select("*").eq("project_id", p.id).order("num");
       for (const c of chars ?? []) c.photo_url = await sign("inputs", c.photo_path);
+      const { data: places } = await admin.from("project_places").select("*").eq("project_id", p.id).order("sort");
+      for (const x of places ?? []) x.photo_url = await sign("inputs", x.photo_path);
       for (const e of eps ?? []) e.video_url = e.status === "done" ? await sign("videos", e.video_path) : null;
       const open = (eps ?? []).filter((e: any) => e.status !== "done").pop() ?? null;
       const wantEp = isId(body.episode_id) ? (eps ?? []).find((e: any) => e.id === body.episode_id) : open;
       let scenes: any[] = [];
       if (wantEp) {
-        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,status,attempts,qc_redos").eq("episode_id", wantEp.id).order("idx");
+        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,place,status,attempts,qc_redos").eq("episode_id", wantEp.id).order("idx");
         scenes = data ?? [];
       }
-      return json({ project: p, characters: chars ?? [], episodes: eps ?? [], scenes, scenes_episode: wantEp?.id ?? null });
+      return json({ project: p, characters: chars ?? [], places: places ?? [], episodes: eps ?? [], scenes, scenes_episode: wantEp?.id ?? null });
     }
     case "update_bible": {
       const p = await ownProject(body.id);
@@ -573,6 +592,12 @@ Deno.serve(async (req) => {
         }
         const gone = (old ?? []).filter((o: any) => !keep.includes(o.name)).map((o: any) => o.id);
         if (gone.length) await admin.from("project_characters").delete().in("id", gone);
+      }
+      if (Array.isArray(body.places)) {
+        const list = body.places.map((x: any, i: number) => ({ project_id: p.id, name: clip(x?.name, 40), photo_path: String(x?.photo_path ?? ""), sort: i }))
+          .filter((x: any) => x.name && x.photo_path.startsWith(uid + "/") && !x.photo_path.includes("..")).slice(0, 10);
+        await admin.from("project_places").delete().eq("project_id", p.id);
+        if (list.length) await admin.from("project_places").insert(list);
       }
       return json({ ok: true });
     }
@@ -616,7 +641,7 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       if ("summary_mm" in body && ep.status === "done") await admin.from("episodes").update({ summary_mm: clip(body.summary_mm, 1200) }).eq("id", ep.id);
       if (Array.isArray(body.scenes)) {
         if (ep.status !== "ready") return json({ error: "can't edit now" }, 400);
-        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 900), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, MAX_CAST) })).filter((s: any) => s.story_mm);
+        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 900), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, MAX_CAST), place: clip(s?.place, 40) || null })).filter((s: any) => s.story_mm);
         if (!list.length || list.length > MAX_SCENES) return json({ error: `scene ၁ ခုမှ ${MAX_SCENES} ခုအထိ` }, 400);
         await admin.from("episode_scenes").delete().eq("episode_id", ep.id);
         await admin.from("episode_scenes").insert(list.map((s: any, i: number) => ({ episode_id: ep.id, idx: i, ...s })));
