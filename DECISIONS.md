@@ -168,3 +168,7 @@ Checks that caught real problems
 - To make a test video like a customer: insert into `plans` (status 'ready', plan from the planner response) and `generations` (engine 'omni', quality, duration 5|10, ratio, cost gen_cost(), plan_id, refs [{name, path}]), charge `_add_credits(u,-cost,...)`, then `net.http_post` api `{action:"start", id}`. Poll the row; Eachlabs output/cost: GET `https://api.eachlabs.ai/v1/prediction/<provider_request_id>` with `X-API-Key` from vault `eachlabs_api_key` (metrics.cost = real $).
 - Character photos already uploaded (inputs bucket, under the admin user): lab_kaungkhant.jpg, lab_mother.jpg, lab_sr_sr_girl.jpg (owner-approved young woman) (lab_father.jpg = flagged famous face, do not use; any other lab_* photo is NOT approved → no photo).
 - Always: show the owner the cost in Kyat and get OK first; then verify (transcript, cost) before saying it worked. Push code to `main` (not a side branch) and deploy edge functions as one-line shims importing the pinned commit.
+
+## 25 Nov — ပုံ→Video က ပုံအချိုးအတိုင်း လိုက်တယ်
+- Bug: ratio ရွေးစရာကို i2v မှာ ဖျောက်ထားပေမဲ့ 9:16 အမြဲ ပို့နေခဲ့တယ်။ အလျားလိုက်ပုံဆို AI က ဖြတ်ပြီး ပြန်ဆွဲလို့ မျက်နှာ ပြောင်းသွားတယ်။
+- ပြင်ချက်: ပုံတင်တာနဲ့ အလျား>အမြင့် ဆို 16:9၊ မဟုတ်ရင် 9:16 (opt.imgRatio)။ Toast နဲ့ ပြောပြတယ်။
