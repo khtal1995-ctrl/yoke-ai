@@ -632,6 +632,8 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
           try { if (await safeRetry(g, tries + 1)) return { state: "running" }; }
           catch (e) { console.error("safe rewrite failed:", e); }
         }
+        // keep Google's own words so we can tell the owner what tripped it (25 Nov)
+        await ADMIN!.from("generations").update({ post_data: { ...(g.post_data ?? {}), provider_error: msg.slice(0, 500) } }).eq("id", g.id);
         return { state: "failed", error: SAFETY_MM };
       }
       return { state: "failed", error: msg.slice(0, 300) };

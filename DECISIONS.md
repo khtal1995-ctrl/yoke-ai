@@ -176,3 +176,6 @@ Checks that caught real problems
 ## 25 Nov — ✨ ဖန်တီးမှာ 5 စက္ကန့် ပြန်ထည့်
 - Owner ခိုင်းချက်: location တူ 14 s ကို 10 + 5 ခွဲထုတ်ဖို့။ ဈေးက DB gen_cost အတိုင်း: 5 s = 15 cr (HD 25)။ API/plan က 5|10 လက်ခံပြီးသား။
 - 3–15 s စက္ကန့်တိုင်း (ဥပမာ 4 s, 15 s) က owner ဈေးမသတ်မှတ်ရသေးလို့ မထည့်ရသေး။
+
+## 25 Nov — Safety ငြင်းရင် Google ရဲ့ မူရင်းစာကို သိမ်း
+- generations.post_data.provider_error ထဲ သိမ်းတယ် (customer ကို SAFETY_MM ပဲ ပြမြဲ)။ ဘာကြောင့် ငြင်းလဲ owner ကို ပြောနိုင်ဖို့။
