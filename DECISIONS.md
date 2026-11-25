@@ -101,6 +101,11 @@ Checks that caught real problems
 - Slower (continuing scenes run one after another). Extend (Omni continues the video itself) explained to owner, not tested yet: 3 s test ≈ 450 Ks.
 - Shots: the lead "Ko" now uses lab_kaungkhant.jpg (owner, 25 Nov 09:51); name stays "Ko".
 
+## 25 Nov 11:00 — scenes are 5 or 10 seconds, no filler (owner)
+- Owner: the 3 scenes held ~15 s of story but each was 10 s, so the AI padded them with extra actions.
+- Scene splitting now gives each scene `seconds` 5 or 10 (just long enough: one quick action + one short line = 5). `episode_scenes.seconds`; `episode_scene_generation` charges `gen_cost(quality, seconds)`; the customer can change it per scene. Director and Omni planner: only what the story says, no extra actions or filler.
+- Prices NOT changed (owner): 5 s = 15 cr (HD 25), 10 s = 30 cr (HD 40), as already in gen_cost.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

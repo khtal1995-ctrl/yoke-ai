@@ -155,7 +155,7 @@ function lint(plan: any, story: string, duration: number, cast?: string[]): stri
 const OMNI_SYSTEM = `You turn a customer's Burmese video story into a prompt for Gemini Omni Flash, a video model that generates the picture and the characters' Burmese speech together.
 Rules (all of them):
 1. Translate the customer's Burmese story faithfully into English. Keep the meaning exactly.
-2. Leave nothing out: every action, its order, and every cause and effect the customer describes (for example "the car is about to hit her -> so he stops time -> he saves her") must be clearly in the prompt, so the story reads clearly.
+2. Add nothing that is not in the story (no extra actions or filler to fill the time; a short moment simply plays at a natural pace). Leave nothing out: every action, its order, and every cause and effect the customer describes (for example "the car is about to hit her -> so he stops time -> he saves her") must be clearly in the prompt, so the story reads clearly.
 3. Dialogue stays exactly as the customer wrote it, in Burmese, word for word, with who says it. Never translate or change the spoken words, with ONE exception: a word written in Latin letters inside a Burmese line (a name like Ko, an English word like Sorry, OK, coffee) is written in Burmese script as a Yangon person says it (Ko -> ကို, Sorry -> ဆောရီး, OK -> အိုကေ, coffee -> ကော်ဖီ), so the voice reads it smoothly and never stumbles or repeats. Change nothing else in the line.
 4. Write it in three parts, like this:
    Look: one short paragraph: the characters' appearance (if given) and the overall look, e.g. natural light, cinematic composition, shallow depth of field, emotional storytelling, realistic photography, soft bokeh.

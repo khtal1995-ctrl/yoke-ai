@@ -817,7 +817,7 @@ function srRender(){
   const per = p.quality === "hd" ? 40 : 30;
   let h = `<button class="btn ghost sm" id="srBack">‹ ဇာတ်လမ်းတွဲများ</button><div style="height:10px"></div>
     <div class="card"><h2>📁 ${esc(p.title)}</h2>
-      <div class="muted">${p.ratio} · ${p.quality === "hd" ? "HD" : "Standard"} · scene တစ်ခု ${per} credits (10 စက္ကန့်)</div></div>`;
+      <div class="muted">${p.ratio} · ${p.quality === "hd" ? "HD" : "Standard"} · scene တစ်ခု ${p.quality === "hd" ? "25–40" : "15–30"} credits (5–10 စက္ကန့်)</div></div>`;
   if (p.status === "drafting") { $("srDetail").innerHTML = h + `<div class="card"><span class="spin"></span>AI က ဇာတ်ကောင်တွေနဲ့ ဇာတ်လမ်းမှတ်တမ်း ရေးပြီး ဇာတ်ကောင်ပုံတွေ ဆွဲနေပါတယ် (၁–၂ မိနစ်)…</div>`; $("srBack").onclick = srShowList; return; }
   if (p.status === "failed") { $("srDetail").innerHTML = h + `<div class="card"><div class="status bad">ဇာတ်လမ်းမှတ်တမ်း ရေးမရပါ — ${esc(p.error || "")}</div></div>`; $("srBack").onclick = srShowList; return; }
 
@@ -852,12 +852,12 @@ function srRender(){
     if (open.status === "planning") h += `<div class="status pending"><span class="spin"></span>AI က scene တွေ ခွဲနေပါတယ် (၁–၂ မိနစ်)…</div>`;
     if (open.warnings?.length) h += `<div class="status bad">⚠️ ဇာတ်လမ်း မကိုက်တာ ရှိနိုင်ပါတယ် — ငွေမဖြတ်ခင် စစ်ပါ<ul style="margin:6px 0 0;padding-left:18px">${open.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>`;
     if (open.status === "ready") {
-      h += `<p class="muted">Scene တစ်ခု = ၁၀ စက္ကန့်။ စာကို ပြင်လို့ရပါတယ်။ ပြင်ပြီးရင် "သိမ်း" နှိပ်ပါ။</p>
+      h += `<p class="muted">Scene တစ်ခု = ၅ ဒါမှမဟုတ် ၁၀ စက္ကန့် (AI က လိုသလောက်ပဲ ရွေးပေးတယ်)။ စာနဲ့ စက္ကန့်ကို ပြင်လို့ရပါတယ်။ ပြင်ပြီးရင် "သိမ်း" နှိပ်ပါ။</p>
         <div id="srScenes">${scenes.map((s, i) => srSceneHtml(s, i, chars)).join("")}</div>
         <button class="btn ghost sm" id="srAddScene" ${scenes.length >= 30 ? "disabled" : ""}>＋ Scene</button>
         <button class="btn ghost sm" id="srSaveScenes">💾 Scene တွေ သိမ်း</button>
-        <div class="cost"><span>${scenes.length} scenes · ${scenes.length * 10} စက္ကန့်</span><b>${scenes.length * per} credits (${fmt(scenes.length * per * KS_PER_CREDIT)} ကျပ်)</b></div>
-        <button class="btn" id="srProduce">${profile && profile.credits < scenes.length * per ? "⚡ Credit မလောက် — ဝယ်ရန်" : "🎬 အပိုင်း (" + open.num + ") ထုတ်မည်"}</button>
+        <div class="cost"><span>${scenes.length} scenes · ${srSecs(scenes)} စက္ကန့်</span><b>${srCost(scenes, p)} credits (${fmt(srCost(scenes, p) * KS_PER_CREDIT)} ကျပ်)</b></div>
+        <button class="btn" id="srProduce">${profile && profile.credits < srCost(scenes, p) ? "⚡ Credit မလောက် — ဝယ်ရန်" : "🎬 အပိုင်း (" + open.num + ") ထုတ်မည်"}</button>
         <div style="height:8px"></div><button class="btn ghost" id="srReplan">✏️ Idea/Script ပြန်ရေးမည်</button>`;
     }
     if (["producing","stitching","failed"].includes(open.status) && scenes.some(s => s.status !== "pending")) {
@@ -875,6 +875,10 @@ function srRender(){
   $("srDetail").innerHTML = h;
   srBind();
 }
+// scene length: 5 or 10 seconds (Omni); price per scene as before: 5 s = 15 (HD 25), 10 s = 30 (HD 40) credits
+const srSec = s => Number(s.seconds) === 5 ? 5 : 10;
+const srSecs = list => list.reduce((t, s) => t + srSec(s), 0);
+const srCost = (list, p) => list.reduce((t, s) => t + (srSec(s) === 5 ? (p.quality === "hd" ? 25 : 15) : (p.quality === "hd" ? 40 : 30)), 0);
 function srNewEpHtml(ep){
   return `<div class="seg" id="srEpMode"><button data-v="idea" class="${srEpMode === "idea" ? "on" : ""}">💡 Idea<small>AI က ချဲ့ရေး</small></button>
       <button data-v="script" class="${srEpMode === "script" ? "on" : ""}">📄 Script အပြည့်<small>scene ခွဲရုံ</small></button></div>
@@ -901,7 +905,7 @@ function srCharHtml(c, i){
   </div>`;
 }
 function srSceneHtml(s, i, chars){
-  return `<div class="vitem"><b>Scene ${i + 1}</b>
+  return `<div class="vitem"><b>Scene ${i + 1}</b> <select data-ssec="${i}" style="width:auto;margin-left:6px"><option value="5" ${srSec(s) === 5 ? "selected" : ""}>5 စက္ကန့်</option><option value="10" ${srSec(s) === 10 ? "selected" : ""}>10 စက္ကန့်</option></select>
     <textarea data-scene="${i}" maxlength="900" style="min-height:80px;margin-top:6px">${esc(s.story_mm)}</textarea>
     <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၆ ယောက်အထိ — ပုံပါတဲ့ ရှေ့ဆုံး ၁၀ ယောက်ကို ပုံအတိုင်း၊ ကျန်တာ ရုပ်ရည်စာအတိုင်း ဆွဲပါတယ်):
       ${chars.map(c => `<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" data-scast="${i}" value="${esc(c.name)}" ${s.cast_names?.includes(c.name) ? "checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
@@ -916,7 +920,8 @@ function srReadChars(){ return sr.characters.map((c, i) => ({ ...c,
 function srReadPlaces(){ return (sr.places ?? []).map((x, i) => ({ ...x, name: $q(`[data-pname="${i}"]`)?.value.trim() ?? x.name })); }
 function srReadScenes(){ return sr.scenes.map((s, i) => ({ story_mm: $q(`[data-scene="${i}"]`)?.value ?? s.story_mm,
   cast_names: [...document.querySelectorAll(`[data-scast="${i}"]:checked`)].map(x => x.value).slice(0, 6),
-  place: $q(`[data-splace="${i}"]`)?.value ?? s.place ?? "" })); }
+  place: $q(`[data-splace="${i}"]`)?.value ?? s.place ?? "",
+  seconds: Number($q(`[data-ssec="${i}"]`)?.value ?? srSec(s)) })); }
 const $q = sel => document.querySelector(sel);
 
 function srBind(){
@@ -989,6 +994,7 @@ function srBind(){
   const open = sr.episodes.find(e => e.id === sr.scenes_episode);
   document.querySelectorAll("[data-scast]").forEach(cb => cb.onchange = () => {
     if (document.querySelectorAll(`[data-scast="${cb.dataset.scast}"]:checked`).length > 6) { cb.checked = false; toast("Scene တစ်ခုမှာ ဇာတ်ကောင် ၆ ယောက်အထိ"); } });
+  document.querySelectorAll("[data-ssec]").forEach(x => x.onchange = () => { sr.scenes = srReadScenes(); srRender(); });
   document.querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => { sr.scenes = srReadScenes(); sr.scenes.splice(Number(b.dataset.sdel), 1); srRender(); });
   if ($("srAddScene")) $("srAddScene").onclick = () => { sr.scenes = srReadScenes(); sr.scenes.push({ story_mm:"", cast_names:[] }); srRender(); };
   const saveScenes = async () => {
@@ -999,9 +1005,9 @@ function srBind(){
   if ($("srSaveScenes")) $("srSaveScenes").onclick = async () => { srBusy = true;
     try { await saveScenes(); toast("သိမ်းပြီးပါပြီ"); await srOpen(p.id, open.id); } catch (e) { toast(msgOf(e)); } srBusy = false; };
   if ($("srProduce")) $("srProduce").onclick = async () => {
-    const per = p.quality === "hd" ? 40 : 30, n = srReadScenes().filter(s => s.story_mm.trim()).length;
-    if (profile && profile.credits < n * per) return go("buyPage");
-    if (!confirm(`အပိုင်း (${open.num}) — scene ${n} ခု၊ ${n * per} credits (${fmt(n * per * KS_PER_CREDIT)} ကျပ်)။ ထုတ်မလား?\nမအောင်မြင်တဲ့ scene တွေရဲ့ credit ကို ပြန်အမ်းပါတယ်။`)) return;
+    const list = srReadScenes().filter(s => s.story_mm.trim()), n = list.length, need = srCost(list, p);
+    if (profile && profile.credits < need) return go("buyPage");
+    if (!confirm(`အပိုင်း (${open.num}) — scene ${n} ခု (${srSecs(list)} စက္ကန့်)၊ ${need} credits (${fmt(need * KS_PER_CREDIT)} ကျပ်)။ ထုတ်မလား?\nမအောင်မြင်တဲ့ scene တွေရဲ့ credit ကို ပြန်အမ်းပါတယ်။`)) return;
     $("srProduce").disabled = true; srBusy = true;
     try { await saveScenes(); await srCall({ action:"produce", episode_id: open.id }); toast("ထုတ်နေပါပြီ — app ပိတ်ထားလည်း ရပါတယ်"); loadProfile(); }
     catch (e) { toast(msgOf(e)); }

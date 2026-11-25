@@ -208,9 +208,10 @@ async function planEpisode(admin: any, epId: string, maxScenes = MAX_SCENES) {
     const names = b.chars.map((c: any) => c.name);
     const group = await groupScenesOn(admin);
     const out = await llmJson(admin, `You split one episode of a Burmese short-drama series into scenes for an AI video model that makes 10-second clips with native Burmese speech. ${BURMESE_STYLE}
-Return ONLY JSON: {"title_mm": "<short episode title>", "scenes": [{"story_mm": "<this 10-second scene in Burmese: where, who, what they do, the exact Burmese lines in quotes, their emotion>", "cast": ["<character names in this scene>"], "place": "<one of the customer's place names if the scene happens there, else empty>"}], "warnings_mm": ["<a problem with the story so far, in Burmese>"]}
+Return ONLY JSON: {"title_mm": "<short episode title>", "scenes": [{"story_mm": "<this scene in Burmese: where, who, what they do, the exact Burmese lines in quotes, their emotion>", "seconds": 5, "cast": ["<character names in this scene>"], "place": "<one of the customer's place names if the scene happens there, else empty>"}], "warnings_mm": ["<a problem with the story so far, in Burmese>"]}
 Rules:
-- One scene = one moment of about 10 seconds: one place, at most 6 named characters (crowds are fine as background), at most 2 short lines of dialogue (about 12 Burmese words in total). Long conversations go over several scenes.
+- "seconds": 5 or 10 — just long enough for what happens, never padded: 5 for one quick action and at most one short line (about 6 Burmese words), 10 when there is more (two lines, or an action plus a longer line). Real-life pace: a bump and "sorry" takes 5 seconds, not 10.
+- One scene = one moment of 5 or 10 seconds: one place, at most 6 named characters (crowds are fine as background), at most 2 short lines of dialogue (about 12 Burmese words in total). Long conversations go over several scenes.
 - ${group ? "Up to 9 named characters can be together in one shot." : "When more than 3 named characters are together (a family meal, a meeting), film it like a drama: one wide shot of the whole group where faces are small, then separate scenes with close-ups of at most 3 of them each; never more than 3 named characters close to the camera in one scene."}
 - Use the characters' names exactly. Keep their looks, personalities and relationships from the Story Bible. Continue from where the story is now.
 - Every scene must make sense on its own: say the place and the characters again in each scene (the video model sees one scene at a time).
@@ -229,6 +230,7 @@ Rules:
       episode_id: epId, idx: i, story_mm: clip(s.story_mm, 900),
       cast_names: (Array.isArray(s.cast) ? s.cast : []).map((n: any) => clip(n, 30)).filter((n: string) => names.includes(n)).slice(0, MAX_CAST),
       place: (b.places ?? []).some((x: any) => x.name === s.place) ? s.place : null,
+      seconds: Number(s.seconds) === 5 ? 5 : 10,
     })));
     const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
     const per = pr.quality === "hd" ? 40 : 30;
@@ -252,7 +254,7 @@ const DIRECTOR_SYSTEM = `You are an experienced Myanmar film director and acting
 Always refer to characters by their exact names as given, in every field (never transliterate or translate a name).
 Read the WHOLE story first: who these people are to each other, what happened before, what each moment means to them.
 Then, for every scene, decide:
-1. continuity (English, short): where the people in this scene are and what they hold at the START and at the END. Each scene shows ONE simple moment: at most one or two main actions plus the lines, at a calm, natural, real-life pace, like a real film. Do not list many small movements; leave small details to the actors. Start naturally from where the previous scene ended (no long frozen pose at the start), but never rush. Props, vehicles and rooms stay where they are unless the story moves them. Never mention or name anyone who is not in this scene.
+1. continuity (English, short): where the people in this scene are and what they hold at the START and at the END. Each scene shows ONE simple moment: only what the story says happens in it (no extra actions, no filler, nothing added to fill time), at a natural real-life pace, like a real film; each scene's length in seconds is given. Do not list many small movements; leave small details to the actors. Start naturally from where the previous scene ended (no long frozen pose at the start), but never rush. Props, vehicles and rooms stay where they are unless the story moves them. Never mention or name anyone who is not in this scene.
 2. for every spoken line:
    - "text": the customer's words EXACTLY as written (never change, add or remove words).
    - "feeling_mm": in simple Burmese, what this person truly feels inside at this moment and why (the subtext, not the surface).
@@ -266,7 +268,7 @@ Return ONLY JSON: {"scenes":[{"idx":0,"continues":false,"start":"...","end":"...
 async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
     b.chars.map((c: any) => `- ${c.name} (${c.gender}, ${c.age}): ${c.look_mm ?? ""}. Personality: ${c.personality_mm ?? ""}`).join("\n") +
-    `\n\nScenes of episode ${ep.num} (about 10 seconds each):\n` + scenes.map((s: any) => `${s.idx}. [${(s.cast_names ?? []).join(", ")}]${s.place ? ` (at ${s.place})` : ""} ${s.story_mm}`).join("\n");
+    `\n\nScenes of episode ${ep.num}:\n` + scenes.map((s: any) => `${s.idx}. (${s.seconds === 5 ? 5 : 10} seconds) [${(s.cast_names ?? []).join(", ")}]${s.place ? ` (at ${s.place})` : ""} ${s.story_mm}`).join("\n");
   const r = await fetch("https://api.eachlabs.ai/v1/chat/completions", { method: "POST", signal: AbortSignal.timeout(100000),
     headers: { Authorization: `Bearer ${(await admin.rpc("get_app_secret", { p_name: "eachlabs_api_key" })).data}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: DIRECTOR_MODEL, max_tokens: 6000, messages: [{ role: "system", content: DIRECTOR_SYSTEM }, { role: "user", content: user }] }) });
@@ -307,13 +309,13 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ story, duration: 10, cast: refs.map((x: any) => x.name), engine: SERIES_ENGINE }),
+    body: JSON.stringify({ story, duration: s.seconds === 5 ? 5 : 10, cast: refs.map((x: any) => x.name), engine: SERIES_ENGINE }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
   const voices: Record<string, string> = {};
   for (const c of b.chars) if (c.voice_id) voices[c.name] = c.voice_id;
-  const { data: plan, error: pe } = await admin.from("plans").insert({ user_id: ep.user_id, prompt_mm: s.story_mm, duration: 10, mode: "t2v",
+  const { data: plan, error: pe } = await admin.from("plans").insert({ user_id: ep.user_id, prompt_mm: s.story_mm, duration: s.seconds === 5 ? 5 : 10, mode: "t2v",
     status: "ready", plan: { ...j.plan, voices }, issues: j.issues ?? [], refs: refs.length ? refs : null }).select("id").single();
   if (pe) throw pe;
   const { data: gid, error } = await admin.rpc("episode_scene_generation", { p_scene: s.id, p_plan: plan.id, p_refs: refs });
@@ -602,7 +604,7 @@ Deno.serve(async (req) => {
       const wantEp = isId(body.episode_id) ? (eps ?? []).find((e: any) => e.id === body.episode_id) : open;
       let scenes: any[] = [];
       if (wantEp) {
-        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,place,status,attempts,qc_redos").eq("episode_id", wantEp.id).order("idx");
+        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,place,seconds,status,attempts,qc_redos").eq("episode_id", wantEp.id).order("idx");
         scenes = data ?? [];
       }
       return json({ project: p, characters: chars ?? [], places: places ?? [], episodes: eps ?? [], scenes, scenes_episode: wantEp?.id ?? null });
@@ -683,7 +685,7 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       if ("summary_mm" in body && ep.status === "done") await admin.from("episodes").update({ summary_mm: clip(body.summary_mm, 1200) }).eq("id", ep.id);
       if (Array.isArray(body.scenes)) {
         if (ep.status !== "ready") return json({ error: "can't edit now" }, 400);
-        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 900), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, MAX_CAST), place: clip(s?.place, 40) || null })).filter((s: any) => s.story_mm);
+        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 900), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, MAX_CAST), place: clip(s?.place, 40) || null, seconds: Number(s?.seconds) === 5 ? 5 : 10 })).filter((s: any) => s.story_mm);
         if (!list.length || list.length > MAX_SCENES) return json({ error: `scene ၁ ခုမှ ${MAX_SCENES} ခုအထိ` }, 400);
         await admin.from("episode_scenes").delete().eq("episode_id", ep.id);
         await admin.from("episode_scenes").insert(list.map((s: any, i: number) => ({ episode_id: ep.id, idx: i, ...s })));
@@ -695,9 +697,9 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
     case "produce": {
       const ep = await ownEpisode(body.episode_id);
       if (!ep || ep.status !== "ready") return json({ error: "episode not ready" }, 400);
-      const { count } = await admin.from("episode_scenes").select("id", { count: "exact", head: true }).eq("episode_id", ep.id);
+      const { data: secs } = await admin.from("episode_scenes").select("seconds").eq("episode_id", ep.id);
       const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
-      const cost = (pr.quality === "hd" ? 40 : 30) * (count ?? 0);
+      const cost = (secs ?? []).reduce((t: number, x: any) => t + (x.seconds === 5 ? (pr.quality === "hd" ? 25 : 15) : (pr.quality === "hd" ? 40 : 30)), 0);
       const { data: prof } = await admin.from("profiles").select("credits").eq("id", uid).single();
       if ((prof?.credits ?? 0) < cost) return json({ error: "insufficient credits", need: cost }, 400);
       await admin.from("episodes").update({ status: "producing", cost, error: null }).eq("id", ep.id).eq("status", "ready");
