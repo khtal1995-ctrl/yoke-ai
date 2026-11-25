@@ -129,6 +129,11 @@ Checks that caught real problems
 - Idea mode keeps the series rules (director, frames, etc.). ✨ create unchanged.
 - Scene text limit 900 → 2000 characters (detailed scripts).
 
+## 25 Nov 14:21 — series hidden; everything in ✨ create (owner)
+- The 📁 series tab is hidden from the app (nav button `class="hidden"`). Code, tables and test data stay.
+- Plan (owner): make everything in ✨ create; below it, an editing-style area that collects the videos (in rolls) so they can be put together. Design to be agreed with the owner first.
+- Commit afcdc15 (series script mode translate-only rules) is on main but was NOT deployed (live: planner v41, project v29).
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.
