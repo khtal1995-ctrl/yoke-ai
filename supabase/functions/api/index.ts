@@ -870,7 +870,7 @@ Deno.serve(async (req) => {
 
   // ---- plan: write and check the plan first (no credits used); the customer approves it before "create" ----
   if (body.action === "plan") {
-    const raw = body.raw === true && body.mode !== "i2v" && CUSTOMER_ENGINE === "omni";
+    const raw = body.raw === true && CUSTOMER_ENGINE === "omni"; // ✨ create and 🖼️ image→video (owner, 25 Nov 15:14)
     const prompt = String(body.prompt ?? "").trim().slice(0, raw ? 4000 : 2000);
     const duration = Number(body.duration) === 5 ? 5 : 10;
     if (!prompt) return json({ error: "empty prompt" }, 400);
@@ -879,7 +879,7 @@ Deno.serve(async (req) => {
     const refs = body.mode === "i2v" ? [] : cleanRefs(body.refs, user.id);
     if (refs === null) return json({ error: "ဇာတ်ကောင်ပုံ ၃ ပုံအထိ၊ ပုံတိုင်းမှာ မတူတဲ့ နာမည် ထည့်ပါ" }, 400);
     const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v", refs: refs.length ? refs : null,
-      exact: body.exact === true && body.mode !== "i2v" }).select("id").single();
+      exact: body.exact === true }).select("id").single();
     if (error) return json({ error: error.message }, 400);
     if (raw) {
       // the customer's own English prompt: no AI writing, no checks, nothing added

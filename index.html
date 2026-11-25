@@ -614,7 +614,7 @@ $("genBtn").onclick = async () => {
   try {
     if (opt.mode === "t2v") refs = await castRefs();
     if (opt.mode === "tpl") refs = await tplRefs();
-    const exact = opt.mode === "t2v" && opt.style === "exact", raw = opt.mode === "t2v" && opt.style === "raw";
+    const exact = opt.mode !== "tpl" && opt.style === "exact", raw = opt.mode !== "tpl" && opt.style === "raw";
     const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:apiMode(), refs, exact, raw } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     const planId = data.plan_id, started = Date.now();
@@ -656,7 +656,7 @@ async function createFromPlan(){
   const prompt = curPrompt();
   const nowRefs = curRefsNow();
   if (!currentPlan || currentPlan.prompt !== prompt || currentPlan.duration !== opt.duration || currentPlan.mode !== opt.mode || refsKey(currentPlan.refs) !== refsKey(nowRefs)
-      || currentPlan.exact !== (opt.mode === "t2v" && opt.style === "exact") || !!currentPlan.raw !== (opt.mode === "t2v" && opt.style === "raw"))
+      || currentPlan.exact !== (opt.mode !== "tpl" && opt.style === "exact") || !!currentPlan.raw !== (opt.mode !== "tpl" && opt.style === "raw"))
     return toast("စာ၊ ကြာချိန် (သို့) ဇာတ်ကောင်ပုံ ပြောင်းသွားလို့ အစီအစဉ် အသစ်ပြန်ရေးပါ");
   if (profile && profile.credits < costOf()) return go("buyPage");
   $("planOk").disabled = true;
