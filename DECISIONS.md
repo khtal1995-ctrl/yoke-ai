@@ -95,6 +95,12 @@ Checks that caught real problems
 - Now the director writes each person's exact outfit per scene (colour, garment, fabric, shoes) and copies it word for word while the place and time stay the same; the planner must use those words unchanged. Outfits change only when place/time changes or the story says so.
 - Also removed the leftover "already moving, no pause / cut on action" labels from the director notes (should have gone at 09:10).
 
+## 25 Nov 10:00 — scenes continue from the previous shot (owner chose option 2)
+- Owner: scenes did not connect (each scene is a separate Omni video that never sees the one before).
+- Director marks `continues: true` when a scene is in the same place/time and picks up straight from the previous one. Such a scene waits until the previous scene is done; its last frame (Eachlabs ffmpeg `-sseof -0.3`, saved to inputs as frame_<sceneId>.jpg, `episode_scenes.prev_frame`) goes to Omni as a reference "previous shot" with the character photos; the planner matches its place, background, light, camera side, positions and clothes.
+- Slower (continuing scenes run one after another). Extend (Omni continues the video itself) explained to owner, not tested yet: 3 s test ≈ 450 Ks.
+- Shots: the lead "Ko" now uses lab_kaungkhant.jpg (owner, 25 Nov 09:51); name stays "Ko".
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

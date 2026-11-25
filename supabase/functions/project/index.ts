@@ -260,7 +260,8 @@ Then, for every scene, decide:
 3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
 4. "reactions" (English): one short sentence per person in this scene: what they feel and WHY, caused by what just happened to them (e.g. bumped into by a stranger -> startled, then softens when he apologises kindly). Nobody smiles or looks happy without a reason in the story.
 5. "outfits" (English): for every person in the scene, exactly what they wear, specific enough to look the same every time: colour, kind of garment, fabric/pattern, shoes or accessories if visible (e.g. "a light-blue cotton blouse with a high round neck, a knee-length navy pleated skirt, white flats"). Fit who they are and the place, time and situation. When a scene continues in the same place and time as the scene before it, copy each person's outfit text word for word; change it only when the story moves to another place or time or says they change clothes. The same staff and rooms stay the same too.
-Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","reactions":"...","outfits":[{"who":"...","wears":"..."}],"lines":[{"who":"...","text":"...","feeling_mm":"...","face":"..."}]}]}`;
+6. "continues": true when this scene happens in the same place and time as the scene before it and picks up straight from where it ended; false for the first scene or when the place or time changes.
+Return ONLY JSON: {"scenes":[{"idx":0,"continues":false,"start":"...","end":"...","notes_mm":"...","reactions":"...","outfits":[{"who":"...","wears":"..."}],"lines":[{"who":"...","text":"...","feeling_mm":"...","face":"..."}]}]}`;
 
 async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
@@ -292,12 +293,16 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
   const place = (b.places ?? []).find((x: any) => x.name === s.place && x.photo_path);
   const maxRefs = SERIES_ENGINE === "omni" ? 10 : (await groupScenesOn(admin)) ? 9 : 3;
-  const refs = ordered.filter((c: any) => c.photo_path).slice(0, place && SERIES_ENGINE === "omni" ? maxRefs - 1 : maxRefs).map((c: any) => ({ path: c.photo_path, name: c.name }));
+  const frame = SERIES_ENGINE === "omni" && s.prev_frame ? s.prev_frame : null;
+  const extra = (place && SERIES_ENGINE === "omni" ? 1 : 0) + (frame ? 1 : 0);
+  const refs = ordered.filter((c: any) => c.photo_path).slice(0, maxRefs - extra).map((c: any) => ({ path: c.photo_path, name: c.name }));
   if (place && SERIES_ENGINE === "omni") refs.push({ path: place.photo_path, name: `${place.name} (place)` });
+  if (frame) refs.push({ path: frame, name: "previous shot" });
   // keep it simple (owner, 25 Nov): only this scene and the people in it; never the other scenes or people not in it
   const story = `[Series context, keep it consistent; do not show it as text]\nSeries: ${b.p.title}\n${b.p.setting_mm ? `Places and time: ${b.p.setting_mm}\n` : ""}\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
-    (place && SERIES_ENGINE === "omni" ? `Place: this scene happens at ${place.name}; Image ${refs.length} is a photo of this place: use exactly this location.\n` : "") +
+    (place && SERIES_ENGINE === "omni" ? `Place: this scene happens at ${place.name}; Image ${refs.findIndex((r: any) => r.name === `${place.name} (place)`) + 1} is a photo of this place: use exactly this location.\n` : "") +
+    (frame ? `Continuity: Image ${refs.length} is the last frame of the previous shot. This video continues straight from it: the same place, background, light, camera side, the people's positions and their clothes.\n` : "") +
     `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.` + directorNotes(ep.director, s.idx);
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
@@ -368,6 +373,33 @@ async function eachlabsHeaders(admin: any) {
   return { "Content-Type": "application/json", "X-API-Key": k };
 }
 
+// the last frame of a finished scene (Eachlabs ffmpeg), saved in inputs so the next scene can start from it
+async function lastFrame(admin: any, ep: any, prev: any): Promise<string | null> {
+  const { data: g } = await admin.from("generations").select("video_path").eq("id", prev.generation_id).single();
+  if (!g?.video_path) return null;
+  const { data: su } = await admin.storage.from("videos").createSignedUrl(g.video_path, 3600);
+  const h = await eachlabsHeaders(admin);
+  const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: h,
+    body: JSON.stringify({ model: "eachlabs-video-api", version: "0.0.1", input: { mode: "run_ffmpeg", input_url: su!.signedUrl, output_format: "jpg",
+      argv: ["ffmpeg", "-sseof", "-0.3", "-i", "{input}", "-frames:v", "1", "-q:v", "2", "{output}"] } }) });
+  const j: any = await r.json().catch(() => ({}));
+  const pid = j.predictionID ?? j.prediction_id ?? j.id;
+  if (!pid) return null;
+  for (let t = 0; t < 12; t++) {
+    await new Promise((ok) => setTimeout(ok, 3000));
+    const pj: any = await (await fetch(`https://api.eachlabs.ai/v1/prediction/${pid}`, { headers: h })).json().catch(() => ({}));
+    if ((pj.status === "success" || pj.status === "succeeded") && pj.output) {
+      const img = await fetch(Array.isArray(pj.output) ? pj.output[0] : pj.output);
+      if (!img.ok) return null;
+      const path = `${ep.user_id}/frame_${prev.id}.jpg`;
+      const { error } = await admin.storage.from("inputs").upload(path, new Uint8Array(await img.arrayBuffer()), { contentType: "image/jpeg", upsert: true });
+      return error ? null : path;
+    }
+    if (pj.status === "error" || pj.status === "failed") return null;
+  }
+  return null;
+}
+
 async function advance(admin: any, ep: any) {
   if (!(await admin.rpc("claim_episode", { p_id: ep.id, p_seconds: 110 })).data) return;
   try {
@@ -399,6 +431,16 @@ async function advance(admin: any, ep: any) {
       const t0 = Date.now();
       for (const s of scenes.filter((x: any) => x.status === "pending")) {
         if (running >= PARALLEL || Date.now() - t0 > 50000) break;
+        // a scene that continues the previous one waits for it and gets its last frame as a reference (owner, 25 Nov)
+        const cont = SERIES_ENGINE === "omni" && s.idx > 0 && (ep.director?.scenes ?? []).find((x: any) => Number(x.idx) === s.idx)?.continues === true;
+        if (cont) {
+          const prev = scenes.find((x: any) => x.idx === s.idx - 1);
+          if (prev && prev.status !== "done" && prev.status !== "failed") continue;
+          if (prev?.status === "done" && !s.prev_frame) {
+            s.prev_frame = await lastFrame(admin, ep, prev).catch((e) => { console.error("last frame", prev.id, e); return null; });
+            if (s.prev_frame) await admin.from("episode_scenes").update({ prev_frame: s.prev_frame }).eq("id", s.id);
+          }
+        }
         try { await startScene(admin, ep, b, s, scenes); running++; }
         catch (e) {
           const msg = String((e as any)?.message ?? e);
