@@ -734,12 +734,15 @@ function renderRolls(){
       <button class="x" type="button" data-rdel="${esc(r.id)}" title="Roll ဖျက်">🗑️</button></div>
     ${r.clips.length ? r.clips.map((c, i) => `<div style="display:flex;gap:8px;align-items:center;margin-top:8px">
         <b style="width:22px">${i + 1}</b>
-        <video src="${esc(c.url || "")}" muted playsinline preload="metadata" style="width:64px;height:64px;object-fit:cover;border-radius:8px"></video>
+        <div data-rplay="${esc(r.id)}|${i}" style="position:relative;width:64px;height:64px;cursor:pointer;flex:none">
+          <video src="${esc(c.url ? c.url + "#t=0.5" : "")}" muted playsinline preload="metadata" style="width:64px;height:64px;object-fit:cover;border-radius:8px;pointer-events:none"></video>
+          <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;text-shadow:0 0 6px #000">▶️</span></div>
         <span class="muted" style="flex:1;font-size:12px">${c.duration}s · ${esc(String(c.prompt_mm || "").slice(0, 60))}</span>
         <button class="btn ghost sm" type="button" data-rmove="${esc(r.id)}|${i}|-1" ${i === 0 ? "disabled" : ""}>↑</button>
         <button class="btn ghost sm" type="button" data-rmove="${esc(r.id)}|${i}|1" ${i === r.clips.length - 1 ? "disabled" : ""}>↓</button>
         <button class="x" type="button" data-rmove="${esc(r.id)}|${i}|0">✕</button></div>`).join("")
       : `<p class="muted" style="font-size:13px">Video မရှိသေးပါ — Video တစ်ခုခုအောက်က "➕ Roll ထဲ ထည့်" နှိပ်ပါ။</p>`}
+    <div data-rplayer="${esc(r.id)}"></div>
     <div class="muted" style="font-size:12px;margin-top:6px">${r.clips.length} ခု · ${r.clips.reduce((t, c) => t + (Number(c.duration) || 0), 0)} စက္ကန့်</div>
     ${r.status === "joining" ? `<p class="muted"><span class="spin"></span>ဆက်နေပါတယ် (၁–၂ မိနစ်)…</p>`
       : `<button class="btn sm" type="button" data-rjoin="${esc(r.id)}" style="margin-top:8px" ${r.clips.length < 2 ? "disabled" : ""}>🎬 ဆက်မည် (အခမဲ့)</button>`}
@@ -752,7 +755,17 @@ async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf
 const rollName = () => { const n = prompt("Roll (ဇာတ်လမ်း) နာမည်", `Roll ${rolls.length + 1}`); return n === null ? null : (n.trim() || `Roll ${rolls.length + 1}`); };
 $("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title }); };
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel]"); if (!t) return;
+  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel],[data-rplay]"); if (!t) return;
+  if (t.dataset.rplay !== undefined) {
+    // tap a clip: play it big under the list (tap again to close)
+    const [rid, i] = t.dataset.rplay.split("|"), c = rolls.find(x => x.id === rid)?.clips[Number(i)], box = $q(`[data-rplayer="${rid}"]`);
+    if (!c?.url || !box) return;
+    if (box.dataset.open === i) { box.innerHTML = ""; box.dataset.open = ""; return; }
+    box.dataset.open = i;
+    box.innerHTML = `<div class="muted" style="font-size:12px;margin-top:8px">▶️ ${Number(i) + 1} — ${esc(String(c.prompt_mm || "").slice(0, 80))}</div>
+      <video src="${esc(c.url)}" controls autoplay playsinline style="width:100%;border-radius:10px;margin-top:6px"></video>`;
+    return;
+  }
   if (t.dataset.rolladd !== undefined) {
     const gid = t.dataset.rolladd, box = $q(`[data-rolladd-box="${gid}"]`);
     if (!rolls.length) { try { rolls = (await srCall({ action:"roll_list" })).rolls || []; } catch {} }
