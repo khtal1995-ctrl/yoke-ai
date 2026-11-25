@@ -297,7 +297,7 @@ async function startExactScene(admin: any, ep: any, b: any, s: any, ordered: any
     `Characters: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age})`).join("; ") || "as written"}. Use each character's name as "who" for their lines.`;
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000), headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ story, duration: s.seconds === 5 ? 5 : 10, cast: refs.map((x: any) => x.name), engine: "omni", scene_photo: !!s.photo_path }),
+    body: JSON.stringify({ story, duration: s.seconds === 5 ? 5 : 10, cast: refs.map((x: any) => x.name), engine: "omni", scene_photo: !!s.photo_path, exact: true }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
