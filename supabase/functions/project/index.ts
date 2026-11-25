@@ -223,11 +223,11 @@ Rules:
 - "place": ${(b.places ?? []).length ? `when a scene happens in one of the customer's places (${b.places.map((x: any) => x.name).join(", ")}), write that exact name; otherwise "" and choose a fitting place yourself in story_mm.` : `always "".`}
 - "cast" may only contain these names: ${names.join(", ") || "(none yet)"}. Other people (a seller, a crowd) are described in story_mm but not listed.`,
       `${bibleText(b, ep.num)}\n\nEpisode ${ep.num}. Mode: ${ep.input_mode}.\nCustomer's ${ep.input_mode === "script" ? "script" : "idea"}:\n${ep.input_mm}`, 8000);
-    const scenes = (Array.isArray(out?.scenes) ? out.scenes : []).filter((s: any) => clip(s?.story_mm, 900)).slice(0, maxScenes);
+    const scenes = (Array.isArray(out?.scenes) ? out.scenes : []).filter((s: any) => clip(s?.story_mm, 2000)).slice(0, maxScenes);
     if (!scenes.length) throw new Error("no scenes");
     await admin.from("episode_scenes").delete().eq("episode_id", epId).eq("status", "pending");
     await admin.from("episode_scenes").insert(scenes.map((s: any, i: number) => ({
-      episode_id: epId, idx: i, story_mm: clip(s.story_mm, 900),
+      episode_id: epId, idx: i, story_mm: clip(s.story_mm, 2000),
       cast_names: (Array.isArray(s.cast) ? s.cast : []).map((n: any) => clip(n, 30)).filter((n: string) => names.includes(n)).slice(0, MAX_CAST),
       place: (b.places ?? []).some((x: any) => x.name === s.place) ? s.place : null,
       seconds: Number(s.seconds) === 5 ? 5 : 10,
@@ -288,6 +288,31 @@ function directorNotes(d: any, idx: number, fromFrame = false): string {
     ((sc.outfits ?? []).length ? `\nClothing (use exactly these words, do not change or add colours): ${sc.outfits.filter((o: any) => o?.who && o?.wears).map((o: any) => `${o.who} wears ${o.wears}`).join("; ")}` : "");
 }
 
+// script mode (owner, 25 Nov 14:14): the customer writes every detail (camera, clothes, place) and may add one photo per scene.
+// The prompt is the script translated exactly with the ✨ create rules; nothing is invented; the scene photo sets the look.
+async function startExactScene(admin: any, ep: any, b: any, s: any, ordered: any[], chars: any[]) {
+  const refs = ordered.filter((c: any) => c.photo_path).slice(0, s.photo_path ? 8 : 9).map((c: any) => ({ path: c.photo_path, name: c.name })); // planner (✨ rules) takes 9 references
+  if (s.photo_path) refs.push({ path: s.photo_path, name: "scene photo" });
+  const story = `${s.story_mm}\n` +
+    `Characters: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age})`).join("; ") || "as written"}. Use each character's name as "who" for their lines.`;
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
+    method: "POST", signal: AbortSignal.timeout(140000), headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ story, duration: s.seconds === 5 ? 5 : 10, cast: refs.map((x: any) => x.name), engine: "omni", scene_photo: !!s.photo_path }),
+  });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);
+  const { data: plan, error: pe } = await admin.from("plans").insert({ user_id: ep.user_id, prompt_mm: s.story_mm, duration: s.seconds === 5 ? 5 : 10, mode: "t2v",
+    status: "ready", plan: j.plan, issues: j.issues ?? [], refs: refs.length ? refs : null }).select("id").single();
+  if (pe) throw new Error(pe.message);
+  const { data: gid, error } = await admin.rpc("episode_scene_generation", { p_scene: s.id, p_plan: plan.id, p_refs: refs });
+  if (error) throw new Error(error.message);
+  const { error: ee } = await admin.from("generations").update({ engine: "omni" }).eq("id", gid);
+  if (ee) throw new Error(`set engine: ${ee.message}`);
+  const tok = (await admin.rpc("get_app_secret", { p_name: "cron_token" })).data;
+  await fetch(`${SUPABASE_URL}/functions/v1/api`, { method: "POST", headers: { "Content-Type": "application/json", "x-cron-token": tok, Authorization: `Bearer ${ANON_KEY}` },
+    body: JSON.stringify({ action: "start", id: gid }) });
+}
+
 async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const total = scenes.length;
   const chars = b.chars.filter((c: any) => s.cast_names.includes(c.name));
@@ -295,6 +320,7 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
   const place = (b.places ?? []).find((x: any) => x.name === s.place && x.photo_path);
   const maxRefs = SERIES_ENGINE === "omni" ? 10 : (await groupScenesOn(admin)) ? 9 : 3;
+  if (ep.input_mode === "script" && SERIES_ENGINE === "omni") return startExactScene(admin, ep, b, s, ordered, chars);
   const frame = SERIES_ENGINE === "omni" && s.prev_frame ? s.prev_frame : null;
   const extra = (place && SERIES_ENGINE === "omni" ? 1 : 0) + (frame ? 1 : 0);
   const refs = ordered.filter((c: any) => c.photo_path).slice(0, maxRefs - extra).map((c: any) => ({ path: c.photo_path, name: c.name }));
@@ -423,7 +449,8 @@ async function advance(admin: any, ep: any) {
       const b = await loadBible(admin, ep.project_id);
       // 1c) director: once per episode, before the first scene, a strong model reads the whole episode and decides
       //     each line's feeling, voice and acting, and where everyone/everything is at each scene's start and end
-      if (!ep.director && scenes.some((x: any) => x.status === "pending")) {
+      // script mode: the customer's detailed script + scene photos are the whole truth: no director, no previous-frame chaining
+      if (ep.input_mode !== "script" && !ep.director && scenes.some((x: any) => x.status === "pending")) {
         let d: any;
         try { d = await direct(admin, ep, b, scenes); } catch (e) { console.error("director", ep.id, e); d = { failed: String((e as any)?.message ?? e).slice(0, 300) }; }
         ep.director = d; await admin.from("episodes").update({ director: d }).eq("id", ep.id);
@@ -434,7 +461,7 @@ async function advance(admin: any, ep: any) {
       for (const s of scenes.filter((x: any) => x.status === "pending")) {
         if (running >= PARALLEL || Date.now() - t0 > 50000) break;
         // a scene that continues the previous one waits for it and gets its last frame as a reference (owner, 25 Nov)
-        const cont = SERIES_ENGINE === "omni" && s.idx > 0 && (ep.director?.scenes ?? []).find((x: any) => Number(x.idx) === s.idx)?.continues === true;
+        const cont = SERIES_ENGINE === "omni" && ep.input_mode !== "script" && s.idx > 0 && (ep.director?.scenes ?? []).find((x: any) => Number(x.idx) === s.idx)?.continues === true;
         if (cont) {
           const prev = scenes.find((x: any) => x.idx === s.idx - 1);
           if (prev && prev.status !== "done" && prev.status !== "failed") continue;
@@ -611,8 +638,9 @@ Deno.serve(async (req) => {
       const wantEp = isId(body.episode_id) ? (eps ?? []).find((e: any) => e.id === body.episode_id) : open;
       let scenes: any[] = [];
       if (wantEp) {
-        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,place,seconds,status,attempts,qc_redos").eq("episode_id", wantEp.id).order("idx");
+        const { data } = await admin.from("episode_scenes").select("id,idx,story_mm,cast_names,place,seconds,photo_path,status,attempts,qc_redos").eq("episode_id", wantEp.id).order("idx");
         scenes = data ?? [];
+        for (const x of scenes) if (x.photo_path) x.photo_url = await sign("inputs", x.photo_path);
       }
       return json({ project: p, characters: chars ?? [], places: places ?? [], episodes: eps ?? [], scenes, scenes_episode: wantEp?.id ?? null });
     }
@@ -693,7 +721,8 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       if ("summary_mm" in body && ep.status === "done") await admin.from("episodes").update({ summary_mm: clip(body.summary_mm, 1200) }).eq("id", ep.id);
       if (Array.isArray(body.scenes)) {
         if (ep.status !== "ready") return json({ error: "can't edit now" }, 400);
-        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 900), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, MAX_CAST), place: clip(s?.place, 40) || null, seconds: Number(s?.seconds) === 5 ? 5 : 10 })).filter((s: any) => s.story_mm);
+        const list = body.scenes.map((s: any) => ({ story_mm: clip(s?.story_mm, 2000), cast_names: (Array.isArray(s?.cast_names) ? s.cast_names : []).map((n: any) => clip(n, 30)).slice(0, MAX_CAST), place: clip(s?.place, 40) || null, seconds: Number(s?.seconds) === 5 ? 5 : 10,
+        photo_path: String(s?.photo_path ?? "").startsWith(uid + "/") && !String(s.photo_path).includes("..") ? String(s.photo_path) : null })).filter((s: any) => s.story_mm);
         if (!list.length || list.length > MAX_SCENES) return json({ error: `scene ၁ ခုမှ ${MAX_SCENES} ခုအထိ` }, 400);
         await admin.from("episode_scenes").delete().eq("episode_id", ep.id);
         await admin.from("episode_scenes").insert(list.map((s: any, i: number) => ({ episode_id: ep.id, idx: i, ...s })));

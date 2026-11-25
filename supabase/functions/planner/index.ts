@@ -197,9 +197,13 @@ Rules (all of them):
 10. If the story cannot be made at all without breaking those safety limits (for example a child being hurt or bleeding), set "blocked": true, leave "prompt" empty, and explain in "warnings_mm" how to change the story.
 Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>","warnings_mm":["<Burmese warning>"],"blocked":false}`;
 
-async function planOmni(key: string, story: string, duration: number, names: string[], effort: string, series = false) {
+// series script mode with a scene photo (owner, 25 Nov 14:14)
+const SCENE_PHOTO_RULE = `
+10. A reference photo named "scene photo" shows how this shot looks. Use exactly its place, furniture, colours, light and the people's clothes (this overrides the clothing rule: take the clothes from the scene photo). Anything the camera shows that is not in the photo is drawn in the same style, so it is clearly the same place. Faces come from the character photos. Call it "the scene photo in Image N".`;
+
+async function planOmni(key: string, story: string, duration: number, names: string[], effort: string, series = false, scenePhoto = false) {
   const user = `Video length: ${duration} seconds.\n${names.length ? `Reference photos: ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n` : ""}\nCustomer's story (Burmese):\n${story}`;
-  const out = parse(await llm(key, [{ role: "system", content: series ? OMNI_SYSTEM : OMNI_SYSTEM_CREATE }, { role: "user", content: user }], effort));
+  const out = parse(await llm(key, [{ role: "system", content: (series ? OMNI_SYSTEM : OMNI_SYSTEM_CREATE) + (scenePhoto ? SCENE_PHOTO_RULE : "") }, { role: "user", content: user }], effort));
   const warnings_mm: string[] = (Array.isArray(out.warnings_mm) ? out.warnings_mm : []).map((w: any) => String(w ?? "").trim()).filter(Boolean).slice(0, 4);
   const plan: any = { prompt: String(out.prompt ?? "").trim(), lines: Array.isArray(out.lines) ? out.lines : [], summary_mm: String(out.summary_mm ?? "").trim(), engine: "omni", warnings_mm, blocked: out.blocked === true };
   if (plan.blocked) { plan.prompt = ""; plan.lines = []; return { plan, issues: [] as string[] }; }
@@ -239,7 +243,7 @@ async function safeRewrite(key: string, prompt: string, tryNo: number) {
 Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   if (req.headers.get("x-lab-token") !== LAB && auth !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return new Response("no", { status: 401 });
-  const { story, duration = 10, effort = "low", cast = [], engine = "", safe_rewrite = "", safe_try = 1, series = false } = await req.json();
+  const { story, duration = 10, effort = "low", cast = [], engine = "", safe_rewrite = "", safe_try = 1, series = false, scene_photo = false } = await req.json();
   const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, series ? 60 : 30)).filter(Boolean).slice(0, series ? 10 : 9);
   const t0 = Date.now();
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/get_app_secret`, { method: "POST",
@@ -253,8 +257,8 @@ Deno.serve(async (req) => {
       return Response.json({ ...out, ms: Date.now() - t0 });
     }
     if (engine === "omni") {
-      let r1 = await planOmni(key, story, duration, names, effort, series === true);
-      if (r1.issues.length && Date.now() - t0 < 60000) r1 = await planOmni(key, story, duration, names, effort, series === true);
+      let r1 = await planOmni(key, story, duration, names, effort, series === true, scene_photo === true);
+      if (r1.issues.length && Date.now() - t0 < 60000) r1 = await planOmni(key, story, duration, names, effort, series === true, scene_photo === true);
       return Response.json({ plan: r1.plan, issues: r1.issues, passes: 1, ms: Date.now() - t0 });
     }
     const messages: any[] = [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\n${names.length ? `Characters with reference photos (use their names exactly as written): ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n\n` : ""}Request:\n${story}` }];

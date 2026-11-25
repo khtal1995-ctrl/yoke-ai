@@ -906,10 +906,12 @@ function srCharHtml(c, i){
 }
 function srSceneHtml(s, i, chars){
   return `<div class="vitem"><b>Scene ${i + 1}</b> <select data-ssec="${i}" style="width:auto;margin-left:6px"><option value="5" ${srSec(s) === 5 ? "selected" : ""}>5 စက္ကန့်</option><option value="10" ${srSec(s) === 10 ? "selected" : ""}>10 စက္ကန့်</option></select>
-    <textarea data-scene="${i}" maxlength="900" style="min-height:80px;margin-top:6px">${esc(s.story_mm)}</textarea>
+    <textarea data-scene="${i}" maxlength="2000" style="min-height:80px;margin-top:6px">${esc(s.story_mm)}</textarea>
     <div class="muted" style="font-size:12px">ပါတဲ့ ဇာတ်ကောင် (၆ ယောက်အထိ — ပုံပါတဲ့ ရှေ့ဆုံး ၁၀ ယောက်ကို ပုံအတိုင်း၊ ကျန်တာ ရုပ်ရည်စာအတိုင်း ဆွဲပါတယ်):
       ${chars.map(c => `<label style="margin-right:8px;white-space:nowrap"><input type="checkbox" data-scast="${i}" value="${esc(c.name)}" ${s.cast_names?.includes(c.name) ? "checked" : ""}> ${esc(c.name)}</label>`).join("")}</div>
     ${(sr.places ?? []).length ? `<div class="muted" style="font-size:12px;margin-top:6px">🏞️ နေရာ: <select data-splace="${i}" style="width:auto"><option value="">AI ရွေးမယ်</option>${sr.places.map(x => `<option value="${esc(x.name)}" ${s.place === x.name ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>` : ""}
+    <div class="cast" style="margin-top:6px"><label class="ph">${s.photo_url ? `<img src="${esc(s.photo_url)}" alt="">` : "🖼️"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-sphoto="${i}"></label>
+      <span class="muted" style="font-size:12px">${s.photo_path ? "ဒီ scene ရဲ့ပုံ — နေရာ၊ ဝတ်စုံ ပုံအတိုင်း" : "📷 ဒီ scene ရဲ့ပုံ (မထည့်လည်းရ)"}</span>${s.photo_path ? `<button class="x" data-sphotox="${i}">✕</button>` : ""}</div>
     <button class="btn ghost sm" data-sdel="${i}" style="margin-top:6px">🗑️ ဖယ်</button></div>`;
 }
 // read the edited Story Bible / scenes back from the form
@@ -921,7 +923,8 @@ function srReadPlaces(){ return (sr.places ?? []).map((x, i) => ({ ...x, name: $
 function srReadScenes(){ return sr.scenes.map((s, i) => ({ story_mm: $q(`[data-scene="${i}"]`)?.value ?? s.story_mm,
   cast_names: [...document.querySelectorAll(`[data-scast="${i}"]:checked`)].map(x => x.value).slice(0, 6),
   place: $q(`[data-splace="${i}"]`)?.value ?? s.place ?? "",
-  seconds: Number($q(`[data-ssec="${i}"]`)?.value ?? srSec(s)) })); }
+  seconds: Number($q(`[data-ssec="${i}"]`)?.value ?? srSec(s)),
+  photo_path: s.photo_path || null, photo_url: s.photo_url || null })); }
 const $q = sel => document.querySelector(sel);
 
 function srBind(){
@@ -994,6 +997,13 @@ function srBind(){
   const open = sr.episodes.find(e => e.id === sr.scenes_episode);
   document.querySelectorAll("[data-scast]").forEach(cb => cb.onchange = () => {
     if (document.querySelectorAll(`[data-scast="${cb.dataset.scast}"]:checked`).length > 6) { cb.checked = false; toast("Scene တစ်ခုမှာ ဇာတ်ကောင် ၆ ယောက်အထိ"); } });
+  document.querySelectorAll("[data-sphoto]").forEach(inp => inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return; if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
+    sr.scenes = srReadScenes();
+    try { toast("ပုံ တင်နေပါတယ်…"); const x = sr.scenes[Number(inp.dataset.sphoto)]; x.photo_path = await uploadTo("inputs", f); x.photo_url = URL.createObjectURL(f); srRender(); toast("သိမ်း နှိပ်ပါ"); }
+    catch (e) { toast(msgOf(e)); }
+  });
+  document.querySelectorAll("[data-sphotox]").forEach(b => b.onclick = () => { sr.scenes = srReadScenes(); const x = sr.scenes[Number(b.dataset.sphotox)]; x.photo_path = null; x.photo_url = null; srRender(); });
   document.querySelectorAll("[data-ssec]").forEach(x => x.onchange = () => { sr.scenes = srReadScenes(); srRender(); });
   document.querySelectorAll("[data-sdel]").forEach(b => b.onclick = () => { sr.scenes = srReadScenes(); sr.scenes.splice(Number(b.dataset.sdel), 1); srRender(); });
   if ($("srAddScene")) $("srAddScene").onclick = () => { sr.scenes = srReadScenes(); sr.scenes.push({ story_mm:"", cast_names:[] }); srRender(); };
