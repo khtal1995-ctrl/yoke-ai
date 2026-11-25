@@ -26,6 +26,20 @@
   .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
   .tab{padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card2);text-align:center;cursor:pointer;font-weight:600}
   .tab.on{border-color:var(--accent);background:rgba(124,92,255,.15)}
+  .progfill{background:linear-gradient(90deg,var(--accent),#4f8cff);background-size:200% 100%;position:relative;overflow:hidden}
+  .progfill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:progshine 1.4s linear infinite}
+  .rstrip{display:flex;gap:10px;overflow-x:auto;padding:10px 2px 4px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+  .rclip{flex:none;width:96px;scroll-snap-align:start}
+  .rthumb{position:relative;width:96px;height:96px;border-radius:10px;overflow:hidden;cursor:pointer;background:#000}
+  .rthumb video{width:100%;height:100%;object-fit:cover;pointer-events:none}
+  .rnum{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.7);border-radius:6px;padding:0 6px;font-size:13px}
+  .rdur{position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.7);border-radius:6px;padding:0 5px;font-size:11px}
+  .rbtns{display:flex;gap:4px;margin-top:4px}
+  .rbtns button{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:3px 0;font-size:12px;cursor:pointer}
+  .rbtns button:disabled{opacity:.3}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modalbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;width:100%;max-width:460px}
+  @keyframes progshine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
   textarea,input[type=text],input[type=tel],input[type=password],select{width:100%;background:var(--card2);
     border:1px solid var(--line);border-radius:12px;padding:12px;resize:vertical}
   textarea{min-height:110px}
@@ -65,6 +79,7 @@
   video{width:100%;border-radius:12px;background:#000;display:block}
   .vitem{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
   .vitem .p{font-size:13.5px;margin:6px 0}
+  .vitem .x{flex:none;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer;padding:4px}
   .badge{display:inline-block;font-size:12px;padding:1px 8px;border-radius:6px;background:var(--line)}
   .badge.running,.badge.queued{background:rgba(124,92,255,.2);color:#c4b5fd}
   .badge.succeeded,.badge.approved{background:rgba(34,197,94,.15);color:var(--ok)}
@@ -125,12 +140,12 @@
       <!-- CREATE -->
       <section id="createPage">
         <div class="card">
-          <div class="tabs" style="grid-template-columns:1fr 1fr 1fr">
-            <div class="tab" data-mode="tpl">🔥 Template</div>
+          <div class="tabs" id="modeTabs" style="grid-template-columns:1fr 1fr">
             <div class="tab on" data-mode="t2v">✍️ စာ → Video</div>
             <div class="tab" data-mode="i2v">🖼️ ပုံ → Video</div>
           </div>
           <div id="tplBox" class="hidden">
+            <h2 style="margin-top:0">🔥 Template</h2>
             <div id="tplGrid" class="tpls"><p class="muted">ဖွင့်နေပါတယ်…</p></div>
             <div id="tplPick" class="hidden">
               <label class="lbl">👤 <span id="tplName"></span> — ကိုယ့်ပုံ ထည့်ပါ</label>
@@ -139,44 +154,32 @@
             </div>
           </div>
           <div id="imageBox" class="hidden">
-            <label class="lbl">ပုံတင်ပါ (video ရဲ့ ပထမဆုံး မြင်ကွင်း ဖြစ်မယ်)</label>
+            <label class="lbl">အစပုံ</label>
             <label class="drop"><input type="file" id="imgInput" accept="image/jpeg,image/png,image/webp" class="hidden">
               <span id="imgTxt">📷 နှိပ်ပြီး ပုံရွေးပါ</span><img id="imgPrev" class="hidden" alt=""></label>
-            <label class="lbl" style="margin-top:10px">အဆုံးပုံ (မထည့်လည်း ရ — video ရဲ့ နောက်ဆုံး မြင်ကွင်း ဖြစ်မယ်)</label>
+            <label class="lbl" style="margin-top:10px">အဆုံးပုံ <span class="muted">(မထည့်လည်း ရ)</span></label>
             <label class="drop"><input type="file" id="endInput" accept="image/jpeg,image/png,image/webp" class="hidden">
               <span id="endTxt">📷 နှိပ်ပြီး အဆုံးပုံ ရွေးပါ</span><img id="endPrev" class="hidden" alt=""></label>
             <button class="btn ghost hidden" id="endClear" type="button" style="margin-top:6px">✕ အဆုံးပုံ ဖယ်မည်</button>
-            <div class="tip" style="margin-top:6px">💡 အဆုံးပုံကို ပထမပုံနဲ့ အခန်းတူ၊ ကင်မရာထောင့် တူ (သို့ နီးစပ်) အောင် ဆွဲပါ။ အဆုံးပုံ ပါရင် 10 စက္ကန့်ထိပဲ ရပါတယ်။</div>
           </div>
           <div id="storyBox">
           <div class="seg" id="styleSeg" style="margin-top:4px">
-            <button data-v="rough" class="on">✍️ အကြမ်း<small>AI က ဖြည့်ရေးပေး</small></button>
-            <button data-v="exact">📄 Script အပြည့်<small>ဘာသာပြန်ရုံ</small></button>
-            <button data-v="raw">🅿️ Prompt<small>English prompt တိုက်ရိုက်</small></button>
+            <button data-v="rough" class="on">✍️ အကြမ်း<small>မြန်မာလို ရေး</small></button>
+            <!-- 📄 Script mode removed from the app (owner, 26 Nov); the api still accepts exact -->
+            <button data-v="raw">🅿️ Prompt အပြည့်<small>English တိုက်ရိုက်</small></button>
           </div>
-          <div class="tip hidden" id="rawTip">🅿️ ရေးထားတဲ့ English prompt ကို AI (Omni) ဆီ <b>စာလုံးမပြောင်း</b> တိုက်ရိုက် ပို့ပါတယ်။ App က ဘာမှ မထည့်၊ မပြင်ပါ (မြန်မာပုံစံ စာကြောင်းလည်း မထည့်ပါ)။ ဇာတ်ကောင်ပုံ ထည့်ထားရင် အစဉ်လိုက် Image 1, Image 2, Image 3 လို့ ညွှန်းပါ။ ပြောစေချင်တဲ့ မြန်မာစကားကို "..." ထဲ ထည့်ရေးပါ။</div>
-          <div class="tip hidden" id="exactTip">📄 ရေးထားတဲ့ script ကို AI က အင်္ဂလိပ်လို <b>ဘာသာပြန်ရုံ</b> လုပ်ပါတယ် — ဘာမှ မထည့်၊ မဖြုတ်၊ မပြောင်းပါ။ စကားတွေကို မြန်မာလို ရေးတဲ့အတိုင်း ထားပါတယ်။ ကင်မရာ၊ နေရာ၊ ဝတ်စုံ၊ လုပ်ရပ်၊ "စကား" အကုန် ကိုယ်တိုင် ရေးပါ။ ထုတ်ခင် ဘာသာပြန်ထားတဲ့ prompt ကို ပြပါမယ်။</div>
-          <label class="lbl">ဘာ video လိုချင်လဲ — ပြောစေချင်တဲ့ စကားပါ ထည့်ရေးလို့ရ</label>
+          <div class="tip hidden" id="rawTip">ရေးထားတဲ့အတိုင်း တိုက်ရိုက် ထုတ်ပါမယ်။ ပုံတွေကို Image 1, Image 2… လို့ ညွှန်းပါ။</div>
+          <label class="lbl">ဘာ video လိုချင်လဲ</label>
           <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
-          <details class="tip" id="howTo"><summary style="cursor:pointer;font-weight:600">💡 ကောင်းကောင်းရေးနည်း — အသေးစိတ်ရေးလေ video ပိုလှလေ</summary>
-            <div style="margin-top:6px;line-height:1.7">
-              • <b>ဘယ်သူတွေလဲ</b> — နာမည်၊ ဘာတော်လဲ (ရည်းစား၊ မိသားစု၊ သူငယ်ချင်း)<br>
-              • <b>ဘယ်မှာလဲ</b> — ကားထဲ၊ ကမ်းခြေ၊ လက်ဖက်ရည်ဆိုင်... နဲ့ အချိန် (မနက်၊ နေဝင်ချိန်၊ ည)<br>
-              • <b>ဘာလုပ်နေလဲ</b> — လုပ်ရပ်ကို အစဉ်လိုက်<br>
-              • <b>ဘာပြောလဲ</b> — ပြောစေချင်တဲ့ စကားကို "..." ထဲ ထည့်ပါ (၁၀ စက္ကန့်ဆို ၂ ခွန်းလောက်)<br>
-              • <b>ခံစားချက်</b> — ပျော်၊ ရှက်၊ ဝမ်းနည်း၊ စိတ်ဆိုး<br>
-              ✍️ ဥပမာ (နှိပ်ရင် အပေါ်ကအကွက်ထဲ ထည့်ပေးမယ်):<br>
-              <a href="#" id="howToEx" style="color:inherit;text-decoration:underline">နေဝင်ချိန် ကမ်းခြေမှာ မောင်မောင်နဲ့ မမ ရည်းစားနှစ်ယောက် လက်တွဲလမ်းလျှောက်နေတယ်။ မမက ရှက်ရှက်နဲ့ "မောင် ချစ်လား" လို့မေးတယ်။ မောင်မောင်က ပြုံးပြီး "အရမ်းချစ်တာပေါ့ ချစ်လေးရဲ့" လို့ဖြေတယ်။</a><br>
-              ✨ တိုတိုလေးပဲ ရေးထားရင်လည်း AI က ဇာတ်လမ်းကို လှအောင် ဖြည့်ရေးပေးပါတယ် — ထုတ်ခင် plan မှာ စစ်ကြည့်လို့ရပါတယ်။
-            </div>
+          <details class="tip" id="howTo"><summary style="cursor:pointer">💡 ဥပမာ ကြည့်ရန်</summary>
+            <div style="margin-top:6px;line-height:1.7"><a href="#" id="howToEx" style="color:inherit;text-decoration:underline">နေဝင်ချိန် ကမ်းခြေမှာ မောင်မောင်နဲ့ မမ ရည်းစားနှစ်ယောက် လက်တွဲလမ်းလျှောက်နေတယ်။ မမက ရှက်ရှက်နဲ့ "မောင် ချစ်လား" လို့မေးတယ်။ မောင်မောင်က ပြုံးပြီး "အရမ်းချစ်တာပေါ့ ချစ်လေးရဲ့" လို့ဖြေတယ်။</a></div>
           </details>
           <div id="castBox">
-            <label class="lbl">👤 ဇာတ်ကောင်ပုံ <span class="muted">(မထည့်လည်း ရ — ၃ ယောက်အထိ)</span></label>
+            <label class="lbl">👤 ပုံများ <span class="muted">(မထည့်လည်း ရ — ၉ ပုံအထိ)</span></label>
             <div id="castList"></div>
             <button class="btn ghost" id="castAdd" type="button" style="margin-top:8px">＋ ဇာတ်ကောင်ပုံ ထည့်မည်</button>
-            <div class="tip">📸 ပုံတစ်ပုံမှာ လူတစ်ယောက်တည်း၊ မျက်နှာ ရှေ့တည့်၊ မျက်လုံးပွင့်ပွင့်၊ အလင်းကောင်းတဲ့ပုံ ထည့်ပါ။ နာမည်ကို ဇာတ်လမ်းထဲမှာ ရေးတဲ့အတိုင်း ထည့်ပါ (ဥပမာ မောင်မောင်)။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။</div>
+            <div class="tip">📸 ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့ပုံသာ သုံးပါ။</div>
           </div>
-          <div class="tip">💡 စကားပြောတဲ့သူ ၁–၂ ယောက်ထားပြီး တစ်ယောက် တစ်ခွန်းစီ တိုတိုရေးရင် ပိုကောင်းပါတယ်။ အမျိုးသမီး/အမျိုးသား အသံကို AI က ဇာတ်ကောင်ကြည့်ပြီး ရွေးပေးပါတယ်။</div>
           </div>
 
           <div id="optBox">
@@ -216,7 +219,6 @@
         <!-- 🎞️ Rolls: the customer's videos collected in order and joined into one (free) -->
         <div class="card" id="rollCard">
           <h2>🎞️ Roll များ</h2>
-          <p class="muted" style="font-size:13px">Video တွေကို "➕ Roll ထဲ ထည့်" နဲ့ စုပြီး အစီအစဉ်ချ၊ "🎬 ဆက်မည်" နှိပ်ရင် video တစ်ခုတည်း ဖြစ်ပါမယ် (အခမဲ့)။</p>
           <div id="rollList"></div>
           <button class="btn ghost sm" id="rollNew" type="button">＋ Roll အသစ်</button>
         </div>
@@ -288,6 +290,7 @@
           <div class="row"><span class="muted">ကျန် credit</span><span id="meCredits"></span></div>
         </div>
         <div class="card"><h2>Credit မှတ်တမ်း</h2><div id="ledger"></div></div>
+        <button class="btn ghost hidden" id="adminNav" type="button" style="margin-bottom:10px">🛡️ Admin</button>
         <button class="btn ghost" id="logoutBtn">ထွက်မည်</button>
       </section>
 
@@ -361,7 +364,8 @@
     <button data-p="videosPage"><span class="ic">🎬</span>Video များ</button>
     <button data-p="buyPage"><span class="ic">⚡</span>Credit ဝယ်</button>
     <button data-p="mePage"><span class="ic">👤</span>အကောင့်</button>
-    <button data-p="adminPage" id="adminNav" class="hidden"><span class="ic">🛡️</span>Admin</button>
+    <!-- 🔥 Template took Admin's place (owner, 26 Nov); Admin is a button in 👤 account -->
+    <button data-p="createPage" data-tpl="1"><span class="ic">🔥</span>Template</button>
   </div></nav>
 </div>
 
@@ -445,11 +449,18 @@ async function loadProfile(){
 
 /* ================= NAV ================= */
 const PAGES = ["createPage","seriesPage","videosPage","buyPage","mePage","adminPage"];
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => go(b.dataset.p));
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => go(b.dataset.p, b.dataset.tpl === "1"));
 $("creditChip").onclick = () => go("buyPage");
-function go(p){
+$("adminNav").onclick = () => go("adminPage");
+// ✨ create and 🔥 Template share one page: Template hides the mode tabs and the Rolls
+function go(p, tplView = false){
   PAGES.forEach(x => $(x).classList.toggle("hidden", x !== p));
-  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.p === p));
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.p === p && (b.dataset.tpl === "1") === tplView));
+  if (p === "createPage") {
+    $("modeTabs").classList.toggle("hidden", tplView); $("rollCard").classList.toggle("hidden", tplView);
+    if (tplView && opt.mode !== "tpl") setMode("tpl");
+    if (!tplView && opt.mode === "tpl") setMode(lastMode);
+  }
   scrollTo(0,0);
   if (p === "videosPage") loadVideos();
   if (p === "seriesPage") srShowList();
@@ -463,9 +474,11 @@ function go(p){
 /* ================= CREATE ================= */
 const opt = { mode:"t2v", quality:"std", duration:10, ratio:"9:16", sfx:0, imageFile:null, style:"rough" };
 const cast = [];   // character photos for the story: [{ file, name, path }] → Image 1..3
-document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
-  opt.mode = t.dataset.mode;
-  document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x === t));
+let lastMode = "t2v";   // the ✨ create tab to come back to after 🔥 Template
+document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => setMode(t.dataset.mode));
+function setMode(m){
+  opt.mode = m; if (m !== "tpl") lastMode = m;
+  document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x.dataset.mode === m));
   $("imageBox").classList.toggle("hidden", opt.mode !== "i2v");
   $("ratioBox").classList.toggle("hidden", opt.mode !== "t2v");   // i2v follows the image shape, templates have their own
   $("castBox").classList.toggle("hidden", opt.mode === "i2v");
@@ -473,7 +486,7 @@ document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => {
   $("tplBox").classList.toggle("hidden", opt.mode !== "tpl");
   if (opt.mode === "tpl") loadTemplates();
   syncTplUi();
-});
+}
 const isRec = () => opt.mode === "tpl" && tpl?.kind === "video";
 // Recreate templates have no duration / sound / size options: the template video decides them
 function syncTplUi(){
@@ -552,7 +565,7 @@ function seg(id, key, num){
 }
 seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true); seg("qualSeg","quality");
 seg("styleSeg","style"); document.querySelectorAll("#styleSeg button").forEach(b => b.addEventListener("click", () => {
-  $("exactTip").classList.toggle("hidden", opt.style !== "exact"); $("rawTip").classList.toggle("hidden", opt.style !== "raw");
+  $("rawTip").classList.toggle("hidden", opt.style !== "raw");
   $("howTo").classList.toggle("hidden", opt.style !== "rough"); $("prompt").maxLength = opt.style === "raw" ? 8000 : 2000; }));
 const PRICE = { std: { 5: 15, 10: 30 }, hd: { 5: 25, 10: 40 } }; // credits; must match DB gen_cost (owner, 24 Nov)
 const costOf = () => PRICE[opt.quality]?.[opt.duration >= 10 ? 10 : 5] ?? 30;
@@ -624,7 +637,7 @@ $("genBtn").onclick = async () => {
   if (opt.mode === "i2v" && !opt.imageFile) return toast("ပုံ အရင်တင်ပါ");
   $("genBtn").disabled = true;
   let refs = [];
-  showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (၁–၂ မိနစ်)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
+  showJob("📝 ပြင်ဆင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>ခဏစောင့်ပါ</p>`);
   try {
     if (opt.mode === "t2v") refs = await castRefs();
     if (opt.mode === "tpl") refs = await tplRefs();
@@ -637,8 +650,6 @@ $("genBtn").onclick = async () => {
       const { data: st } = await sb.functions.invoke("api", { body: { action:"plan_status", plan_id: planId } });
       if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode, refs, exact, raw, template_id: opt.mode === "tpl" ? tpl.id : null }; showPlan(st); break; }
       if (st?.status === "failed" || Date.now() - started > 240000) throw new Error("AI အစီအစဉ် မရေးနိုင်ပါ။ ခဏနေ ပြန်စမ်းပါ။");
-      const s = Math.round((Date.now()-started)/1000);
-      showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (${s}s)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
     }
   } catch (e) {
     showJob("⚠️ မစတင်နိုင်ပါ", `<div class="status bad">${esc(msgOf(e))}</div>`);
@@ -655,7 +666,7 @@ function showPlan(st){
   const said = (st.lines || []).filter(l => l && l.text);
   const talk = said.length ? `<div class="muted" style="margin:8px 0 4px">🗣️ ပြောမယ့် စကား</div><ol class="plan">${said.map(l => { const m = /Image\s*(\d)/i.exec(l.who || ""), r = m && (currentPlan?.refs || [])[m[1] - 1], who = r?.name || (/[က-႟]/.test(l.who || "") ? l.who : "");
       return `<li>${who ? esc(who) + " — " : ""}“${esc(l.text)}”</li>`; }).join("")}</ol>` : "";
-  const en = st.exact && st.prompt_en ? `<div class="muted" style="margin:8px 0 4px">${st.raw ? "🅿️ AI ဆီ ဒီ prompt အတိုင်း စာလုံးမပြောင်း ပို့မယ်" : "📄 ဘာသာပြန်ထားတဲ့ prompt (AI ဆီ ဒီအတိုင်း ပို့မယ်) — ရေးထားတာနဲ့ ကိုက်/မကိုက် စစ်ပါ"}</div>
+  const en = st.exact && st.prompt_en ? `<div class="muted" style="margin:8px 0 4px">${st.raw ? "🅿️ ဒီ prompt အတိုင်း ထုတ်မယ်" : "📄 Prompt"}</div>
     <pre style="white-space:pre-wrap;font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:340px;overflow:auto">${esc(st.prompt_en)}</pre>` : "";
   showJob("📋 ဒီအစီအစဉ်နဲ့ ဖန်တီးမလား?", `
     ${en}<ol class="plan">${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>
@@ -732,31 +743,44 @@ async function resumeJobs(){
 let progTimer = null;
 function showProgress(pg, g){
   clearInterval(progTimer);
-  const steps = [["waiting","⏳ AI ဆီ တန်းစီနေ"],["making","🎬 Video ထုတ်နေ"]].concat(g.quality === "hd" ? [["hd","✨ HD ပြင်နေ"]] : []).concat([["finishing","💾 သိမ်းနေ"]]);
-  const cur = Math.max(0, steps.findIndex(s => s[0] === (pg?.stage || "making")));
   const t0 = Date.now(), el0 = pg?.elapsed ?? 0, exp = Math.max(30, pg?.expected ?? 90);
   let first = true;
   const draw = () => {
     const el = el0 + Math.round((Date.now() - t0) / 1000);
-    // the bar follows real time against the usual time; it never claims 100% before the video is ready
-    const pct = Math.min(95, Math.round(el / exp * 100)), left = Math.max(0, exp - el);
+    // follows real time against how long such videos really took lately; never shows 100% before the video is ready
+    const pct = Math.min(95, Math.round(el / exp * 100));
     const html = `
-      <div style="height:10px;background:var(--card2);border-radius:6px;overflow:hidden;margin:4px 0 8px"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#7c5cff,#4f8cff);transition:width 1s linear"></div></div>
-      <div class="muted" style="font-size:13px">${pct}% · ${el}s ကြာပြီ · ${left > 0 ? `ပုံမှန်ဆို နောက် ~${left}s` : "ပုံမှန်ထက် နည်းနည်း ကြာနေပါတယ် — ခဏစောင့်ပါ"}</div>
-      <ol class="plan" style="margin-top:8px">${steps.map((s, i) => `<li style="opacity:${i <= cur ? 1 : .45}">${i < cur ? "✅ " : i === cur ? '<span class="spin"></span>' : ""}${s[1]}</li>`).join("")}</ol>
-      <p class="muted" style="font-size:12px">ဒီစာမျက်နှာ ပိတ်ထားလည်း ရပါတယ် — "Video များ" မှာ ပြန်ကြည့်လို့ရမယ်။</p>`;
+      <div style="font-size:34px;font-weight:700;text-align:center;margin:4px 0 10px">${pct}%</div>
+      <div style="height:12px;background:var(--card2);border-radius:8px;overflow:hidden"><div class="progfill" style="height:100%;width:${pct}%;transition:width 1s linear"></div></div>`;
     // only the first draw scrolls to the card; the next ones just refresh it
     if (first && $("jobTitle").textContent !== "🎬 ဖန်တီးနေပါတယ်…") showJob("🎬 ဖန်တီးနေပါတယ်…", html); else { $("jobTitle").textContent = "🎬 ဖန်တီးနေပါတယ်…"; $("jobBody").innerHTML = html; }
     first = false;
   };
   draw(); progTimer = setInterval(draw, 1000);
 }
-function videoHtml(url, g){
+function videoHtml(url, g, poster){
   if (!url) return `<p class="muted">Video ဖိုင် ပြင်ဆင်နေပါတယ်…</p>`;
-  return `<video src="${esc(url)}" controls playsinline preload="metadata"></video>
-    <a class="btn ghost" style="display:block;text-align:center;margin-top:10px;text-decoration:none"
-       href="${esc(url)}" download="yoke-${esc(g.id.slice(0,8))}.mp4" target="_blank" rel="noopener">⬇️ Download</a>`;
+  return `<video src="${esc(url)}#t=0.5" controls playsinline preload="metadata"${poster ? ` poster="${esc(poster)}"` : ""}></video>
+    <button class="btn ghost" type="button" style="margin-top:10px" data-dl="${esc(url)}" data-dlname="yoke-${esc(g.id.slice(0,8))}.mp4">⬇️ Download</button>`;
 }
+// ⬇️ Download (26 Nov): the video is on another site, so a plain link only opens it. Fetch the file, then on phones
+// open the share sheet ("Save Video"), elsewhere save it as a file.
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-dl]"); if (!b) return;
+  const url = b.dataset.dl, name = b.dataset.dlname || "yoke.mp4", label = b.textContent;
+  b.disabled = true; b.textContent = "⏳ ပြင်ဆင်နေပါတယ်…";
+  try {
+    const blob = await (await fetch(url)).blob();
+    const file = new File([blob], name, { type: "video/mp4" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); } catch (err) { if (err?.name !== "AbortError") throw err; }
+    } else {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+  } catch (err) { window.open(url, "_blank"); }
+  finally { b.disabled = false; b.textContent = label; }
+});
 
 /* ================= 🎞️ ROLLS ================= */
 let rolls = [], rollPoll = null;
@@ -769,43 +793,47 @@ async function loadRolls(){
 }
 function renderRolls(){
   if (!rolls.length) { $("rollList").innerHTML = `<p class="muted">Roll မရှိသေးပါ။</p>`; return; }
+  // one title, the clips side by side in order (swipe), ▶️ plays them one after another (owner, 26 Nov)
   $("rollList").innerHTML = rolls.map(r => `<div class="vitem" data-roll="${esc(r.id)}">
-    <div style="display:flex;gap:8px;align-items:center"><span>✏️</span><input type="text" maxlength="60" value="${esc(r.title)}" data-rtitle="${esc(r.id)}" placeholder="ဇာတ်လမ်း နာမည်" style="flex:1;font-weight:600">
+    <div style="display:flex;gap:8px;align-items:center"><input type="text" maxlength="60" value="${esc(r.title)}" data-rtitle="${esc(r.id)}" placeholder="ဇာတ်လမ်း နာမည်" style="flex:1;font-weight:600">
+      <button class="btn sm" type="button" data-rplayall="${esc(r.id)}" style="width:auto;padding:8px 14px" ${r.clips.length ? "" : "disabled"}>▶️</button>
       <button class="x" type="button" data-rdel="${esc(r.id)}" title="Roll ဖျက်">🗑️</button></div>
-    ${r.clips.length ? r.clips.map((c, i) => `<div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-        <b style="width:22px">${i + 1}</b>
-        <div data-rplay="${esc(r.id)}|${i}" style="position:relative;width:64px;height:64px;cursor:pointer;flex:none">
-          <video src="${esc(c.url ? c.url + "#t=0.5" : "")}" muted playsinline preload="metadata" style="width:64px;height:64px;object-fit:cover;border-radius:8px;pointer-events:none"></video>
-          <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;text-shadow:0 0 6px #000">▶️</span></div>
-        <span class="muted" style="flex:1;font-size:12px">${c.duration}s · ${esc(String(c.prompt_mm || "").slice(0, 60))}</span>
-        <button class="btn ghost sm" type="button" data-rmove="${esc(r.id)}|${i}|-1" ${i === 0 ? "disabled" : ""}>↑</button>
-        <button class="btn ghost sm" type="button" data-rmove="${esc(r.id)}|${i}|1" ${i === r.clips.length - 1 ? "disabled" : ""}>↓</button>
-        <button class="x" type="button" data-rmove="${esc(r.id)}|${i}|0">✕</button></div>`).join("")
-      : `<p class="muted" style="font-size:13px">Video မရှိသေးပါ — Video တစ်ခုခုအောက်က "➕ Roll ထဲ ထည့်" နှိပ်ပါ။</p>`}
+    ${r.clips.length ? `<div class="rstrip">${r.clips.map((c, i) => `<div class="rclip">
+        <div data-rplay="${esc(r.id)}|${i}" class="rthumb">
+          <video src="${esc(c.url ? c.url + "#t=0.5" : "")}" muted playsinline preload="metadata"></video>
+          <b class="rnum">${i + 1}</b><span class="rdur">${c.duration}s</span></div>
+        <div class="rbtns"><button type="button" data-rmove="${esc(r.id)}|${i}|-1" ${i === 0 ? "disabled" : ""}>◀</button><button type="button" data-rmove="${esc(r.id)}|${i}|0">✕</button><button type="button" data-rmove="${esc(r.id)}|${i}|1" ${i === r.clips.length - 1 ? "disabled" : ""}>▶</button></div>
+      </div>`).join("")}</div>`
+      : `<p class="muted" style="font-size:13px">Video အောက်က "➕ Roll ထဲ ထည့်" နှိပ်ပါ။</p>`}
     <div data-rplayer="${esc(r.id)}"></div>
-    <div class="muted" style="font-size:12px;margin-top:6px">${r.clips.length} ခု · ${r.clips.reduce((t, c) => t + (Number(c.duration) || 0), 0)} စက္ကန့်</div>
-    ${r.status === "joining" ? `<p class="muted"><span class="spin"></span>ဆက်နေပါတယ် (၁–၂ မိနစ်)…</p>`
-      : `<button class="btn sm" type="button" data-rjoin="${esc(r.id)}" style="margin-top:8px" ${r.clips.length < 2 ? "disabled" : ""}>🎬 ဆက်မည် (အခမဲ့)</button>`}
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><span class="muted" style="font-size:12px;flex:1">${r.clips.length} ခု · ${r.clips.reduce((t, c) => t + (Number(c.duration) || 0), 0)} စက္ကန့်</span>
+    ${r.status === "joining" ? `<span class="muted" style="font-size:13px"><span class="spin"></span>ဆက်နေပါတယ်…</span>`
+      : `<button class="btn ghost sm" type="button" data-rjoin="${esc(r.id)}" style="width:auto" ${r.clips.length < 2 ? "disabled" : ""}>🎬 ဖိုင်တစ်ခုတည်း ဆက်မည်</button>`}</div>
     ${r.status === "failed" && r.error ? `<div class="status bad" style="font-size:13px">${esc(r.error)}</div>` : ""}
     ${r.status === "done" && r.video_url ? `<div style="margin-top:8px">${videoHtml(r.video_url, { id: r.id })}</div>` : ""}
   </div>`).join("");
+}
+// play a roll's clips one after another in one player, starting at clip k
+function rollPlay(rid, k){
+  const r = rolls.find(x => x.id === rid), box = $q(`[data-rplayer="${rid}"]`); if (!r || !box) return;
+  const clips = r.clips.filter(c => c.url); if (!clips.length) return;
+  box.innerHTML = `<div class="muted" style="font-size:12px;margin-top:8px" data-rnow></div>
+    <video controls autoplay playsinline style="width:100%;border-radius:10px;margin-top:4px;background:#000"></video>`;
+  const v = box.querySelector("video"), now = box.querySelector("[data-rnow]");
+  let i = k;
+  const load = () => { now.textContent = `▶️ ${i + 1} / ${clips.length}`; v.src = clips[i].url; v.play().catch(() => {}); };
+  v.onended = () => { if (i < clips.length - 1) { i++; load(); } };
+  load(); box.scrollIntoView({ behavior:"smooth", block:"nearest" });
 }
 async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf(e)); } await loadRolls(); }
 // a new roll asks for its name (the story's title); empty → "Roll N"
 const rollName = () => { const n = prompt("Roll (ဇာတ်လမ်း) နာမည်", `Roll ${rolls.length + 1}`); return n === null ? null : (n.trim() || `Roll ${rolls.length + 1}`); };
 $("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title }); };
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel],[data-rplay]"); if (!t) return;
-  if (t.dataset.rplay !== undefined) {
-    // tap a clip: play it big under the list (tap again to close)
-    const [rid, i] = t.dataset.rplay.split("|"), c = rolls.find(x => x.id === rid)?.clips[Number(i)], box = $q(`[data-rplayer="${rid}"]`);
-    if (!c?.url || !box) return;
-    if (box.dataset.open === i) { box.innerHTML = ""; box.dataset.open = ""; return; }
-    box.dataset.open = i;
-    box.innerHTML = `<div class="muted" style="font-size:12px;margin-top:8px">▶️ ${Number(i) + 1} — ${esc(String(c.prompt_mm || "").slice(0, 80))}</div>
-      <video src="${esc(c.url)}" controls autoplay playsinline style="width:100%;border-radius:10px;margin-top:6px"></video>`;
-    return;
-  }
+  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel],[data-rplay],[data-rplayall]"); if (!t) return;
+  if (t.dataset.rplayall !== undefined) return rollPlay(t.dataset.rplayall, 0);
+  // tap a clip: play from that clip on
+  if (t.dataset.rplay !== undefined) { const [rid, i] = t.dataset.rplay.split("|"); return rollPlay(rid, Number(i)); }
   if (t.dataset.rolladd !== undefined) {
     const gid = t.dataset.rolladd, box = $q(`[data-rolladd-box="${gid}"]`);
     if (!rolls.length) { try { rolls = (await srCall({ action:"roll_list" })).rolls || []; } catch {} }
@@ -1185,17 +1213,37 @@ async function loadVideos(){
     const { data: s } = await sb.storage.from("videos").createSignedUrls(paths, 3600);
     (s||[]).forEach(x => { if (x.signedUrl) urls[x.path] = x.signedUrl; });
   }
+  // the photo a video started from doubles as its cover until the video loads (owner, 26 Nov: no black boxes)
+  const pimg = data.filter(g => g.status==="succeeded" && g.image_path).map(g => g.image_path), posters = {};
+  if (pimg.length) {
+    const { data: s } = await sb.storage.from("inputs").createSignedUrls(pimg, 3600);
+    (s||[]).forEach(x => { if (x.signedUrl) posters[x.path] = x.signedUrl; });
+  }
+  data.forEach(g => vPrompts[g.id] = g.prompt_en && g.post_data?.raw ? g.prompt_en : g.prompt_mm);
   $("vlist").innerHTML = data.map(g => `
     <div class="vitem">
-      <span class="badge ${g.status}">${ST[g.status]}</span>
-      <span class="muted" style="font-size:12px"> · ${g.rc ? "🎬" : g.duration + "s"} · ${new Date(g.created_at).toLocaleString()}</span>
-      <div class="p">${esc(g.prompt_mm)}</div>
-      ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g) + (g.rc ? "" : rollAddBtn(g.id)) : ""}
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="badge ${g.status}">${ST[g.status]}</span>
+      <span class="muted" style="font-size:12px;flex:1">${g.rc ? "🎬" : g.duration + "s"} · ${new Date(g.created_at).toLocaleString()}</span>
+      ${g.rc ? "" : `<button class="btn ghost sm" type="button" data-vprompt="${esc(g.id)}" style="width:auto;padding:4px 10px">📄 Prompt</button>`}</div>
+      ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g, posters[g.image_path]) + (g.rc ? "" : rollAddBtn(g.id)) : ""}
       ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
     </div>`).join("");
   data.filter(g => !g.rc && (g.status==="queued"||g.status==="running")).forEach(g => watchJob(g.id,false));
   data.filter(g => g.rc && g.status==="running").forEach(g => watchRecreate(g.id,false));
 }
+
+// 📄 the prompt behind a video, only when asked for (owner, 26 Nov)
+const vPrompts = {};
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-vprompt]"); if (!b) return;
+  const text = vPrompts[b.dataset.vprompt] || "";
+  const m = document.createElement("div"); m.className = "modal";
+  m.innerHTML = `<div class="modalbox"><pre style="white-space:pre-wrap;font-size:13px;margin:0;max-height:60vh;overflow:auto">${esc(text)}</pre>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn sm" type="button" data-mcopy>📋 ကူးမည်</button><button class="btn ghost sm" type="button" data-mclose>ပိတ်မည်</button></div></div>`;
+  m.onclick = e => { if (e.target === m || e.target.closest("[data-mclose]")) m.remove();
+    if (e.target.closest("[data-mcopy]")) navigator.clipboard?.writeText(text).then(() => toast("ကူးပြီးပါပြီ"), () => toast("ကူးလို့ မရပါ")); };
+  document.body.appendChild(m);
+});
 
 /* ================= BUY ================= */
 let packs = [], pickedPack = null, payMethod = "kbzpay", slipFile = null;

@@ -191,3 +191,12 @@ Checks that caught real problems
 
 ## 25 Nov — 🅿️ Prompt 4,000 → 8,000 လုံး
 - Owner ရဲ့ prompt (4,535 လုံး) textarea maxLength မှာ ပြတ်သွားလို့။ app maxLength၊ api plan/create slice၊ generations_prompt_mm_check အကုန် 8000။ Omni က 20,000 ထိ ယူတယ်။
+
+## 26 Nov — App UI ရှင်းလင်းရေး (owner ရဲ့ စာရင်း)
+1. အောက်ခြေ menu: Admin နေရာမှာ 🔥 Template (createPage ကို tpl mode နဲ့ ဖွင့်၊ mode tabs နဲ့ Roll ဖျောက်)။ ✨ ဖန်တီးမှာ Template ခလုတ် မရှိတော့။ Admin ကို 👤 အကောင့်ထဲ ခလုတ် (is_admin သာ)။
+2. လမ်းညွှန်စာ အများစု ဖယ်/တို၊ customer မြင်ရတဲ့နေရာမှာ Omni စတဲ့ AI နာမည် မရေးရ။
+3. Video ထုတ်နေစဉ်: % နဲ့ bar တစ်ခုတည်း (အဆင့်စာ မပြ)။ Plan ရေးနေစဉ်: "ပြင်ဆင်နေပါတယ်"။
+4. Download: fetch → blob → navigator.share (ဖုန်း "Save Video") / မရရင် a.download / နောက်ဆုံး tab အသစ်။
+5. Roll: ခေါင်းစဉ် + ▶️ (အစဉ်လိုက် တစ်ဆက်တည်း ပြ) + ဘေးတိုက် ပုံသေးများ (နံပါတ်၊ ◀ ✕ ▶)။ prompt စာ မပြ။
+6. Video များ: prompt ကို "📄 Prompt" popup (ကူးလို့ရ)။ Video ကို #t=0.5 + i2v ဆို အစပုံကို poster။
+7. ပုံများ ၉ ပုံအထိ စာ ပြင်။ 8. 📄 Script mode ခလုတ် ဖယ် (api က exact ကို ဆက်လက်ခံ)။ ရွေးစရာ: ✍️ အကြမ်း / 🅿️ Prompt အပြည့်။
