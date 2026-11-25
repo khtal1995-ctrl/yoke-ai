@@ -138,6 +138,7 @@ Checks that caught real problems
 - Customer's finished videos can be collected in Rolls ("➕ Roll ထဲ ထည့်" under every finished ✨ video and in Videos), ordered (↑ ↓ ✕), renamed, deleted, and joined into one video with "🎬 ဆက်မည်" — FREE (owner; Eachlabs ffmpeg cost is ours, a few tens of Ks).
 - Tables `rolls`, `roll_items` (RLS on, accessed only through the `project` function: roll_list / roll_create / roll_add / roll_update / roll_delete / roll_join). Joining = same ffmpeg concat as series (first clip's ratio, 720 if any clip is HD, 24 fps, silent clips get silence); the project tick polls `rolls.status = 'joining'`. Max 30 rolls per user, 30 videos per roll.
 - No scene photo in ✨ create (owner said no).
+- New tables in this project get NO grants for service_role by default: after creating a table, `grant select, insert, update, delete ... to service_role` (rolls/roll_items/project_places were "permission denied" until 25 Nov 15:20).
 
 ## 25 Nov 14:45 — ✨ create: "✍️ အကြမ်း" / "📄 Script အပြည့်" (owner)
 - ✨ create has a style choice. ✍️ အကြမ်း (default) = the morning rules, unchanged. 📄 Script အပြည့် = translate only (`OMNI_SYSTEM_EXACT`): add/drop/change nothing, Burmese lines word for word, no clothing/framing/fill-in rules; the exact-line check still runs.
