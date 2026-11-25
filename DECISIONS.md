@@ -144,6 +144,10 @@ Checks that caught real problems
 - `plans.exact`; api `plan` takes `exact: true` (t2v only); `plan_status` returns `prompt_en` for exact plans and the plan card shows the full English prompt so the owner can check it before spending credits. Price unchanged.
 - Videos then go into a 🎞️ Roll and are joined (free).
 
+## 25 Nov 15:00 — ✨ create: "🅿️ Prompt" = the customer's English prompt sent to Omni unchanged (owner)
+- Owner will write the English prompt himself (no AI in between). Third style choice "🅿️ Prompt": api `plan` with `raw: true` saves the text as the plan prompt directly (no planner, no checks), plan card shows it, and the video is submitted with exactly that text — NO MYANMAR_LOOK line added (`plan.raw`, `generations.post_data.raw`). Up to 4000 characters. Character photos are Image 1-3 in order.
+- ✍️ အကြမ်း (morning rules) and 📄 Script အပြည့် (translate only) stay.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

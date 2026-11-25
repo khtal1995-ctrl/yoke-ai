@@ -611,7 +611,7 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
       // Kie's own trouble (timeout, internal error): make the same video on Eachlabs instead
       console.error("kie failed, falling back to eachlabs:", msg);
       const { imageUrl, refUrls } = await omniInputs(ADMIN!, g);
-      const sub = await submitOmni(ADMIN!, g, String(g.prompt_en ?? "") + MYANMAR_LOOK, imageUrl, refUrls, true);
+      const sub = await submitOmni(ADMIN!, g, String(g.prompt_en ?? "") + (g.post_data?.raw ? "" : MYANMAR_LOOK), imageUrl, refUrls, true);
       await ADMIN!.from("generations").update({ provider: `eachlabs:${sub.model}`, provider_request_id: sub.id }).eq("id", g.id);
       return { state: "running" };
     }
@@ -690,9 +690,10 @@ async function startGeneration(admin: any, id: string) {
     const en = g.engine === "omni" ? plan.prompt : labelCast(plan.prompt, isR2v(g) ? g.refs : []);
     const { imageUrl, refUrls } = await omniInputs(admin, g);
     const omni = g.engine === "omni";
-    const sub = await submitVideo(g, en + MYANMAR_LOOK, imageUrl, refUrls);
+    // "🅿️ Prompt တိုက်ရိုက်" (owner, 25 Nov): the customer's own prompt goes to Omni exactly, nothing added
+    const sub = await submitVideo(g, plan.raw ? en : en + MYANMAR_LOOK, imageUrl, refUrls);
     await admin.from("generations").update({
-      status: "running", prompt_en: en, provider_request_id: sub.id,
+      status: "running", prompt_en: en, provider_request_id: sub.id, ...(plan.raw ? { post_data: { raw: true } } : {}),
       provider: sub.model === "kie" ? `kie:${KIE_MODEL}` : omni || sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
       // Omni speaks the lines itself: nothing to dub (keep the lines only as a record)
       dialogue: omni ? null : plan.lines?.length || (g.sfx && plan.stingers?.length)
@@ -869,7 +870,8 @@ Deno.serve(async (req) => {
 
   // ---- plan: write and check the plan first (no credits used); the customer approves it before "create" ----
   if (body.action === "plan") {
-    const prompt = String(body.prompt ?? "").trim().slice(0, 2000);
+    const raw = body.raw === true && body.mode !== "i2v" && CUSTOMER_ENGINE === "omni";
+    const prompt = String(body.prompt ?? "").trim().slice(0, raw ? 4000 : 2000);
     const duration = Number(body.duration) === 5 ? 5 : 10;
     if (!prompt) return json({ error: "empty prompt" }, 400);
     const { count } = await admin.from("plans").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 3600000).toISOString());
@@ -879,6 +881,12 @@ Deno.serve(async (req) => {
     const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v", refs: refs.length ? refs : null,
       exact: body.exact === true && body.mode !== "i2v" }).select("id").single();
     if (error) return json({ error: error.message }, 400);
+    if (raw) {
+      // the customer's own English prompt: no AI writing, no checks, nothing added
+      await admin.from("plans").update({ status: "ready", issues: [],
+        plan: { prompt, lines: [], summary_mm: "", warnings_mm: [], engine: "omni", raw: true, blocked: false } }).eq("id", p.id);
+      return json({ plan_id: p.id });
+    }
     const work = runPlan(admin, p.id);
     // @ts-ignore EdgeRuntime is provided by Supabase
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else await work;
@@ -890,7 +898,7 @@ Deno.serve(async (req) => {
     if (p.status === "planning" && Date.now() - new Date(p.created_at).getTime() > 200000) return json({ status: "failed", error: "timeout" });
     return json({ status: p.status, error: p.error, summary_mm: p.plan?.summary_mm ?? null, issues: p.issues ?? [], warnings_mm: p.plan?.warnings_mm ?? [], blocked: p.plan?.blocked === true,
       lines: (p.plan?.lines ?? []).map((l: any) => ({ who: l.who, gender: l.gender, text: l.text })),
-      exact: p.exact === true, prompt_en: p.exact === true ? (p.plan?.prompt ?? null) : undefined });
+      exact: p.exact === true || p.plan?.raw === true, raw: p.plan?.raw === true, prompt_en: p.exact === true || p.plan?.raw === true ? (p.plan?.prompt ?? null) : undefined });
   }
 
   // ---- create ----
@@ -900,13 +908,13 @@ Deno.serve(async (req) => {
     if (body.plan_id) {
       const { data: p } = await admin.from("plans").select("id,user_id,status,prompt_mm,duration,refs,plan").eq("id", body.plan_id).single();
       if (!p || p.user_id !== user.id || p.status !== "ready") return json({ error: "plan not ready" }, 400);
-      if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 2000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
+      if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 4000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
       if (!sameRefs(p.refs ?? [], cleanRefs(body.refs, user.id) ?? [])) return json({ error: "plan does not match" }, 400);
       if (p.plan?.blocked || !p.plan?.prompt) return json({ error: "ဒီဇာတ်လမ်းကို ဗီဒီယို လုပ်လို့ မရပါ။ ပြင်ရေးပြီး ပြန်စီစဉ်ပါ" }, 400);
       planId = p.id; planRefs = p.refs ?? null; engine = p.plan?.engine === "omni" ? "omni" : null;
     }
     const { data: id, error } = await userDb.rpc("create_generation", {
-      p_mode: body.mode, p_prompt: String(body.prompt ?? "").slice(0, 2000),
+      p_mode: body.mode, p_prompt: String(body.prompt ?? "").slice(0, 4000),
       p_quality: body.quality, p_duration: Number(body.duration), p_ratio: body.ratio,
       p_image_path: body.image_path ?? null,
     });

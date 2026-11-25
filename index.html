@@ -146,8 +146,10 @@
           <div id="storyBox">
           <div class="seg" id="styleSeg" style="margin-top:4px">
             <button data-v="rough" class="on">✍️ အကြမ်း<small>AI က ဖြည့်ရေးပေး</small></button>
-            <button data-v="exact">📄 Script အပြည့်<small>ရေးတဲ့အတိုင်း ဘာသာပြန်ရုံ</small></button>
+            <button data-v="exact">📄 Script အပြည့်<small>ဘာသာပြန်ရုံ</small></button>
+            <button data-v="raw">🅿️ Prompt<small>English prompt တိုက်ရိုက်</small></button>
           </div>
+          <div class="tip hidden" id="rawTip">🅿️ ရေးထားတဲ့ English prompt ကို AI (Omni) ဆီ <b>စာလုံးမပြောင်း</b> တိုက်ရိုက် ပို့ပါတယ်။ App က ဘာမှ မထည့်၊ မပြင်ပါ (မြန်မာပုံစံ စာကြောင်းလည်း မထည့်ပါ)။ ဇာတ်ကောင်ပုံ ထည့်ထားရင် အစဉ်လိုက် Image 1, Image 2, Image 3 လို့ ညွှန်းပါ။ ပြောစေချင်တဲ့ မြန်မာစကားကို "..." ထဲ ထည့်ရေးပါ။</div>
           <div class="tip hidden" id="exactTip">📄 ရေးထားတဲ့ script ကို AI က အင်္ဂလိပ်လို <b>ဘာသာပြန်ရုံ</b> လုပ်ပါတယ် — ဘာမှ မထည့်၊ မဖြုတ်၊ မပြောင်းပါ။ စကားတွေကို မြန်မာလို ရေးတဲ့အတိုင်း ထားပါတယ်။ ကင်မရာ၊ နေရာ၊ ဝတ်စုံ၊ လုပ်ရပ်၊ "စကား" အကုန် ကိုယ်တိုင် ရေးပါ။ ထုတ်ခင် ဘာသာပြန်ထားတဲ့ prompt ကို ပြပါမယ်။</div>
           <label class="lbl">ဘာ video လိုချင်လဲ — ပြောစေချင်တဲ့ စကားပါ ထည့်ရေးလို့ရ</label>
           <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
@@ -544,7 +546,8 @@ function seg(id, key, num){
 }
 seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true); seg("qualSeg","quality");
 seg("styleSeg","style"); document.querySelectorAll("#styleSeg button").forEach(b => b.addEventListener("click", () => {
-  $("exactTip").classList.toggle("hidden", opt.style !== "exact"); $("howTo").classList.toggle("hidden", opt.style === "exact"); }));
+  $("exactTip").classList.toggle("hidden", opt.style !== "exact"); $("rawTip").classList.toggle("hidden", opt.style !== "raw");
+  $("howTo").classList.toggle("hidden", opt.style !== "rough"); $("prompt").maxLength = opt.style === "raw" ? 4000 : 2000; }));
 const PRICE = { std: { 5: 15, 10: 30 }, hd: { 5: 25, 10: 40 } }; // credits; must match DB gen_cost (owner, 24 Nov)
 const costOf = () => PRICE[opt.quality]?.[opt.duration >= 10 ? 10 : 5] ?? 30;
 function updateCost(){
@@ -611,14 +614,14 @@ $("genBtn").onclick = async () => {
   try {
     if (opt.mode === "t2v") refs = await castRefs();
     if (opt.mode === "tpl") refs = await tplRefs();
-    const exact = opt.mode === "t2v" && opt.style === "exact";
-    const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:apiMode(), refs, exact } });
+    const exact = opt.mode === "t2v" && opt.style === "exact", raw = opt.mode === "t2v" && opt.style === "raw";
+    const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:apiMode(), refs, exact, raw } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     const planId = data.plan_id, started = Date.now();
     while (true) {
       await new Promise(r => setTimeout(r, 4000));
       const { data: st } = await sb.functions.invoke("api", { body: { action:"plan_status", plan_id: planId } });
-      if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode, refs, exact, template_id: opt.mode === "tpl" ? tpl.id : null }; showPlan(st); break; }
+      if (st?.status === "ready") { currentPlan = { id: planId, prompt, duration: opt.duration, mode: opt.mode, refs, exact, raw, template_id: opt.mode === "tpl" ? tpl.id : null }; showPlan(st); break; }
       if (st?.status === "failed" || Date.now() - started > 240000) throw new Error("AI အစီအစဉ် မရေးနိုင်ပါ။ ခဏနေ ပြန်စမ်းပါ။");
       const s = Math.round((Date.now()-started)/1000);
       showJob("📝 အစီအစဉ် ရေးနေပါတယ်…", `<p class="muted"><span class="spin"></span>AI က ဇာတ်ကွက်၊ စကားပြော၊ သရုပ်ဆောင်ပုံကို စီစဉ်ပြီး စစ်ဆေးနေပါတယ် (${s}s)။ ဒီအဆင့်မှာ credit မကုန်ပါ။</p>`);
@@ -638,7 +641,7 @@ function showPlan(st){
   const said = (st.lines || []).filter(l => l && l.text);
   const talk = said.length ? `<div class="muted" style="margin:8px 0 4px">🗣️ ပြောမယ့် စကား</div><ol class="plan">${said.map(l => { const m = /Image\s*(\d)/i.exec(l.who || ""), r = m && (currentPlan?.refs || [])[m[1] - 1], who = r?.name || (/[က-႟]/.test(l.who || "") ? l.who : "");
       return `<li>${who ? esc(who) + " — " : ""}“${esc(l.text)}”</li>`; }).join("")}</ol>` : "";
-  const en = st.exact && st.prompt_en ? `<div class="muted" style="margin:8px 0 4px">📄 ဘာသာပြန်ထားတဲ့ prompt (AI ဆီ ဒီအတိုင်း ပို့မယ်) — ရေးထားတာနဲ့ ကိုက်/မကိုက် စစ်ပါ</div>
+  const en = st.exact && st.prompt_en ? `<div class="muted" style="margin:8px 0 4px">${st.raw ? "🅿️ AI ဆီ ဒီ prompt အတိုင်း စာလုံးမပြောင်း ပို့မယ်" : "📄 ဘာသာပြန်ထားတဲ့ prompt (AI ဆီ ဒီအတိုင်း ပို့မယ်) — ရေးထားတာနဲ့ ကိုက်/မကိုက် စစ်ပါ"}</div>
     <pre style="white-space:pre-wrap;font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:340px;overflow:auto">${esc(st.prompt_en)}</pre>` : "";
   showJob("📋 ဒီအစီအစဉ်နဲ့ ဖန်တီးမလား?", `
     ${en}<ol class="plan">${steps.map(x => `<li>${esc(x)}</li>`).join("")}</ol>
@@ -653,7 +656,7 @@ async function createFromPlan(){
   const prompt = curPrompt();
   const nowRefs = curRefsNow();
   if (!currentPlan || currentPlan.prompt !== prompt || currentPlan.duration !== opt.duration || currentPlan.mode !== opt.mode || refsKey(currentPlan.refs) !== refsKey(nowRefs)
-      || currentPlan.exact !== (opt.mode === "t2v" && opt.style === "exact"))
+      || currentPlan.exact !== (opt.mode === "t2v" && opt.style === "exact") || !!currentPlan.raw !== (opt.mode === "t2v" && opt.style === "raw"))
     return toast("စာ၊ ကြာချိန် (သို့) ဇာတ်ကောင်ပုံ ပြောင်းသွားလို့ အစီအစဉ် အသစ်ပြန်ရေးပါ");
   if (profile && profile.credits < costOf()) return go("buyPage");
   $("planOk").disabled = true;
