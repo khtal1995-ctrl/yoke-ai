@@ -492,12 +492,17 @@ async function submitKie(admin: any, g: any, prompt: string, refUrls: string[]):
   return id;
 }
 // photos and first frame for a generation (fresh signed links), used at start and for the Eachlabs fallback
-async function omniInputs(admin: any, g: any): Promise<{ imageUrl?: string; refUrls: string[] }> {
-  let imageUrl: string | undefined;
+async function omniInputs(admin: any, g: any): Promise<{ imageUrl?: string; refUrls: string[]; endUrl?: string }> {
+  let imageUrl: string | undefined, endUrl: string | undefined;
   if (g.mode === "i2v") {
     const { data: s, error: se } = await admin.storage.from("inputs").createSignedUrl(g.image_path, 3600);
     if (se || !s) throw new Error("image not found");
     imageUrl = s.signedUrl;
+    if (g.end_image_path) { // optional last frame (25 Nov)
+      const { data: e, error: ee } = await admin.storage.from("inputs").createSignedUrl(g.end_image_path, 3600);
+      if (ee || !e) throw new Error("end image not found");
+      endUrl = e.signedUrl;
+    }
   }
   const refUrls: string[] = [];
   for (const r of isR2v(g) ? g.refs : []) {
@@ -506,9 +511,9 @@ async function omniInputs(admin: any, g: any): Promise<{ imageUrl?: string; refU
     if (se || !s) throw new Error("character photo not found");
     refUrls.push(s.signedUrl);
   }
-  return { imageUrl, refUrls };
+  return { imageUrl, refUrls, endUrl };
 }
-async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = [], noKie = false): Promise<{ id: string; model: string }> {
+async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string, refUrls: string[] = [], noKie = false, endUrl?: string): Promise<{ id: string; model: string }> {
   if (USE_KIE && !noKie && !imageUrl && refUrls.length <= 2 && refUrls.every((u) => !/cdn-us\.eachlabs\.ai/.test(u))) {
     try { return { id: await submitKie(admin, g, prompt, refUrls), model: "kie" }; }
     catch (e) { console.error("kie submit failed, using eachlabs:", e); }
@@ -518,7 +523,8 @@ async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string,
   // always made at 360p: HD (720p) is the same video sharpened by an upscaler afterwards (owner's choice, 24 Nov)
   const resolution = "360p";
   if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 10), aspect_ratio: ratio, duration, resolution }; }
-  else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution }; }
+  else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution };
+    if (endUrl) input.end_image_url = endUrl; } // Omni: with an end image the longest is 10s
   else { model = OMNI_T2V; input = { prompt: prompt.slice(0, 19000), aspect_ratio: ratio, duration, resolution }; }
   const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
     body: JSON.stringify({ model, version: "0.0.1", input }) });
@@ -528,8 +534,8 @@ async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string,
   return { id, model };
 }
 
-async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: string[] = []): Promise<{ id: string; model: string }> {
-  if (g.engine === "omni") return await submitOmni(ADMIN!, g, prompt, imageUrl, refUrls);
+async function submitVideo(g: any, prompt: string, imageUrl?: string, refUrls: string[] = [], endUrl?: string): Promise<{ id: string; model: string }> {
+  if (g.engine === "omni") return await submitOmni(ADMIN!, g, prompt, imageUrl, refUrls, false, endUrl);
   const isI2v = g.mode === "i2v";
   const isRef = refUrls.length > 0;
   const path = isRef ? "reference-to-video" : isI2v ? "image-to-video" : "text-to-video";
@@ -586,8 +592,8 @@ async function safeRetry(g: any, tryNo: number): Promise<boolean> {
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.prompt) throw new Error(j.error ?? `rewrite ${r.status}`);
-  const { imageUrl, refUrls } = await omniInputs(ADMIN!, g);
-  const sub = await submitOmni(ADMIN!, g, j.prompt + MYANMAR_LOOK, imageUrl, refUrls, true);
+  const { imageUrl, refUrls, endUrl } = await omniInputs(ADMIN!, g);
+  const sub = await submitOmni(ADMIN!, g, j.prompt + MYANMAR_LOOK, imageUrl, refUrls, true, endUrl);
   const notes = [...(g.post_data?.safe_notes ?? []), j.changed_mm].filter(Boolean);
   await ADMIN!.from("generations").update({ prompt_en: j.prompt, provider: `eachlabs:${sub.model}`, provider_request_id: sub.id,
     post_data: { ...(g.post_data ?? {}), safe_tries: tryNo, safe_notes: notes } }).eq("id", g.id);
@@ -610,8 +616,8 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
       if (/safety|policy|flagged|blocked|sensitive/i.test(msg)) return { state: "failed", error: SAFETY_MM };
       // Kie's own trouble (timeout, internal error): make the same video on Eachlabs instead
       console.error("kie failed, falling back to eachlabs:", msg);
-      const { imageUrl, refUrls } = await omniInputs(ADMIN!, g);
-      const sub = await submitOmni(ADMIN!, g, String(g.prompt_en ?? "") + (g.post_data?.raw ? "" : MYANMAR_LOOK), imageUrl, refUrls, true);
+      const { imageUrl, refUrls, endUrl } = await omniInputs(ADMIN!, g);
+      const sub = await submitOmni(ADMIN!, g, String(g.prompt_en ?? "") + (g.post_data?.raw ? "" : MYANMAR_LOOK), imageUrl, refUrls, true, endUrl);
       await ADMIN!.from("generations").update({ provider: `eachlabs:${sub.model}`, provider_request_id: sub.id }).eq("id", g.id);
       return { state: "running" };
     }
@@ -706,10 +712,10 @@ async function startGeneration(admin: any, id: string) {
     if (!plan) plan = await planVideo(g.prompt_mm, g.duration, refNames(g.refs));
     // Omni prompts already say "the young man in Image 1"; renaming would also change names inside the spoken Burmese lines
     const en = g.engine === "omni" ? plan.prompt : labelCast(plan.prompt, isR2v(g) ? g.refs : []);
-    const { imageUrl, refUrls } = await omniInputs(admin, g);
+    const { imageUrl, refUrls, endUrl } = await omniInputs(admin, g);
     const omni = g.engine === "omni";
     // "🅿️ Prompt တိုက်ရိုက်" (owner, 25 Nov): the customer's own prompt goes to Omni exactly, nothing added
-    const sub = await submitVideo(g, plan.raw ? en : en + MYANMAR_LOOK, imageUrl, refUrls);
+    const sub = await submitVideo(g, plan.raw ? en : en + MYANMAR_LOOK, imageUrl, refUrls, endUrl);
     await admin.from("generations").update({
       status: "running", prompt_en: en, provider_request_id: sub.id, ...(plan.raw ? { post_data: { raw: true } } : {}),
       provider: sub.model === "kie" ? `kie:${KIE_MODEL}` : omni || sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
@@ -943,7 +949,10 @@ Deno.serve(async (req) => {
       const { data: t } = await admin.from("templates").select("id").eq("id", body.template_id).eq("active", true).maybeSingle();
       tplId = t?.id ?? null;
     }
-    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs, template_id: tplId, engine }).eq("id", id);
+    // optional last frame for image→video (Omni only); must be the customer's own upload
+    const endPath = String(body.end_image_path ?? "");
+    const end_image_path = body.mode === "i2v" && engine === "omni" && endPath.startsWith(user.id + "/") && !endPath.includes("..") ? endPath.slice(0, 300) : null;
+    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs, template_id: tplId, engine, end_image_path }).eq("id", id);
 
     // submit in the background (old clients without a plan_id: plan first, ~1 minute)
     const work = startGeneration(admin, id);

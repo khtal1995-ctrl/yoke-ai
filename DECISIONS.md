@@ -183,3 +183,8 @@ Checks that caught real problems
 ## 25 Nov — ✍️ စာ→Video ပုံ ၃ → ၉ ပုံ
 - cleanRefs (api) နဲ့ castAdd (app) ကို 9 ထိ တိုး။ Omni ref-to-video က 10 ယူပေမဲ့ planner (✨ 9 names) နဲ့ Kie fallback (9) ကြောင့် 9။
 - 🅿️ Prompt မှာ Image 1..9 = ထည့်တဲ့ အစဉ်။
+
+## 25 Nov — ပုံ→Video မှာ အဆုံးပုံ (end frame)
+- Omni i2v ရဲ့ `end_image_url` (Eachlabs schema: optional, end image ပါရင် max 10s)။ App မှာ "အဆုံးပုံ (မထည့်လည်း ရ)" နေရာ။
+- generations.end_image_path (inputs bucket၊ user ကိုယ်ပိုင် path ပဲ လက်ခံ၊ engine omni + i2v မှာပဲ)။ omniInputs → endUrl → submitOmni။
+- ဈေး မပြောင်း။ အဆုံးပုံကို ပထမပုံနဲ့ အခန်း/ထောင့် တူအောင် ဆွဲဖို့ app tip ထဲ ရေးထား။

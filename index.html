@@ -142,6 +142,11 @@
             <label class="lbl">ပုံတင်ပါ (video ရဲ့ ပထမဆုံး မြင်ကွင်း ဖြစ်မယ်)</label>
             <label class="drop"><input type="file" id="imgInput" accept="image/jpeg,image/png,image/webp" class="hidden">
               <span id="imgTxt">📷 နှိပ်ပြီး ပုံရွေးပါ</span><img id="imgPrev" class="hidden" alt=""></label>
+            <label class="lbl" style="margin-top:10px">အဆုံးပုံ (မထည့်လည်း ရ — video ရဲ့ နောက်ဆုံး မြင်ကွင်း ဖြစ်မယ်)</label>
+            <label class="drop"><input type="file" id="endInput" accept="image/jpeg,image/png,image/webp" class="hidden">
+              <span id="endTxt">📷 နှိပ်ပြီး အဆုံးပုံ ရွေးပါ</span><img id="endPrev" class="hidden" alt=""></label>
+            <button class="btn ghost hidden" id="endClear" type="button" style="margin-top:6px">✕ အဆုံးပုံ ဖယ်မည်</button>
+            <div class="tip" style="margin-top:6px">💡 အဆုံးပုံကို ပထမပုံနဲ့ အခန်းတူ၊ ကင်မရာထောင့် တူ (သို့ နီးစပ်) အောင် ဆွဲပါ။ အဆုံးပုံ ပါရင် 10 စက္ကန့်ထိပဲ ရပါတယ်။</div>
           </div>
           <div id="storyBox">
           <div class="seg" id="styleSeg" style="margin-top:4px">
@@ -566,6 +571,10 @@ preview($("imgInput"), $("imgPrev"), $("imgTxt"), f => { opt.imageFile = f; opt.
   const im = new Image(); im.onload = () => { opt.imgRatio = im.naturalWidth > im.naturalHeight ? "16:9" : "9:16";
     toast(opt.imgRatio === "16:9" ? "ပုံက အလျားလိုက် — video ကို 16:9 (အလျားလိုက်) ထုတ်ပါမယ်" : "ပုံက ဒေါင်လိုက် — video ကို 9:16 (ဖုန်း/TikTok) ထုတ်ပါမယ်"); };
   im.src = URL.createObjectURL(f); });
+// optional last frame for i2v (Omni end_image_url, 25 Nov)
+preview($("endInput"), $("endPrev"), $("endTxt"), f => { opt.endFile = f; $("endClear").classList.remove("hidden"); });
+$("endClear").onclick = () => { opt.endFile = null; $("endInput").value = ""; $("endPrev").classList.add("hidden"); $("endPrev").removeAttribute("src");
+  $("endTxt").classList.remove("hidden"); $("endClear").classList.add("hidden"); };
 
 function renderCast(){
   $("castList").innerHTML = cast.map((c, i) => `<div class="cast">
@@ -668,9 +677,11 @@ async function createFromPlan(){
   showJob("⏳ စတင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>Video ဖန်တီးမှု စတင်နေပါတယ်</p>`);
   try {
     let image_path = null;
+    let end_image_path = null;
     if (opt.mode === "i2v") image_path = await uploadTo("inputs", opt.imageFile);
+    if (opt.mode === "i2v" && opt.endFile) end_image_path = await uploadTo("inputs", opt.endFile);
     const { data, error } = await sb.functions.invoke("api", { body: {
-      action:"create", plan_id: currentPlan.id, mode:apiMode(), prompt, quality:opt.quality, duration:opt.duration, ratio:curRatio(), sfx: opt.sfx === 1, image_path, refs: currentPlan.refs, template_id: currentPlan.template_id } });
+      action:"create", plan_id: currentPlan.id, mode:apiMode(), prompt, quality:opt.quality, duration:opt.duration, ratio:curRatio(), sfx: opt.sfx === 1, image_path, end_image_path, refs: currentPlan.refs, template_id: currentPlan.template_id } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     currentPlan = null;
     loadProfile();
