@@ -86,6 +86,10 @@ Checks that caught real problems
 - Now: one simple moment per scene (1–2 main actions + lines, calm real-life pace), short subtle acting, one-sentence reactions with a reason, never name people not in the scene, no whole-episode outline in a scene prompt (only series title, place/time, this scene, its people, director notes).
 - Fix A ("cut on action, something every second") is replaced by this; do not bring it back.
 
+## 25 Nov 09:45 — Latin words in Burmese lines (owner)
+- Omni said "ကျွန်တော် Ko ပါ" as "ကျွန်တော်ကိုပါ ကျွန်တော်ကိုပါ" (stumbled on the Latin name and repeated). Owner OK'd changing customer lines for this one case: the Omni planner writes any Latin-letter word inside a Burmese line in Burmese script as a Yangon person says it (Ko → ကို, Sorry → ဆောရီး, OK → အိုကေ). Nothing else in the line changes; the exact-line check now ignores only the Latin words. Works for ✨ and series.
+- Shots ep 2 test (09:20, 3 scenes, owner-approved script): 0 declines, $0.7285 ≈ 3,278 Ks; Omni also added soft background music (transcript), not checked yet.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

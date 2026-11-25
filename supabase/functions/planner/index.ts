@@ -156,7 +156,7 @@ const OMNI_SYSTEM = `You turn a customer's Burmese video story into a prompt for
 Rules (all of them):
 1. Translate the customer's Burmese story faithfully into English. Keep the meaning exactly.
 2. Leave nothing out: every action, its order, and every cause and effect the customer describes (for example "the car is about to hit her -> so he stops time -> he saves her") must be clearly in the prompt, so the story reads clearly.
-3. Dialogue stays exactly as the customer wrote it, in Burmese, word for word, with who says it. Never translate or change the spoken words.
+3. Dialogue stays exactly as the customer wrote it, in Burmese, word for word, with who says it. Never translate or change the spoken words, with ONE exception: a word written in Latin letters inside a Burmese line (a name like Ko, an English word like Sorry, OK, coffee) is written in Burmese script as a Yangon person says it (Ko -> ကို, Sorry -> ဆောရီး, OK -> အိုကေ, coffee -> ကော်ဖီ), so the voice reads it smoothly and never stumbles or repeats. Change nothing else in the line.
 4. Write it in three parts, like this:
    Look: one short paragraph: the characters' appearance (if given) and the overall look, e.g. natural light, cinematic composition, shallow depth of field, emotional storytelling, realistic photography, soft bokeh.
    Dialogue (Myanmar): one line per spoken line: <who> — "<Burmese words exactly>"
@@ -189,7 +189,10 @@ async function planOmni(key: string, story: string, duration: number, names: str
   if (!plan.prompt) issues.push("empty prompt");
   else if (/cannot be (turned|made|generated)|not generated/i.test(plan.prompt.slice(0, 300))) { plan.blocked = true; plan.prompt = ""; plan.lines = []; return { plan, issues: [] as string[] }; }
   for (const q of String(story).match(/[\"“”]([^\"“”]{1,200})[\"“”]/g) ?? []) {
-    const w = q.slice(1, -1).trim(); if (w && !plan.prompt.includes(w)) issues.push(`Customer's line not in the prompt exactly: ${w}`);
+    const w = q.slice(1, -1).trim(); if (!w) continue;
+    // Latin words (names, English words) are rewritten in Burmese script (owner, 25 Nov): check only the Burmese parts
+    const parts = /[A-Za-z]/.test(w) ? w.split(/[A-Za-z][A-Za-z'’.\-]*/).map((x) => x.trim()).filter((x) => /[\u1000-\u109F]/.test(x)) : [w];
+    if (parts.some((x) => !plan.prompt.includes(x))) issues.push(`Customer's line not in the prompt exactly (only Latin-letter words may be written in Burmese script): ${w}`);
   }
   return { plan, issues };
 }
