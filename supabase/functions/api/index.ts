@@ -39,7 +39,7 @@ let ADMIN: any = null; // service client for helpers that need secrets
 const refNames = (refs: any) => (Array.isArray(refs) ? refs : []).map((r: any) => String(r?.name ?? "").trim()).filter(Boolean);
 function cleanRefs(raw: any, uid: string): { path: string; name: string }[] | null {
   if (raw == null) return [];
-  if (!Array.isArray(raw) || raw.length > 3) return null;
+  if (!Array.isArray(raw) || raw.length > 9) return null; // Omni takes 10; planner + Kie fallback take 9 (25 Nov)
   const out: { path: string; name: string }[] = [];
   for (const r of raw) {
     const path = String(r?.path ?? ""), name = String(r?.name ?? "").trim().replace(/\s+/g, " ").slice(0, 30);

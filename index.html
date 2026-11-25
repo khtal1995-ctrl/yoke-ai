@@ -572,7 +572,7 @@ function renderCast(){
       <label class="ph">${c.file ? `<img src="${c.url}" alt="">` : "📷"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-i="${i}"></label>
       <input type="text" maxlength="30" placeholder="နာမည် (ဥပမာ မောင်မောင်)" value="${esc(c.name)}" data-n="${i}">
       <button class="x" type="button" data-x="${i}">✕</button></div>`).join("");
-  $("castAdd").classList.toggle("hidden", cast.length >= 3);
+  $("castAdd").classList.toggle("hidden", cast.length >= 9);
   document.querySelectorAll("#castList input[type=file]").forEach(inp => inp.onchange = () => {
     const f = inp.files[0]; if (!f) return;
     if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
@@ -581,7 +581,7 @@ function renderCast(){
   document.querySelectorAll("#castList input[type=text]").forEach(inp => inp.oninput = () => { cast[inp.dataset.n].name = inp.value; });
   document.querySelectorAll("#castList [data-x]").forEach(b => b.onclick = () => { cast.splice(Number(b.dataset.x), 1); renderCast(); });
 }
-$("castAdd").onclick = () => { if (cast.length < 3) { cast.push({ file:null, url:null, name:"", path:null }); renderCast(); } };
+$("castAdd").onclick = () => { if (cast.length < 9) { cast.push({ file:null, url:null, name:"", path:null }); renderCast(); } };
 // upload the photos once (cached per file) and return [{path, name}] for the API
 async function castRefs(){
   const used = cast.filter(c => c.file || c.name.trim());

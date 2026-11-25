@@ -179,3 +179,7 @@ Checks that caught real problems
 
 ## 25 Nov — Safety ငြင်းရင် Google ရဲ့ မူရင်းစာကို သိမ်း
 - generations.post_data.provider_error ထဲ သိမ်းတယ် (customer ကို SAFETY_MM ပဲ ပြမြဲ)။ ဘာကြောင့် ငြင်းလဲ owner ကို ပြောနိုင်ဖို့။
+
+## 25 Nov — ✍️ စာ→Video ပုံ ၃ → ၉ ပုံ
+- cleanRefs (api) နဲ့ castAdd (app) ကို 9 ထိ တိုး။ Omni ref-to-video က 10 ယူပေမဲ့ planner (✨ 9 names) နဲ့ Kie fallback (9) ကြောင့် 9။
+- 🅿️ Prompt မှာ Image 1..9 = ထည့်တဲ့ အစဉ်။
