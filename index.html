@@ -730,7 +730,7 @@ async function loadRolls(){
 function renderRolls(){
   if (!rolls.length) { $("rollList").innerHTML = `<p class="muted">Roll မရှိသေးပါ။</p>`; return; }
   $("rollList").innerHTML = rolls.map(r => `<div class="vitem" data-roll="${esc(r.id)}">
-    <div style="display:flex;gap:8px;align-items:center"><input type="text" maxlength="60" value="${esc(r.title)}" data-rtitle="${esc(r.id)}" style="flex:1">
+    <div style="display:flex;gap:8px;align-items:center"><span>✏️</span><input type="text" maxlength="60" value="${esc(r.title)}" data-rtitle="${esc(r.id)}" placeholder="ဇာတ်လမ်း နာမည်" style="flex:1;font-weight:600">
       <button class="x" type="button" data-rdel="${esc(r.id)}" title="Roll ဖျက်">🗑️</button></div>
     ${r.clips.length ? r.clips.map((c, i) => `<div style="display:flex;gap:8px;align-items:center;margin-top:8px">
         <b style="width:22px">${i + 1}</b>
@@ -748,7 +748,9 @@ function renderRolls(){
   </div>`).join("");
 }
 async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf(e)); } await loadRolls(); }
-$("rollNew").onclick = () => rollDo({ action:"roll_create", title:`Roll ${rolls.length + 1}` });
+// a new roll asks for its name (the story's title); empty → "Roll N"
+const rollName = () => { const n = prompt("Roll (ဇာတ်လမ်း) နာမည်", `Roll ${rolls.length + 1}`); return n === null ? null : (n.trim() || `Roll ${rolls.length + 1}`); };
+$("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title }); };
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel]"); if (!t) return;
   if (t.dataset.rolladd !== undefined) {
@@ -760,7 +762,8 @@ document.addEventListener("click", async ev => {
   }
   if (t.dataset.rollpick !== undefined) {
     const gid = t.dataset.rollpick, v = $q(`[data-rollsel="${gid}"]`).value; t.disabled = true;
-    try { if (v === "new") await srCall({ action:"roll_create", title:`Roll ${rolls.length + 1}`, generation_id: gid }); else await srCall({ action:"roll_add", id: v, generation_id: gid });
+    let title = null; if (v === "new") { title = rollName(); if (!title) { t.disabled = false; return; } }
+    try { if (v === "new") await srCall({ action:"roll_create", title, generation_id: gid }); else await srCall({ action:"roll_add", id: v, generation_id: gid });
       $q(`[data-rolladd-box="${gid}"]`).innerHTML = `<span class="muted">✅ Roll ထဲ ထည့်ပြီးပါပြီ</span>`; loadRolls(); }
     catch (e) { toast(msgOf(e)); t.disabled = false; }
     return;
