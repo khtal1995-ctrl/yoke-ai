@@ -134,6 +134,11 @@ Checks that caught real problems
 - Plan (owner): make everything in ✨ create; below it, an editing-style area that collects the videos (in rolls) so they can be put together. Design to be agreed with the owner first.
 - Commit afcdc15 (series script mode translate-only rules) is on main but was NOT deployed (live: planner v41, project v29).
 
+## 25 Nov 14:40 — 🎞️ Rolls under ✨ create (owner)
+- Customer's finished videos can be collected in Rolls ("➕ Roll ထဲ ထည့်" under every finished ✨ video and in Videos), ordered (↑ ↓ ✕), renamed, deleted, and joined into one video with "🎬 ဆက်မည်" — FREE (owner; Eachlabs ffmpeg cost is ours, a few tens of Ks).
+- Tables `rolls`, `roll_items` (RLS on, accessed only through the `project` function: roll_list / roll_create / roll_add / roll_update / roll_delete / roll_join). Joining = same ffmpeg concat as series (first clip's ratio, 720 if any clip is HD, 24 fps, silent clips get silence); the project tick polls `rolls.status = 'joining'`. Max 30 rolls per user, 30 videos per roll.
+- No scene photo in ✨ create (owner said no).
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

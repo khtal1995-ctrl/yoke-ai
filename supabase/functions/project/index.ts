@@ -539,6 +539,56 @@ async function advance(admin: any, ep: any) {
   }
 }
 
+// ---------- 🎞️ Rolls (owner, 25 Nov): a customer's own videos collected in order and joined into one, free ----------
+async function rollClips(admin: any, roll: any) {
+  const { data: items } = await admin.from("roll_items").select("id,generation_id,sort").eq("roll_id", roll.id).order("sort");
+  const ids = (items ?? []).map((x: any) => x.generation_id);
+  const { data: gens } = ids.length ? await admin.from("generations").select("id,user_id,video_path,ratio,quality,duration,audio,prompt_mm,status").in("id", ids) : { data: [] };
+  return (items ?? []).map((x: any) => ({ item: x, g: (gens ?? []).find((g: any) => g.id === x.generation_id) }))
+    .filter((x: any) => x.g && x.g.user_id === roll.user_id && x.g.status === "succeeded" && x.g.video_path);
+}
+async function joinRoll(admin: any, roll: any) {
+  if (roll.status === "joining" && roll.join_id) {
+    const r = await fetch(`https://api.eachlabs.ai/v1/prediction/${roll.join_id}`, { headers: await eachlabsHeaders(admin) });
+    const j: any = await r.json().catch(() => ({}));
+    if ((j.status === "success" || j.status === "succeeded") && j.output) {
+      const vr = await fetch(Array.isArray(j.output) ? j.output[0] : j.output);
+      if (!vr.ok) throw new Error(`download ${vr.status}`);
+      const path = `${roll.user_id}/roll_${roll.id}_${Date.now()}.mp4`;
+      const { error } = await admin.storage.from("videos").upload(path, new Uint8Array(await vr.arrayBuffer()), { contentType: "video/mp4", upsert: true });
+      if (error) throw error;
+      await admin.from("rolls").update({ status: "done", video_path: path, join_id: null, error: null, updated_at: new Date().toISOString() }).eq("id", roll.id);
+    } else if (j.status === "error" || j.status === "failed") {
+      await admin.from("rolls").update(roll.join_tries >= 2 ? { status: "failed", join_id: null, error: "ဆက်လို့ မရပါ — ပြန်ကြိုးစားပါ" } : { join_id: null, updated_at: new Date(0).toISOString() }).eq("id", roll.id);
+    }
+    return;
+  }
+  const clips = await rollClips(admin, roll);
+  if (clips.length < 2) { await admin.from("rolls").update({ status: "failed", error: "video ၂ ခု အနည်းဆုံး ထည့်ပါ" }).eq("id", roll.id); return; }
+  const urls: string[] = [];
+  for (const c of clips) { const { data: su } = await admin.storage.from("videos").createSignedUrl(c.g.video_path, 6 * 3600); urls.push(su!.signedUrl); }
+  // one size for all (the first clip's ratio; HD if any clip is HD), one frame rate, one audio format; silent clips get silence
+  const first = clips[0].g, base = clips.some((c: any) => c.g.quality === "hd") ? 720 : 480;
+  const long = Math.round(base * 16 / 9 / 2) * 2;
+  const [W, H] = first.ratio === "16:9" ? [long, base] : first.ratio === "1:1" ? [base, base] : [base, long];
+  const argv: string[] = ["ffmpeg", "-y"];
+  urls.forEach((_, i) => argv.push("-i", `{input${i}}`));
+  const fc: string[] = [];
+  clips.forEach((c: any, i: number) => {
+    fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p[v${i}]`);
+    fc.push(c.g.audio === false ? `aevalsrc=0:c=stereo:s=48000:d=${Number(c.g.duration) || 10}[a${i}]` : `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+  });
+  fc.push(clips.map((_: any, i: number) => `[v${i}][a${i}]`).join("") + `concat=n=${clips.length}:v=1:a=1[v][a]`);
+  argv.push("-filter_complex", fc.join(";"), "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+    "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "{output}");
+  const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabsHeaders(admin),
+    body: JSON.stringify({ model: "eachlabs-video-api", version: "0.0.1", input: { mode: "run_ffmpeg", input_urls: urls, output_format: "mp4", argv } }) });
+  const j: any = await r.json().catch(() => ({}));
+  const pid = j.predictionID ?? j.prediction_id ?? j.id;
+  if (!r.ok || !pid) throw new Error("roll join submit " + r.status + " " + JSON.stringify(j).slice(0, 200));
+  await admin.from("rolls").update({ status: "joining", join_id: pid, join_tries: (roll.join_tries ?? 0) + 1, updated_at: new Date().toISOString() }).eq("id", roll.id);
+}
+
 async function saveEpisode(admin: any, ep: any, url: string) {
   const vr = await fetch(url);
   if (!vr.ok) throw new Error(`download ${vr.status}`);
@@ -577,6 +627,10 @@ Deno.serve(async (req) => {
     if (!want || cronTok !== want) return json({ error: "bad token" }, 401);
     const { data: eps } = await admin.from("episodes").select("*").in("status", ["producing", "stitching"]).order("created_at").limit(5);
     await Promise.all((eps ?? []).map((e: any) => advance(admin, e).catch((err) => console.error("tick", e.id, err))));
+    const { data: rolls } = await admin.from("rolls").select("*").eq("status", "joining").order("updated_at").limit(5);
+    // a roll just asked to join is submitted by that request; the tick picks it up only if nothing was submitted for 2 minutes
+    await Promise.all((rolls ?? []).filter((r: any) => r.join_id || Date.now() - new Date(r.updated_at).getTime() > 120000)
+      .map((r: any) => joinRoll(admin, r).catch((err) => console.error("roll", r.id, err))));
     // scene splitting that never started or stopped (no result after 4 minutes): run the same scene splitting again
     const { data: stuck } = await admin.from("episodes").select("id,max_scenes,planning_since").eq("status", "planning").order("created_at").limit(2);
     for (const e of stuck ?? []) {
@@ -742,6 +796,78 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       await admin.from("episodes").update({ status: "producing", cost, error: null }).eq("id", ep.id).eq("status", "ready");
       bg(advance(admin, { ...ep, status: "producing" }).catch((e) => console.error(e)));
       return json({ ok: true, cost });
+    }
+    case "roll_list": {
+      const { data: rolls } = await admin.from("rolls").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(30);
+      const out = [];
+      for (const r of rolls ?? []) {
+        const clips = await rollClips(admin, r);
+        const paths = clips.map((c: any) => c.g.video_path).concat(r.video_path ? [r.video_path] : []);
+        const { data: signed } = paths.length ? await admin.storage.from("videos").createSignedUrls(paths, 3600) : { data: [] };
+        const url = (p: string) => (signed ?? []).find((x: any) => x.path === p)?.signedUrl ?? null;
+        out.push({ ...r, video_url: r.video_path ? url(r.video_path) : null,
+          clips: clips.map((c: any) => ({ id: c.g.id, prompt_mm: c.g.prompt_mm, duration: c.g.duration, url: url(c.g.video_path) })) });
+      }
+      return json({ rolls: out });
+    }
+    case "roll_create": {
+      const { count } = await admin.from("rolls").select("id", { count: "exact", head: true }).eq("user_id", uid);
+      if ((count ?? 0) >= 30) return json({ error: "Roll ၃၀ ထက် မများရပါ — မလိုတာ ဖျက်ပါ" }, 400);
+      const { data: r, error } = await admin.from("rolls").insert({ user_id: uid, title: clip(body.title, 60) || "Roll" }).select("id").single();
+      if (error) return json({ error: error.message }, 400);
+      if (isId(body.generation_id)) {
+        const { data: g } = await admin.from("generations").select("id").eq("id", body.generation_id).eq("user_id", uid).eq("status", "succeeded").maybeSingle();
+        if (g) await admin.from("roll_items").insert({ roll_id: r.id, generation_id: g.id, sort: 0 });
+      }
+      return json({ id: r.id });
+    }
+    case "roll_add": {
+      const { data: r } = await admin.from("rolls").select("id").eq("id", body.id).eq("user_id", uid).maybeSingle();
+      const { data: g } = await admin.from("generations").select("id").eq("id", body.generation_id).eq("user_id", uid).eq("status", "succeeded").maybeSingle();
+      if (!r || !g) return json({ error: "not found" }, 404);
+      const { data: last } = await admin.from("roll_items").select("sort").eq("roll_id", r.id).order("sort", { ascending: false }).limit(1);
+      const { count } = await admin.from("roll_items").select("id", { count: "exact", head: true }).eq("roll_id", r.id);
+      if ((count ?? 0) >= 30) return json({ error: "Roll တစ်ခုမှာ video ၃၀ ထက် မများရ" }, 400);
+      await admin.from("roll_items").insert({ roll_id: r.id, generation_id: g.id, sort: (last?.[0]?.sort ?? -1) + 1 });
+      await admin.from("rolls").update({ status: "idle", updated_at: new Date().toISOString() }).eq("id", r.id).neq("status", "joining");
+      return json({ ok: true });
+    }
+    case "roll_update": {
+      const { data: r } = await admin.from("rolls").select("*").eq("id", body.id).eq("user_id", uid).maybeSingle();
+      if (!r) return json({ error: "not found" }, 404);
+      if (r.status === "joining") return json({ error: "ဆက်နေတုန်း ခဏစောင့်ပါ" }, 400);
+      const upd: any = { updated_at: new Date().toISOString() };
+      if (typeof body.title === "string") upd.title = clip(body.title, 60) || r.title;
+      if (Array.isArray(body.order)) {
+        // the new order of generation ids; ids not in the list are removed from the roll
+        const keep = body.order.filter((x: any) => isId(x)).slice(0, 30);
+        const { data: items } = await admin.from("roll_items").select("id,generation_id").eq("roll_id", r.id);
+        for (const it of items ?? []) {
+          const i = keep.indexOf(it.generation_id);
+          if (i < 0) await admin.from("roll_items").delete().eq("id", it.id);
+          else await admin.from("roll_items").update({ sort: i }).eq("id", it.id);
+        }
+        upd.status = "idle";
+      }
+      await admin.from("rolls").update(upd).eq("id", r.id);
+      return json({ ok: true });
+    }
+    case "roll_delete": {
+      const { error } = await admin.from("rolls").delete().eq("id", body.id).eq("user_id", uid);
+      return error ? json({ error: error.message }, 400) : json({ ok: true });
+    }
+    case "roll_join": {
+      const { data: r } = await admin.from("rolls").select("*").eq("id", body.id).eq("user_id", uid).maybeSingle();
+      if (!r) return json({ error: "not found" }, 404);
+      if (r.status === "joining") return json({ ok: true });
+      const clips = await rollClips(admin, r);
+      if (clips.length < 2) return json({ error: "video ၂ ခု အနည်းဆုံး ထည့်ပါ" }, 400);
+      await admin.from("rolls").update({ status: "joining", join_id: null, join_tries: 0, error: null, updated_at: new Date().toISOString() }).eq("id", r.id);
+      bg(joinRoll(admin, { ...r, status: "idle", join_tries: 0 }).catch(async (e) => {
+        console.error("roll join", r.id, e);
+        await admin.from("rolls").update({ status: "failed", error: "ဆက်လို့ မရပါ — ပြန်ကြိုးစားပါ" }).eq("id", r.id);
+      }));
+      return json({ ok: true });
     }
     case "draw_photo": {
       const p = await ownProject(body.id);
