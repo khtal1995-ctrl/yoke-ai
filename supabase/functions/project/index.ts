@@ -233,8 +233,8 @@ Rules:
       seconds: Number(s.seconds) === 5 ? 5 : 10,
     })));
     const { data: pr } = await admin.from("projects").select("quality").eq("id", ep.project_id).single();
-    const per = pr.quality === "hd" ? 40 : 30;
-    await admin.from("episodes").update({ status: "ready", title: clip(out.title_mm, 80) || null, cost: per * scenes.length,
+    const cost = scenes.reduce((t: number, x: any) => t + (Number(x.seconds) === 5 ? (pr.quality === "hd" ? 25 : 15) : (pr.quality === "hd" ? 40 : 30)), 0);
+    await admin.from("episodes").update({ status: "ready", title: clip(out.title_mm, 80) || null, cost,
       warnings: (Array.isArray(out.warnings_mm) ? out.warnings_mm : []).map((w: any) => clip(w, 300)).filter(Boolean).slice(0, 5) }).eq("id", epId);
   } catch (e) {
     await admin.from("episodes").update({ status: "failed", error: String(e).slice(0, 300) }).eq("id", epId);
@@ -550,6 +550,13 @@ Deno.serve(async (req) => {
     if (!want || cronTok !== want) return json({ error: "bad token" }, 401);
     const { data: eps } = await admin.from("episodes").select("*").in("status", ["producing", "stitching"]).order("created_at").limit(5);
     await Promise.all((eps ?? []).map((e: any) => advance(admin, e).catch((err) => console.error("tick", e.id, err))));
+    // scene splitting that never started or stopped (no result after 4 minutes): run the same scene splitting again
+    const { data: stuck } = await admin.from("episodes").select("id,max_scenes,planning_since").eq("status", "planning").order("created_at").limit(2);
+    for (const e of stuck ?? []) {
+      if (e.planning_since && Date.now() - new Date(e.planning_since).getTime() < 4 * 60000) continue;
+      await admin.from("episodes").update({ planning_since: new Date().toISOString() }).eq("id", e.id);
+      bg(planEpisode(admin, e.id, e.max_scenes ?? MAX_SCENES));
+    }
     return json({ ok: true, n: eps?.length ?? 0 });
   }
 
@@ -676,6 +683,7 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
         epId = e.id;
       }
       const maxScenes = Math.min(MAX_SCENES, Math.max(1, Math.round(Number(body.max_scenes) || MAX_SCENES)));
+      await admin.from("episodes").update({ max_scenes: maxScenes, planning_since: new Date().toISOString() }).eq("id", epId);
       bg(planEpisode(admin, epId, maxScenes));
       return json({ episode_id: epId });
     }

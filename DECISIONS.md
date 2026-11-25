@@ -111,6 +111,12 @@ Checks that caught real problems
 - Owner: he picked the bag up, then sat down again at the cut and stood up — should pick up and stand. Cause: director ended scene 2 "still crouched" and scene 3 started "crouched, then rise"; the video may already have stood up.
 - Now: small physical actions finish inside the same scene (crouch to pick up → stand up), scenes end on a natural resting pose; a scene with a previous-shot frame starts exactly as that image shows (image wins over the text), never repeating an action.
 
+## 25 Nov 12:00 — Claude makes episodes the way the app does (owner)
+- Owner: Claude must make series episodes exactly as the app does (owner gives idea/script; the app's AI splits scenes, director, planner); Claude never writes scenes or prompts.
+- Cron now resumes scene splitting: an episode in status "planning" with no `planning_since` or older than 4 min gets the same `planEpisode` again (`episodes.max_scenes`, `planning_since`). Also helps customers when splitting stops.
+- How Claude makes an episode for the owner: insert `episodes` (project, user, next num, input_mode idea|script, input_mm = owner's text exactly, status "planning", max_scenes) → wait for status "ready" → show the owner the AI's scenes, seconds and price → on OK set status "producing" and cost (same as the app's produce).
+- Episode cost after splitting now sums 5 s / 10 s prices.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.
