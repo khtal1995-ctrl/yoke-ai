@@ -25,6 +25,7 @@
   h2{font-size:17px;margin:0 0 10px}.muted{color:var(--muted);font-size:13.5px}
   .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
   .tab{padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card2);text-align:center;cursor:pointer;font-weight:600}
+  .tabsub{display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:2px}
   .tab.on{border-color:var(--accent);background:rgba(124,92,255,.15)}
   .progfill{background:linear-gradient(90deg,var(--accent),#4f8cff);background-size:200% 100%;position:relative;overflow:hidden}
   .progfill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:progshine 1.4s linear infinite}
@@ -141,8 +142,8 @@
       <section id="createPage">
         <div class="card">
           <div class="tabs" id="modeTabs" style="grid-template-columns:1fr 1fr">
-            <div class="tab on" data-mode="t2v">✍️ စာ → Video</div>
-            <div class="tab" data-mode="i2v">🖼️ ပုံ → Video</div>
+            <div class="tab on" data-mode="t2v">📝 ဇာတ်လမ်း<small class="tabsub">မြန်မာလို ရေးရုံ</small></div>
+            <div class="tab" data-mode="i2v">🎬 ဒါရိုက်တာ<small class="tabsub">ပုံ + English prompt</small></div>
           </div>
           <div id="tplBox" class="hidden">
             <h2 style="margin-top:0">🔥 Template</h2>
@@ -163,13 +164,9 @@
             <button class="btn ghost hidden" id="endClear" type="button" style="margin-top:6px">✕ အဆုံးပုံ ဖယ်မည်</button>
           </div>
           <div id="storyBox">
-          <div class="seg" id="styleSeg" style="margin-top:4px">
-            <button data-v="rough" class="on">✍️ အကြမ်း<small>မြန်မာလို ရေး</small></button>
-            <!-- 📄 Script mode removed from the app (owner, 26 Nov); the api still accepts exact -->
-            <button data-v="raw">🅿️ Prompt အပြည့်<small>English တိုက်ရိုက်</small></button>
-          </div>
-          <div class="tip hidden" id="rawTip">ရေးထားတဲ့အတိုင်း တိုက်ရိုက် ထုတ်ပါမယ်။ ပုံတွေကို Image 1, Image 2… လို့ ညွှန်းပါ။</div>
-          <label class="lbl">ဘာ video လိုချင်လဲ</label>
+          <!-- no style picker (owner, 26 Nov): 📝 ဇာတ်လမ်း is always "rough" (Burmese, the AI writes the prompt);
+               🎬 ဒါရိုက်တာ is always "raw" (the customer's English prompt goes out as written). Set in setMode(). -->
+          <label class="lbl" id="promptLbl">ဘာ video လိုချင်လဲ</label>
           <textarea id="prompt" maxlength="2000" placeholder="ဥပမာ — လက်ဖက်ရည်ဆိုင်မှာ အဖွားက မြေးကို &quot;သား လက်ဖက်ရည် သောက်မလား&quot; လို့ မေးတယ်။ မြေးက &quot;သောက်မယ် အဖွား&quot; လို့ ပြန်ဖြေတယ်။"></textarea>
           <details class="tip" id="howTo"><summary style="cursor:pointer">💡 ဥပမာ ကြည့်ရန်</summary>
             <div style="margin-top:6px;line-height:1.7"><a href="#" id="howToEx" style="color:inherit;text-decoration:underline">နေဝင်ချိန် ကမ်းခြေမှာ မောင်မောင်နဲ့ မမ ရည်းစားနှစ်ယောက် လက်တွဲလမ်းလျှောက်နေတယ်။ မမက ရှက်ရှက်နဲ့ "မောင် ချစ်လား" လို့မေးတယ်။ မောင်မောင်က ပြုံးပြီး "အရမ်းချစ်တာပေါ့ ချစ်လေးရဲ့" လို့ဖြေတယ်။</a></div>
@@ -474,7 +471,8 @@ function go(p, tplView = false){
 /* ================= CREATE ================= */
 const opt = { mode:"t2v", quality:"std", duration:10, ratio:"9:16", sfx:0, imageFile:null, style:"rough" };
 const cast = [];   // character photos for the story: [{ file, name, path }] → Image 1..3
-let lastMode = "t2v";   // the ✨ create tab to come back to after 🔥 Template
+let lastMode = "t2v";
+const PH_STORY = document.getElementById("prompt").placeholder;   // the ✨ create tab to come back to after 🔥 Template
 document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => setMode(t.dataset.mode));
 function setMode(m){
   opt.mode = m; if (m !== "tpl") lastMode = m;
@@ -484,6 +482,12 @@ function setMode(m){
   $("castBox").classList.toggle("hidden", opt.mode === "i2v");
   $("storyBox").classList.toggle("hidden", opt.mode === "tpl");
   $("tplBox").classList.toggle("hidden", opt.mode !== "tpl");
+  // the writing style follows the tab, never shown
+  opt.style = m === "i2v" ? "raw" : "rough";
+  $("howTo").classList.toggle("hidden", m === "i2v");
+  $("prompt").maxLength = m === "i2v" ? 8000 : 2000;
+  $("promptLbl").textContent = m === "i2v" ? "English prompt" : "ဘာ video လိုချင်လဲ";
+  $("prompt").placeholder = m === "i2v" ? "Start exactly from Image 1… (end on Image 2)" : PH_STORY;
   if (opt.mode === "tpl") loadTemplates();
   syncTplUi();
 }
@@ -564,9 +568,6 @@ function seg(id, key, num){
   });
 }
 seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true); seg("qualSeg","quality");
-seg("styleSeg","style"); document.querySelectorAll("#styleSeg button").forEach(b => b.addEventListener("click", () => {
-  $("rawTip").classList.toggle("hidden", opt.style !== "raw");
-  $("howTo").classList.toggle("hidden", opt.style !== "rough"); $("prompt").maxLength = opt.style === "raw" ? 8000 : 2000; }));
 const PRICE = { std: { 5: 15, 10: 30 }, hd: { 5: 25, 10: 40 } }; // credits; must match DB gen_cost (owner, 24 Nov)
 const costOf = () => PRICE[opt.quality]?.[opt.duration >= 10 ? 10 : 5] ?? 30;
 function updateCost(){
