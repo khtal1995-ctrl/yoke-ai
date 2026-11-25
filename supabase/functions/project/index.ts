@@ -259,8 +259,8 @@ Then, for every scene, decide:
    - "face": English: one short, subtle, natural expression or gesture while saying it, and how the listener reacts. Keep it small and real; no over-acting.
 3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
 4. "reactions" (English): one short sentence per person in this scene: what they feel and WHY, caused by what just happened to them (e.g. bumped into by a stranger -> startled, then softens when he apologises kindly). Nobody smiles or looks happy without a reason in the story.
-5. same place and time: when a scene continues in the same place and time as the scene before it, the same people keep the same clothing, and the same staff and rooms stay the same.
-Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","reactions":"...","lines":[{"who":"...","text":"...","feeling_mm":"...","face":"..."}]}]}`;
+5. "outfits" (English): for every person in the scene, exactly what they wear, specific enough to look the same every time: colour, kind of garment, fabric/pattern, shoes or accessories if visible (e.g. "a light-blue cotton blouse with a high round neck, a knee-length navy pleated skirt, white flats"). Fit who they are and the place, time and situation. When a scene continues in the same place and time as the scene before it, copy each person's outfit text word for word; change it only when the story moves to another place or time or says they change clothes. The same staff and rooms stay the same too.
+Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","reactions":"...","outfits":[{"who":"...","wears":"..."}],"lines":[{"who":"...","text":"...","feeling_mm":"...","face":"..."}]}]}`;
 
 async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   const user = `[Series so far]\n${bibleText(b, ep.num)}\n\nCharacters:\n` +
@@ -281,7 +281,8 @@ function directorNotes(d: any, idx: number): string {
   const sc = (d?.scenes ?? []).find((x: any) => Number(x.idx) === idx);
   if (!sc) return "";
   const lines = (sc.lines ?? []).map((l: any) => `- ${l.who} says "${l.text}": feels ${l.feeling_mm}; acting: ${l.face}`).join("\n");
-  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts (already moving, no pause): ${sc.start}\nScene ends (cut on action): ${sc.end}\nReactions and why: ${sc.reactions ?? ""}\n${lines}`;
+  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\nReactions and why: ${sc.reactions ?? ""}\n${lines}` +
+    ((sc.outfits ?? []).length ? `\nClothing (use exactly these words, do not change or add colours): ${sc.outfits.filter((o: any) => o?.who && o?.wears).map((o: any) => `${o.who} wears ${o.wears}`).join("; ")}` : "");
 }
 
 async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
