@@ -54,11 +54,11 @@ const isR2v = (g: any) => Array.isArray(g.refs) && g.refs.length > 0;
 
 // ---------- planning: the "planner" function writes a checked plan (scene prompt, Burmese lines with acting, timeline,
 // Burmese summary for the customer). It runs before any money is spent, so the customer can approve it first.
-async function planVideo(mm: string, duration = 10, cast: string[] = [], engine = ""): Promise<any> {
+async function planVideo(mm: string, duration = 10, cast: string[] = [], engine = "", exact = false): Promise<any> {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ story: mm, duration, cast, engine }),
+    body: JSON.stringify(exact ? { story: mm, duration, cast, engine, exact: true } : { story: mm, duration, cast, engine }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || (!j.plan?.prompt && !j.plan?.blocked)) throw new Error(j.error ?? `planner ${r.status}`);
@@ -68,7 +68,8 @@ async function planVideo(mm: string, duration = 10, cast: string[] = [], engine 
 async function runPlan(admin: any, id: string) {
   const { data: p } = await admin.from("plans").select("*").eq("id", id).single();
   try {
-    const plan = await planVideo(p.prompt_mm, p.duration, refNames(p.refs), CUSTOMER_ENGINE);
+    // "📄 Script အပြည့်" (owner, 25 Nov): translate only, no create rules (Omni only)
+    const plan = await planVideo(p.prompt_mm, p.duration, refNames(p.refs), CUSTOMER_ENGINE, p.exact === true && CUSTOMER_ENGINE === "omni");
     await admin.from("plans").update({ status: "ready", plan, issues: plan.issues }).eq("id", id);
   } catch (e) {
     console.error("plan failed:", e);
@@ -875,7 +876,8 @@ Deno.serve(async (req) => {
     if ((count ?? 0) >= 20) return json({ error: "too many plans, please wait a little" }, 429);
     const refs = body.mode === "i2v" ? [] : cleanRefs(body.refs, user.id);
     if (refs === null) return json({ error: "ဇာတ်ကောင်ပုံ ၃ ပုံအထိ၊ ပုံတိုင်းမှာ မတူတဲ့ နာမည် ထည့်ပါ" }, 400);
-    const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v", refs: refs.length ? refs : null }).select("id").single();
+    const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v", refs: refs.length ? refs : null,
+      exact: body.exact === true && body.mode !== "i2v" }).select("id").single();
     if (error) return json({ error: error.message }, 400);
     const work = runPlan(admin, p.id);
     // @ts-ignore EdgeRuntime is provided by Supabase
@@ -887,7 +889,8 @@ Deno.serve(async (req) => {
     if (!p) return json({ error: "not found" }, 404);
     if (p.status === "planning" && Date.now() - new Date(p.created_at).getTime() > 200000) return json({ status: "failed", error: "timeout" });
     return json({ status: p.status, error: p.error, summary_mm: p.plan?.summary_mm ?? null, issues: p.issues ?? [], warnings_mm: p.plan?.warnings_mm ?? [], blocked: p.plan?.blocked === true,
-      lines: (p.plan?.lines ?? []).map((l: any) => ({ who: l.who, gender: l.gender, text: l.text })) });
+      lines: (p.plan?.lines ?? []).map((l: any) => ({ who: l.who, gender: l.gender, text: l.text })),
+      exact: p.exact === true, prompt_en: p.exact === true ? (p.plan?.prompt ?? null) : undefined });
   }
 
   // ---- create ----

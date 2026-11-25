@@ -139,6 +139,11 @@ Checks that caught real problems
 - Tables `rolls`, `roll_items` (RLS on, accessed only through the `project` function: roll_list / roll_create / roll_add / roll_update / roll_delete / roll_join). Joining = same ffmpeg concat as series (first clip's ratio, 720 if any clip is HD, 24 fps, silent clips get silence); the project tick polls `rolls.status = 'joining'`. Max 30 rolls per user, 30 videos per roll.
 - No scene photo in ✨ create (owner said no).
 
+## 25 Nov 14:45 — ✨ create: "✍️ အကြမ်း" / "📄 Script အပြည့်" (owner)
+- ✨ create has a style choice. ✍️ အကြမ်း (default) = the morning rules, unchanged. 📄 Script အပြည့် = translate only (`OMNI_SYSTEM_EXACT`): add/drop/change nothing, Burmese lines word for word, no clothing/framing/fill-in rules; the exact-line check still runs.
+- `plans.exact`; api `plan` takes `exact: true` (t2v only); `plan_status` returns `prompt_en` for exact plans and the plan card shows the full English prompt so the owner can check it before spending credits. Price unchanged.
+- Videos then go into a 🎞️ Roll and are joined (free).
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.
