@@ -895,7 +895,7 @@ Deno.serve(async (req) => {
   // ---- plan: write and check the plan first (no credits used); the customer approves it before "create" ----
   if (body.action === "plan") {
     const raw = body.raw === true && CUSTOMER_ENGINE === "omni"; // ✨ create and 🖼️ image→video (owner, 25 Nov 15:14)
-    const prompt = String(body.prompt ?? "").trim().slice(0, raw ? 4000 : 2000);
+    const prompt = String(body.prompt ?? "").trim().slice(0, raw ? 8000 : 2000);
     const duration = Number(body.duration) === 5 ? 5 : 10;
     if (!prompt) return json({ error: "empty prompt" }, 400);
     const { count } = await admin.from("plans").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 3600000).toISOString());
@@ -932,13 +932,13 @@ Deno.serve(async (req) => {
     if (body.plan_id) {
       const { data: p } = await admin.from("plans").select("id,user_id,status,prompt_mm,duration,refs,plan").eq("id", body.plan_id).single();
       if (!p || p.user_id !== user.id || p.status !== "ready") return json({ error: "plan not ready" }, 400);
-      if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 4000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
+      if (p.prompt_mm !== String(body.prompt ?? "").trim().slice(0, 8000) || p.duration !== Number(body.duration)) return json({ error: "plan does not match" }, 400);
       if (!sameRefs(p.refs ?? [], cleanRefs(body.refs, user.id) ?? [])) return json({ error: "plan does not match" }, 400);
       if (p.plan?.blocked || !p.plan?.prompt) return json({ error: "ဒီဇာတ်လမ်းကို ဗီဒီယို လုပ်လို့ မရပါ။ ပြင်ရေးပြီး ပြန်စီစဉ်ပါ" }, 400);
       planId = p.id; planRefs = p.refs ?? null; engine = p.plan?.engine === "omni" ? "omni" : null;
     }
     const { data: id, error } = await userDb.rpc("create_generation", {
-      p_mode: body.mode, p_prompt: String(body.prompt ?? "").slice(0, 4000),
+      p_mode: body.mode, p_prompt: String(body.prompt ?? "").slice(0, 8000),
       p_quality: body.quality, p_duration: Number(body.duration), p_ratio: body.ratio,
       p_image_path: body.image_path ?? null,
     });

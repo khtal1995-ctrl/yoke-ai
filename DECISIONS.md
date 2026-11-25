@@ -188,3 +188,6 @@ Checks that caught real problems
 - Omni i2v ရဲ့ `end_image_url` (Eachlabs schema: optional, end image ပါရင် max 10s)။ App မှာ "အဆုံးပုံ (မထည့်လည်း ရ)" နေရာ။
 - generations.end_image_path (inputs bucket၊ user ကိုယ်ပိုင် path ပဲ လက်ခံ၊ engine omni + i2v မှာပဲ)။ omniInputs → endUrl → submitOmni။
 - ဈေး မပြောင်း။ အဆုံးပုံကို ပထမပုံနဲ့ အခန်း/ထောင့် တူအောင် ဆွဲဖို့ app tip ထဲ ရေးထား။
+
+## 25 Nov — 🅿️ Prompt 4,000 → 8,000 လုံး
+- Owner ရဲ့ prompt (4,535 လုံး) textarea maxLength မှာ ပြတ်သွားလို့။ app maxLength၊ api plan/create slice၊ generations_prompt_mm_check အကုန် 8000။ Omni က 20,000 ထိ ယူတယ်။

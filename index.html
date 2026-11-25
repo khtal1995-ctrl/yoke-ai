@@ -553,7 +553,7 @@ function seg(id, key, num){
 seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true); seg("qualSeg","quality");
 seg("styleSeg","style"); document.querySelectorAll("#styleSeg button").forEach(b => b.addEventListener("click", () => {
   $("exactTip").classList.toggle("hidden", opt.style !== "exact"); $("rawTip").classList.toggle("hidden", opt.style !== "raw");
-  $("howTo").classList.toggle("hidden", opt.style !== "rough"); $("prompt").maxLength = opt.style === "raw" ? 4000 : 2000; }));
+  $("howTo").classList.toggle("hidden", opt.style !== "rough"); $("prompt").maxLength = opt.style === "raw" ? 8000 : 2000; }));
 const PRICE = { std: { 5: 15, 10: 30 }, hd: { 5: 25, 10: 40 } }; // credits; must match DB gen_cost (owner, 24 Nov)
 const costOf = () => PRICE[opt.quality]?.[opt.duration >= 10 ? 10 : 5] ?? 30;
 function updateCost(){
