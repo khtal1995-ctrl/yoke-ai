@@ -146,7 +146,7 @@ Checks that caught real problems
 - Videos then go into a 🎞️ Roll and are joined (free).
 
 ## 25 Nov 15:00 — ✨ create: "🅿️ Prompt" = the customer's English prompt sent to Omni unchanged (owner)
-- Owner will write the English prompt himself (no AI in between). Third style choice "🅿️ Prompt": api `plan` with `raw: true` saves the text as the plan prompt directly (no planner, no checks), plan card shows it, and the video is submitted with exactly that text — NO MYANMAR_LOOK line added (`plan.raw`, `generations.post_data.raw`). Up to 4000 characters. Character photos are Image 1-3 in order. Works in ✨ create and 🖼️ image→video (fixed 15:15: first version only worked without a start image).
+- Owner will write the English prompt himself (no AI in between). Third style choice "🅿️ Prompt": api `plan` with `raw: true` saves the text as the plan prompt directly (no planner, no checks), plan card shows it, and the video is submitted with exactly that text — NO MYANMAR_LOOK line added (`plan.raw`, `generations.post_data.raw`). Up to 4000 characters (DB check `generations_prompt_mm_check` raised to 4000 at 15:56). Character photos are Image 1-3 in order. Works in ✨ create and 🖼️ image→video (fixed 15:15: first version only worked without a start image).
 - ✍️ အကြမ်း (morning rules) and 📄 Script အပြည့် (translate only) stay.
 
 ## 25 Nov 15:45 — real progress while a video is made (owner)
