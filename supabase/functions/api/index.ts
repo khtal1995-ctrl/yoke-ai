@@ -627,7 +627,7 @@ async function pollVideo(g: any): Promise<{ state: "running" | "done" | "failed"
       if (/safety|declined|policy|blocked/i.test(msg)) {
         // a declined job costs nothing: rewrite the likely trigger and try again (twice at most) before giving up
         const tries = Number(g.post_data?.safe_tries ?? 0);
-        if (String(g.provider ?? "").includes("gemini-omni") && tries < SAFE_TRIES) {
+        if (g.episode_id && String(g.provider ?? "").includes("gemini-omni") && tries < SAFE_TRIES) { // series only; ✨ create as on the morning of 25 Nov (owner)
           try { if (await safeRetry(g, tries + 1)) return { state: "running" }; }
           catch (e) { console.error("safe rewrite failed:", e); }
         }

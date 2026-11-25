@@ -309,7 +309,7 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ story, duration: s.seconds === 5 ? 5 : 10, cast: refs.map((x: any) => x.name), engine: SERIES_ENGINE }),
+    body: JSON.stringify({ story, duration: s.seconds === 5 ? 5 : 10, cast: refs.map((x: any) => x.name), engine: SERIES_ENGINE, series: true }),
   });
   const j: any = await r.json().catch(() => ({}));
   if (!r.ok || !j.plan?.prompt) throw new Error(j.error ?? `planner ${r.status}`);

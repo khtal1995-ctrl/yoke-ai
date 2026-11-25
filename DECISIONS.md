@@ -117,6 +117,12 @@ Checks that caught real problems
 - How Claude makes an episode for the owner: insert `episodes` (project, user, next num, input_mode idea|script, input_mm = owner's text exactly, status "planning", max_scenes) → wait for status "ready" → show the owner the AI's scenes, seconds and price → on OK set status "producing" and cost (same as the app's produce).
 - Episode cost after splitting now sums 5 s / 10 s prices.
 
+## 25 Nov 12:40 — ✨ create back to the morning version (owner)
+- Owner: things that worked were getting worse. ✨ create (single customer video) now uses EXACTLY the Omni planner rules of the morning of 25 Nov (`OMNI_SYSTEM_CREATE` = planner v31 / commit 1f415b6 text, checked identical), the morning's exact-line check and cast limits, and NO automatic safety rewrite (api: series only).
+- Today's rules (Latin → Burmese script, add nothing, director clothing words, place / previous-shot photos, safety rewrite) apply to SERIES only (`project` sends `series: true` to the planner).
+- Do not change ✨ create rules again without the owner; test series changes on series only.
+- Omni 1.1 comparison (A, same inputs): scene 1 declined by Google safety (1.2 accepted the same prompt), scene 2 ok $0.352, scene 3 submit timed out (unknown whether made). Stopped by owner.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

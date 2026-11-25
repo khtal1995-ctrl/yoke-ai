@@ -152,6 +152,7 @@ function lint(plan: any, story: string, duration: number, cast?: string[]): stri
 
 // ---- Gemini Omni writer (owner's rules, 23 Nov): the customer's Burmese story -> Omni prompt, in the format of the
 // reference video the owner showed (ChatGPT style: look + Dialogue (Myanmar) + motion paragraph). Omni speaks the lines itself.
+// series only (episodes): today's rules. ✨ create uses OMNI_SYSTEM_CREATE below = the rules of the morning of 25 Nov (owner)
 const OMNI_SYSTEM = `You turn a customer's Burmese video story into a prompt for Gemini Omni Flash, a video model that generates the picture and the characters' Burmese speech together.
 Rules (all of them):
 1. Translate the customer's Burmese story faithfully into English. Keep the meaning exactly.
@@ -175,9 +176,30 @@ Rules (all of them):
 10. If the story cannot be made at all without breaking those safety limits (for example a child being hurt or bleeding), set "blocked": true, leave "prompt" empty, and explain in "warnings_mm" how to change the story.
 Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>","warnings_mm":["<Burmese warning>"],"blocked":false}`;
 
-async function planOmni(key: string, story: string, duration: number, names: string[], effort: string) {
+const OMNI_SYSTEM_CREATE = `You turn a customer's Burmese video story into a prompt for Gemini Omni Flash, a video model that generates the picture and the characters' Burmese speech together.
+Rules (all of them):
+1. Translate the customer's Burmese story faithfully into English. Keep the meaning exactly.
+2. Leave nothing out: every action, its order, and every cause and effect the customer describes (for example "the car is about to hit her -> so he stops time -> he saves her") must be clearly in the prompt, so the story reads clearly.
+3. Dialogue stays exactly as the customer wrote it, in Burmese, word for word, with who says it. Never translate or change the spoken words.
+4. Write it in three parts, like this:
+   Look: one short paragraph: the characters' appearance (if given) and the overall look, e.g. natural light, cinematic composition, shallow depth of field, emotional storytelling, realistic photography, soft bokeh.
+   Dialogue (Myanmar): one line per spoken line: <who> — "<Burmese words exactly>"
+   Motion Video Prompt: one natural story paragraph, in the order of events: where it happens, how the camera moves, what each person does and feels shown through face and body, who speaks when (say "speaks in Burmese" and repeat the exact Burmese line in quotes). No timestamps, no seconds, no headings inside it.
+5. Characters with reference photos are referred to as "the <young woman/young man/...> in Image N". In Burmese "ကောင်လေး" / "ကောင်မလေး" usually mean a young man / young woman (adults), not children: write "young man" / "young woman" (adult, early twenties) unless the story clearly says it is a child. Never put a child in fighting, danger or violence.
+6. If the customer allows or asks for speech but gives no exact words, write 1-2 short, natural spoken Burmese lines yourself (everyday Yangon speech) that fit the moment, and put them in Dialogue (Myanmar). Write what a real person would actually say in that moment (a reaction, a feeling, a taunt, a warning, a call to someone), never a line that describes their own action or what the viewer can already see (wrong: "I'm turning into a robot now to protect you"; right: "ကဲ… လာခဲ့စမ်း!").
+7. The customer's instructions to the app (length, "make a video", "a little speech is fine", style requests) are instructions to you, not part of the scene: never copy them into the prompt as text.
+8. Fill in the details the scene needs so it plays like a film: where it happens, time of day and light that fit the story, how the key visual effects look (e.g. how a transformation happens), how the camera moves, and the characters' reactions. The Look paragraph must fit this story; the words in the format example are only an example.
+   Clothing: decide what every person wears so it fits who they are in the story (rich or poor, job, age, personality: a very rich heir wears visibly expensive designer clothes even at home or by the pool; a farmer wears simple work clothes), the place, the time and the situation, and write it in the Look (for example: in bed or just woken up -> sleepwear such as pyjamas; household staff -> plain work uniforms; going out -> everyday clothes that fit the place). Character photos give the face, hair and build only: never copy the clothes from a photo unless the story asks for it (e.g. "the suit in Image 2"). If the customer describes clothes, use exactly that. When the story says it continues an earlier scene in the same place and time, keep the clothing that situation implies, plain and unchanged.
+   Framing: every person in the scene is fully visible from at least the chest up whenever they are on screen. Never shoot past the backs of other people's heads or shoulders, and never let anyone in the foreground block or crop the speaker. When a group stands in front of someone, film from the side or a wide angle so both the group and that person are seen clearly, then cut or move in close on whoever speaks.
+9. Warn the customer (in simple Burmese, in "warnings_mm"; an empty list when all is fine) about:
+   a) too much for the video length: more events or more speech than fit in the given seconds (Burmese speech is about 5 syllables per second). Say what may be cut or rushed and suggest shortening it.
+   b) parts Google's safety check will likely refuse: a child in fighting, danger or violence; blood, wounds or gore; nudity or sexual content; real famous people or politicians; well-known copyrighted characters, costumes or brands (superheroes, cartoon characters, logos). Say which part and how to change it. Still write the full prompt, but give any copyrighted character an original look of your own.
+10. If the story cannot be made at all without breaking those safety limits (for example a child being hurt or bleeding), set "blocked": true, leave "prompt" empty, and explain in "warnings_mm" how to change the story.
+Return ONLY JSON: {"prompt":"<the three parts as plain text>","lines":[{"who":"...","text":"<Burmese exactly>"}],"summary_mm":"<the story in simple Burmese, 1-3 sentences>","warnings_mm":["<Burmese warning>"],"blocked":false}`;
+
+async function planOmni(key: string, story: string, duration: number, names: string[], effort: string, series = false) {
   const user = `Video length: ${duration} seconds.\n${names.length ? `Reference photos: ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n` : ""}\nCustomer's story (Burmese):\n${story}`;
-  const out = parse(await llm(key, [{ role: "system", content: OMNI_SYSTEM }, { role: "user", content: user }], effort));
+  const out = parse(await llm(key, [{ role: "system", content: series ? OMNI_SYSTEM : OMNI_SYSTEM_CREATE }, { role: "user", content: user }], effort));
   const warnings_mm: string[] = (Array.isArray(out.warnings_mm) ? out.warnings_mm : []).map((w: any) => String(w ?? "").trim()).filter(Boolean).slice(0, 4);
   const plan: any = { prompt: String(out.prompt ?? "").trim(), lines: Array.isArray(out.lines) ? out.lines : [], summary_mm: String(out.summary_mm ?? "").trim(), engine: "omni", warnings_mm, blocked: out.blocked === true };
   if (plan.blocked) { plan.prompt = ""; plan.lines = []; return { plan, issues: [] as string[] }; }
@@ -192,7 +214,7 @@ async function planOmni(key: string, story: string, duration: number, names: str
   for (const q of String(story).match(/[\"“”]([^\"“”]{1,200})[\"“”]/g) ?? []) {
     const w = q.slice(1, -1).trim(); if (!w) continue;
     // Latin words (names, English words) are rewritten in Burmese script (owner, 25 Nov): check only the Burmese parts
-    const parts = /[A-Za-z]/.test(w) ? w.split(/[A-Za-z][A-Za-z'’.\-]*/).map((x) => x.trim()).filter((x) => /[\u1000-\u109F]/.test(x)) : [w];
+    const parts = series && /[A-Za-z]/.test(w) ? w.split(/[A-Za-z][A-Za-z'’.\-]*/).map((x) => x.trim()).filter((x) => /[\u1000-\u109F]/.test(x)) : [w];
     if (parts.some((x) => !plan.prompt.includes(x))) issues.push(`Customer's line not in the prompt exactly (only Latin-letter words may be written in Burmese script): ${w}`);
   }
   return { plan, issues };
@@ -217,8 +239,8 @@ async function safeRewrite(key: string, prompt: string, tryNo: number) {
 Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   if (req.headers.get("x-lab-token") !== LAB && auth !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return new Response("no", { status: 401 });
-  const { story, duration = 10, effort = "low", cast = [], engine = "", safe_rewrite = "", safe_try = 1 } = await req.json();
-  const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 10);
+  const { story, duration = 10, effort = "low", cast = [], engine = "", safe_rewrite = "", safe_try = 1, series = false } = await req.json();
+  const names: string[] = (Array.isArray(cast) ? cast : []).map((n: any) => String(n ?? "").trim().slice(0, series ? 60 : 30)).filter(Boolean).slice(0, series ? 10 : 9);
   const t0 = Date.now();
   const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/get_app_secret`, { method: "POST",
     headers: { apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
@@ -231,8 +253,8 @@ Deno.serve(async (req) => {
       return Response.json({ ...out, ms: Date.now() - t0 });
     }
     if (engine === "omni") {
-      let r1 = await planOmni(key, story, duration, names, effort);
-      if (r1.issues.length && Date.now() - t0 < 60000) r1 = await planOmni(key, story, duration, names, effort);
+      let r1 = await planOmni(key, story, duration, names, effort, series === true);
+      if (r1.issues.length && Date.now() - t0 < 60000) r1 = await planOmni(key, story, duration, names, effort, series === true);
       return Response.json({ plan: r1.plan, issues: r1.issues, passes: 1, ms: Date.now() - t0 });
     }
     const messages: any[] = [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `Video length: ${duration} seconds.\n\n${names.length ? `Characters with reference photos (use their names exactly as written): ${names.map((n, i) => `Image ${i + 1} = ${n}`).join("; ")}.\n\n` : ""}Request:\n${story}` }];
