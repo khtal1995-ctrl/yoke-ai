@@ -81,6 +81,11 @@ Checks that caught real problems
 - A scene in one of the customer's places uses that place photo as an Omni reference ("<name> (place)", counted in the 10) → the video is shot in exactly that location. No place photo → the AI chooses a place that fits the story.
 - Scene splitting writes each scene's `place`; the customer can change it per scene (dropdown) and edit places in the Story Bible. Table `project_places`, column `episode_scenes.place`.
 
+## 25 Nov 09:10 — series scenes: simple and natural (owner)
+- Owner: series videos looked forced ("doing every order"), the car moved after a door closed. Cause: Claude's 02:30 rules ("something happens every second", step-by-step reactions), the whole-episode outline in every scene, and naming people who are not in the scene.
+- Now: one simple moment per scene (1–2 main actions + lines, calm real-life pace), short subtle acting, one-sentence reactions with a reason, never name people not in the scene, no whole-episode outline in a scene prompt (only series title, place/time, this scene, its people, director notes).
+- Fix A ("cut on action, something every second") is replaced by this; do not bring it back.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

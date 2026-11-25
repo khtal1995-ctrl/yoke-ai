@@ -252,13 +252,13 @@ const DIRECTOR_SYSTEM = `You are an experienced Myanmar film director and acting
 Always refer to characters by their exact names as given, in every field (never transliterate or translate a name).
 Read the WHOLE story first: who these people are to each other, what happened before, what each moment means to them.
 Then, for every scene, decide:
-1. continuity: exactly where everyone is, what they hold, how they stand and where props/vehicles are at the START and at the END of the scene (in English). Each scene starts exactly where the previous one ended and is already moving in its first second: never open on people standing or sitting still, waiting. End a scene in the middle of a movement or right after a line, and the next scene continues that same movement at once (cut on action). No pauses: something happens in every second.
+1. continuity (English, short): where the people in this scene are and what they hold at the START and at the END. Each scene shows ONE simple moment: at most one or two main actions plus the lines, at a calm, natural, real-life pace, like a real film. Do not list many small movements; leave small details to the actors. Start naturally from where the previous scene ended (no long frozen pose at the start), but never rush. Props, vehicles and rooms stay where they are unless the story moves them. Never mention or name anyone who is not in this scene.
 2. for every spoken line:
    - "text": the customer's words EXACTLY as written (never change, add or remove words).
    - "feeling_mm": in simple Burmese, what this person truly feels inside at this moment and why (the subtext, not the surface).
-   - "face": English: the face and body while saying it (small, specific, real: eyes, breath, lips, hands) and how the listener reacts.
+   - "face": English: one short, subtle, natural expression or gesture while saying it, and how the listener reacts. Keep it small and real; no over-acting.
 3. "notes_mm": 1-2 simple Burmese sentences on the mood of the scene and how it connects to the next.
-4. "reactions" (English): for each person in the scene, how their feeling changes step by step and WHY, caused by what just happened to them (e.g. bumped into by a stranger -> startled, a little annoyed or embarrassed -> softens when he apologises kindly -> a small smile only once there is a reason). Nobody smiles or looks happy without a reason in the story; people react to what just happened.
+4. "reactions" (English): one short sentence per person in this scene: what they feel and WHY, caused by what just happened to them (e.g. bumped into by a stranger -> startled, then softens when he apologises kindly). Nobody smiles or looks happy without a reason in the story.
 5. same place and time: when a scene continues in the same place and time as the scene before it, the same people keep the same clothing, and the same staff and rooms stay the same.
 Return ONLY JSON: {"scenes":[{"idx":0,"start":"...","end":"...","notes_mm":"...","reactions":"...","lines":[{"who":"...","text":"...","feeling_mm":"...","face":"..."}]}]}`;
 
@@ -287,16 +287,14 @@ function directorNotes(d: any, idx: number): string {
 async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
   const total = scenes.length;
   const chars = b.chars.filter((c: any) => s.cast_names.includes(c.name));
-  // the whole episode outline, so each scene knows what came before and after it (fixes "wakes up again" / lost context)
-  const outline = scenes.map((x: any) => `Scene ${x.idx + 1}${(x.cast_names ?? []).length ? ` [${x.cast_names.join(", ")}]` : ""}: ${x.story_mm}`).join("\n");
   // the video model takes at most 3 photos: the first 3 characters (in the scene's order) with a photo; the rest are drawn from their saved looks
   const ordered = s.cast_names.map((n: string) => chars.find((c: any) => c.name === n)).filter(Boolean);
   const place = (b.places ?? []).find((x: any) => x.name === s.place && x.photo_path);
   const maxRefs = SERIES_ENGINE === "omni" ? 10 : (await groupScenesOn(admin)) ? 9 : 3;
   const refs = ordered.filter((c: any) => c.photo_path).slice(0, place && SERIES_ENGINE === "omni" ? maxRefs - 1 : maxRefs).map((c: any) => ({ path: c.photo_path, name: c.name }));
   if (place && SERIES_ENGINE === "omni") refs.push({ path: place.photo_path, name: `${place.name} (place)` });
-  const story = `[Series context, keep it consistent; do not show it as text]\n${bibleText(b, ep.num)}\n\n` +
-    `[Whole episode ${ep.num}, for continuity; this video is scene ${s.idx + 1}]\n${outline}\n\n` +
+  // keep it simple (owner, 25 Nov): only this scene and the people in it; never the other scenes or people not in it
+  const story = `[Series context, keep it consistent; do not show it as text]\nSeries: ${b.p.title}\n${b.p.setting_mm ? `Places and time: ${b.p.setting_mm}\n` : ""}\n` +
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
     (place && SERIES_ENGINE === "omni" ? `Place: this scene happens at ${place.name}; Image ${refs.length} is a photo of this place: use exactly this location.\n` : "") +
     `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.` + directorNotes(ep.director, s.idx);
