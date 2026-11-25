@@ -106,6 +106,11 @@ Checks that caught real problems
 - Scene splitting now gives each scene `seconds` 5 or 10 (just long enough: one quick action + one short line = 5). `episode_scenes.seconds`; `episode_scene_generation` charges `gen_cost(quality, seconds)`; the customer can change it per scene. Director and Omni planner: only what the story says, no extra actions or filler.
 - Prices NOT changed (owner): 5 s = 15 cr (HD 25), 10 s = 30 cr (HD 40), as already in gen_cost.
 
+## 25 Nov 11:45 — no repeated actions between scenes (owner)
+- Shots ep 4 test (5+5+10 s, owner: "good"): 20 s instead of 30, no filler, bag handed back, 4 lines right; Eachlabs $0.5011 ≈ 2,255 Ks (5 s = half of 10 s). 60 cr.
+- Owner: he picked the bag up, then sat down again at the cut and stood up — should pick up and stand. Cause: director ended scene 2 "still crouched" and scene 3 started "crouched, then rise"; the video may already have stood up.
+- Now: small physical actions finish inside the same scene (crouch to pick up → stand up), scenes end on a natural resting pose; a scene with a previous-shot frame starts exactly as that image shows (image wins over the text), never repeating an action.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

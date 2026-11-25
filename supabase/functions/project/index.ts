@@ -254,7 +254,7 @@ const DIRECTOR_SYSTEM = `You are an experienced Myanmar film director and acting
 Always refer to characters by their exact names as given, in every field (never transliterate or translate a name).
 Read the WHOLE story first: who these people are to each other, what happened before, what each moment means to them.
 Then, for every scene, decide:
-1. continuity (English, short): where the people in this scene are and what they hold at the START and at the END. Each scene shows ONE simple moment: only what the story says happens in it (no extra actions, no filler, nothing added to fill time), at a natural real-life pace, like a real film; each scene's length in seconds is given. Do not list many small movements; leave small details to the actors. Start naturally from where the previous scene ended (no long frozen pose at the start), but never rush. Props, vehicles and rooms stay where they are unless the story moves them. Never mention or name anyone who is not in this scene.
+1. continuity (English, short): where the people in this scene are and what they hold at the START and at the END. Each scene shows ONE simple moment: only what the story says happens in it (no extra actions, no filler, nothing added to fill time), at a natural real-life pace, like a real film; each scene's length in seconds is given. Do not list many small movements; leave small details to the actors. Start naturally from where the previous scene ended (no long frozen pose at the start), but never rush. Props, vehicles and rooms stay where they are unless the story moves them. Finish small physical actions inside the same scene (someone who bends or crouches to pick something up stands back up in that scene) and end each scene on a natural resting pose, so the next scene never has to repeat or undo an action. Never mention or name anyone who is not in this scene.
 2. for every spoken line:
    - "text": the customer's words EXACTLY as written (never change, add or remove words).
    - "feeling_mm": in simple Burmese, what this person truly feels inside at this moment and why (the subtext, not the surface).
@@ -280,11 +280,11 @@ async function direct(admin: any, ep: any, b: any, scenes: any[]) {
   out.usage = j.usage; out.model = DIRECTOR_MODEL;
   return out;
 }
-function directorNotes(d: any, idx: number): string {
+function directorNotes(d: any, idx: number, fromFrame = false): string {
   const sc = (d?.scenes ?? []).find((x: any) => Number(x.idx) === idx);
   if (!sc) return "";
   const lines = (sc.lines ?? []).map((l: any) => `- ${l.who} says "${l.text}": feels ${l.feeling_mm}; acting: ${l.face}`).join("\n");
-  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${sc.start}\nScene ends: ${sc.end}\nReactions and why: ${sc.reactions ?? ""}\n${lines}` +
+  return `\n[Director's notes: follow them exactly; keep every quoted line word for word]\nScene starts: ${fromFrame ? `exactly as the previous shot image shows (if this text differs from the image, follow the image; never repeat an action that already happened there). ${sc.start}` : sc.start}\nScene ends: ${sc.end}\nReactions and why: ${sc.reactions ?? ""}\n${lines}` +
     ((sc.outfits ?? []).length ? `\nClothing (use exactly these words, do not change or add colours): ${sc.outfits.filter((o: any) => o?.who && o?.wears).map((o: any) => `${o.who} wears ${o.wears}`).join("; ")}` : "");
 }
 
@@ -305,7 +305,7 @@ async function startScene(admin: any, ep: any, b: any, s: any, scenes: any[]) {
     `[This video: scene ${s.idx + 1} of ${total} of episode ${ep.num}]\n${s.story_mm}\n` +
     (place && SERIES_ENGINE === "omni" ? `Place: this scene happens at ${place.name}; Image ${refs.findIndex((r: any) => r.name === `${place.name} (place)`) + 1} is a photo of this place: use exactly this location.\n` : "") +
     (frame ? `Continuity: Image ${refs.length} is the last frame of the previous shot. This video continues straight from it: the same place, background, light, camera side, the people's positions and their clothes.\n` : "") +
-    `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.` + directorNotes(ep.director, s.idx);
+    `Characters in this scene: ${chars.map((c: any) => `${c.name} (${c.gender}, ${c.age}, ${c.look_mm ?? ""})`).join("; ") || "as described"}. Use each character's name as "who" for their lines.` + directorNotes(ep.director, s.idx, !!frame);
   const r = await fetch(`${SUPABASE_URL}/functions/v1/planner`, {
     method: "POST", signal: AbortSignal.timeout(140000),
     headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
