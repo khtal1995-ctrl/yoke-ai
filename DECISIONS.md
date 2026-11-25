@@ -204,3 +204,6 @@ Checks that caught real problems
 ## 26 Nov — ရေးပုံ ရွေးစရာ ဖယ်၊ tab နာမည်သစ်
 - "📝 ဇာတ်လမ်း" (t2v) = အမြဲ rough (မြန်မာ၊ AI က prompt ရေး၊ ပုံ ၉ ပုံ)။ "🎬 ဒါရိုက်တာ" (i2v) = အမြဲ raw (English prompt တိုက်ရိုက်၊ အစပုံ/အဆုံးပုံ)။ App မှာ မပြ — setMode() ထဲ သတ်မှတ်။
 - t2v မှာ raw (ပုံ ၉ ပုံ + English) ကို app ကနေ မရွေးနိုင်တော့ (api ကတော့ လက်ခံဆဲ)။
+
+## 26 Nov — 5 s ထုတ်လို့ မရခဲ့တာ ပြင်
+- create_generation RPC ထဲ "p_duration <> 10" ကျန်နေခဲ့ (25 Nov က gen_cost ပဲ စစ်ခဲ့လို့ မတွေ့)။ အခု 5 | 10။ credit မဖြတ်ခဲ့ (RPC ထဲမှာ ဖြတ်ခင် ရပ်တာ)။

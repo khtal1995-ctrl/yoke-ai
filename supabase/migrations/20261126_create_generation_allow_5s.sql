@@ -1,0 +1,3 @@
+-- create_generation: allow 5 s videos as well as 10 s (prices from gen_cost: 5 s = 15 / HD 25)
+-- (full function body applied via migration create_generation_allow_5s; only the duration check changed)
+-- if p_duration not in (5, 10) then raise exception 'only 5 or 10 second videos'; end if;
