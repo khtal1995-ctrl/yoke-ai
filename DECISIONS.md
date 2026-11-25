@@ -149,6 +149,9 @@ Checks that caught real problems
 - Owner will write the English prompt himself (no AI in between). Third style choice "🅿️ Prompt": api `plan` with `raw: true` saves the text as the plan prompt directly (no planner, no checks), plan card shows it, and the video is submitted with exactly that text — NO MYANMAR_LOOK line added (`plan.raw`, `generations.post_data.raw`). Up to 4000 characters. Character photos are Image 1-3 in order. Works in ✨ create and 🖼️ image→video (fixed 15:15: first version only worked without a start image).
 - ✍️ အကြမ်း (morning rules) and 📄 Script အပြည့် (translate only) stay.
 
+## 25 Nov 15:45 — real progress while a video is made (owner)
+- The "1–3 minutes" text is replaced by the job's real stage from the server (api `status` → `progress {stage: waiting|making|hd|finishing, elapsed, expected}`; waiting/making comes from the live Eachlabs prediction status) and a bar timed against the MEDIAN real time of the last 20 finished videos with the same engine/quality/length (cached 10 min; fallback 90 s / HD 150 s). The bar stops at 95% until the video is really ready; past the usual time it says so.
+
 ## CURRENT STATE (25 Nov, 02:30)
 - ✨ ဖန်တီး and 📁 ဇာတ်လမ်းတွဲ both make video with Omni 1.2 on Eachlabs, same planner rules, HD = upscale to 720p. Series HD not yet tested end to end.
 - Open: AI father portrait for the Kaung Khant story not approved yet (https://cdn-us.eachlabs.ai/uploads/1202d8fb-8ad7-40fb-89c7-6664583ca449.jpg); scene-1 pronunciation issue from the 25 Nov series test; Kie.ai off (USE_KIE=false, 12 free credits); keep Eachlabs > $10; lab-only edge functions `labupload`, `labpeek`.

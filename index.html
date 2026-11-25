@@ -692,12 +692,13 @@ async function watchJob(id, showOnCreate){
       const g = data.generation;
       if (showOnCreate) {
         if (g.status === "succeeded") {
+          clearInterval(progTimer);
           showJob("✅ ပြီးပါပြီ", videoHtml(data.video_url, g) + rollAddBtn(g.id));
         } else if (g.status === "failed") {
+          clearInterval(progTimer);
           showJob("⚠️ မအောင်မြင်ပါ", `<div class="status bad">AI က video မထုတ်နိုင်ပါ။ ${g.cost} credits ပြန်ထည့်ပေးပြီးပါပြီ။ Prompt ပြင်ပြီး ထပ်စမ်းပါ။</div>`);
         } else {
-          const s = Math.round((Date.now()-started)/1000);
-          showJob("🎬 ဖန်တီးနေပါတယ်…", `<p class="muted"><span class="spin"></span>ပုံမှန် ၁–၃ မိနစ် ကြာပါတယ် (${s}s)။ ဒီစာမျက်နှာ ပိတ်ထားလည်း ရပါတယ် — "Video များ" မှာ ပြန်ကြည့်လို့ရမယ်။</p>`);
+          showProgress(data.progress, g);
         }
       }
       if (g.status === "succeeded" || g.status === "failed") { watching.delete(id); loadProfile(); if (!$("videosPage").classList.contains("hidden")) loadVideos(); return; }
@@ -710,6 +711,29 @@ async function resumeJobs(){
   (data || []).forEach(g => watchJob(g.id, false));
   const { data: rc } = await sb.from("recreates").select("id").eq("user_id", me.id).eq("status", "running");
   (rc || []).forEach(r => watchRecreate(r.id, false));
+}
+// real progress (owner, 25 Nov): the job's actual stage from the server + a bar timed by how long such videos really took lately
+let progTimer = null;
+function showProgress(pg, g){
+  clearInterval(progTimer);
+  const steps = [["waiting","⏳ AI ဆီ တန်းစီနေ"],["making","🎬 Video ထုတ်နေ"]].concat(g.quality === "hd" ? [["hd","✨ HD ပြင်နေ"]] : []).concat([["finishing","💾 သိမ်းနေ"]]);
+  const cur = Math.max(0, steps.findIndex(s => s[0] === (pg?.stage || "making")));
+  const t0 = Date.now(), el0 = pg?.elapsed ?? 0, exp = Math.max(30, pg?.expected ?? 90);
+  let first = true;
+  const draw = () => {
+    const el = el0 + Math.round((Date.now() - t0) / 1000);
+    // the bar follows real time against the usual time; it never claims 100% before the video is ready
+    const pct = Math.min(95, Math.round(el / exp * 100)), left = Math.max(0, exp - el);
+    const html = `
+      <div style="height:10px;background:var(--card2);border-radius:6px;overflow:hidden;margin:4px 0 8px"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#7c5cff,#4f8cff);transition:width 1s linear"></div></div>
+      <div class="muted" style="font-size:13px">${pct}% · ${el}s ကြာပြီ · ${left > 0 ? `ပုံမှန်ဆို နောက် ~${left}s` : "ပုံမှန်ထက် နည်းနည်း ကြာနေပါတယ် — ခဏစောင့်ပါ"}</div>
+      <ol class="plan" style="margin-top:8px">${steps.map((s, i) => `<li style="opacity:${i <= cur ? 1 : .45}">${i < cur ? "✅ " : i === cur ? '<span class="spin"></span>' : ""}${s[1]}</li>`).join("")}</ol>
+      <p class="muted" style="font-size:12px">ဒီစာမျက်နှာ ပိတ်ထားလည်း ရပါတယ် — "Video များ" မှာ ပြန်ကြည့်လို့ရမယ်။</p>`;
+    // only the first draw scrolls to the card; the next ones just refresh it
+    if (first && $("jobTitle").textContent !== "🎬 ဖန်တီးနေပါတယ်…") showJob("🎬 ဖန်တီးနေပါတယ်…", html); else { $("jobTitle").textContent = "🎬 ဖန်တီးနေပါတယ်…"; $("jobBody").innerHTML = html; }
+    first = false;
+  };
+  draw(); progTimer = setInterval(draw, 1000);
 }
 function videoHtml(url, g){
   if (!url) return `<p class="muted">Video ဖိုင် ပြင်ဆင်နေပါတယ်…</p>`;

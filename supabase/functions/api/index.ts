@@ -679,6 +679,22 @@ function labelCast(prompt: string, refs: any[]): string {
     return part;
   }).join("");
 }
+// how long videos like this one (same engine, quality, length) really took over the last finished ones; cached 10 minutes
+const typicalCache = new Map<string, { at: number; sec: number }>();
+async function typicalSeconds(admin: any, g: any): Promise<number> {
+  const key = `${g.engine ?? "wan"}|${g.quality}|${g.duration}`;
+  const c = typicalCache.get(key);
+  if (c && Date.now() - c.at < 600000) return c.sec;
+  let q = admin.from("generations").select("created_at,finished_at").eq("status", "succeeded").eq("quality", g.quality).eq("duration", g.duration)
+    .not("finished_at", "is", null).order("finished_at", { ascending: false }).limit(20);
+  q = g.engine ? q.eq("engine", g.engine) : q.is("engine", null);
+  const { data } = await q;
+  const xs = (data ?? []).map((r: any) => (new Date(r.finished_at).getTime() - new Date(r.created_at).getTime()) / 1000).filter((x: number) => x > 10 && x < 1800).sort((a: number, b: number) => a - b);
+  const sec = xs.length ? Math.round(xs[Math.floor(xs.length / 2)]) : (g.quality === "hd" ? 150 : 90); // median
+  typicalCache.set(key, { at: Date.now(), sec });
+  return sec;
+}
+
 // use the approved plan (or plan now for old clients), then submit to Wan (runs in the background after "create" has answered)
 async function startGeneration(admin: any, id: string) {
   const { data: g } = await admin.from("generations").select("*").eq("id", id).single();
@@ -946,12 +962,28 @@ Deno.serve(async (req) => {
     await step(admin, g);
 
     const { data: fresh } = await userDb.from("generations").select("*").eq("id", body.id).single();
+    // real progress (owner, 25 Nov): the job's actual stage + how long such videos really took lately
+    let progress: any = null;
+    if (fresh && (fresh.status === "queued" || fresh.status === "running")) {
+      let stage = fresh.status === "queued" ? "waiting" : "making";
+      if (fresh.post_stage === "upscaling") stage = "hd";
+      else if (fresh.post_stage) stage = "finishing";
+      else if (fresh.status === "running" && String(fresh.provider ?? "").startsWith("eachlabs:") && fresh.provider_request_id) {
+        try {
+          const pr = await fetch(`https://api.eachlabs.ai/v1/prediction/${fresh.provider_request_id}`, { headers: await eachlabs(admin), signal: AbortSignal.timeout(8000) });
+          const pj: any = await pr.json().catch(() => ({}));
+          if (/queue|start|pending/i.test(String(pj.status ?? ""))) stage = "waiting";
+          else if (/success/i.test(String(pj.status ?? ""))) stage = "finishing";
+        } catch { /* keep "making" */ }
+      }
+      progress = { stage, elapsed: Math.round((Date.now() - new Date(fresh.created_at).getTime()) / 1000), expected: await typicalSeconds(admin, fresh) };
+    }
     let video_url: string | undefined;
     if (fresh?.status === "succeeded" && fresh.video_path) {
       const { data: s } = await admin.storage.from("videos").createSignedUrl(fresh.video_path, 3600);
       video_url = s?.signedUrl;
     }
-    return json({ generation: fresh, video_url });
+    return json({ generation: fresh, video_url, progress });
   }
 
   return json({ error: "unknown action" }, 400);
