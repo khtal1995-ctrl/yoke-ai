@@ -49,7 +49,9 @@ function cleanRefs(raw: any, uid: string): { path: string; name: string }[] | nu
   }
   return out;
 }
-const sameRefs = (a: any, b: any) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+// compare by value: refs read back from the database (jsonb) come with their keys in another order (26 Nov)
+const refsSig = (a: any) => (Array.isArray(a) ? a : []).map((r: any) => `${r?.path ?? ""}|${r?.name ?? ""}`).join("\n");
+const sameRefs = (a: any, b: any) => refsSig(a) === refsSig(b);
 const isR2v = (g: any) => Array.isArray(g.refs) && g.refs.length > 0;
 
 // ---------- planning: the "planner" function writes a checked plan (scene prompt, Burmese lines with acting, timeline,

@@ -219,3 +219,6 @@ Checks that caught real problems
 
 ## 26 Nov — Roll "ဆက်နေပါတယ်" မပြီးတာ ပြင်
 - episode-tick cron က episodes producing/stitching ရှိမှ project tick ခေါ်တာ — rolls joining ကို ဘယ်တော့မှ မကောက်ခဲ့ (Roll 2 ၈ နာရီ ပိတ်မိ)။ အခု planning episodes + joining rolls အတွက်လည်း ခေါ်တယ်။
+
+## 26 Nov — "plan does not match" (ပုံပါတဲ့ video) ပြင်
+- sameRefs က JSON.stringify နဲ့ နှိုင်းတာ — DB jsonb က key အစဉ် {name,path} ပြန်ပေး၊ cleanRefs က {path,name}။ ပုံပါတိုင်း create ငြင်းခဲ့။ အခု path|name တန်ဖိုးနဲ့ နှိုင်း။
