@@ -36,6 +36,9 @@
   .rnum{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.7);border-radius:6px;padding:0 6px;font-size:13px}
   .rdur{position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.7);border-radius:6px;padding:0 5px;font-size:11px}
   .rbtns{display:flex;gap:4px;margin-top:4px}
+  .rtrans{display:flex;gap:6px;margin-top:10px}
+  .rtrans button{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 0;font-size:13px;cursor:pointer}
+  .rtrans button.on{border-color:var(--accent);background:rgba(124,92,255,.15)}
   .rbtns button{flex:1;background:var(--card2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:3px 0;font-size:12px;cursor:pointer}
   .rbtns button:disabled{opacity:.3}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
@@ -801,6 +804,7 @@ async function loadRolls(){
   renderRolls();
   if (rolls.some(r => r.status === "joining")) rollPoll = setTimeout(() => { if (!$("createPage").classList.contains("hidden")) loadRolls(); }, 8000);
 }
+const rollTrans = {};
 function renderRolls(){
   if (!rolls.length) { $("rollList").innerHTML = `<p class="muted">Roll မရှိသေးပါ။</p>`; return; }
   // one title, the clips side by side in order (swipe), ▶️ plays them one after another (owner, 26 Nov)
@@ -816,6 +820,8 @@ function renderRolls(){
       </div>`).join("")}</div>`
       : `<p class="muted" style="font-size:13px">Video အောက်က "➕ Roll ထဲ ထည့်" နှိပ်ပါ။</p>`}
     <div data-rplayer="${esc(r.id)}"></div>
+    ${r.clips.length >= 2 ? `<div class="rtrans">${[["cut","✂️ ဖြတ်"],["dissolve","🌫️ ရော"],["fadeblack","⚫ အမည်း"]].map(([v, l]) =>
+      `<button type="button" data-rtrans="${esc(r.id)}|${v}" class="${(rollTrans[r.id] ?? r.transition ?? "cut") === v ? "on" : ""}">${l}</button>`).join("")}</div>` : ""}
     <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><span class="muted" style="font-size:12px;flex:1">${r.clips.length} ခု · ${r.clips.reduce((t, c) => t + (Number(c.duration) || 0), 0)} စက္ကန့်</span>
     ${r.status === "joining" ? `<span class="muted" style="font-size:13px"><span class="spin"></span>ဆက်နေပါတယ်…</span>`
       : `<button class="btn ghost sm" type="button" data-rjoin="${esc(r.id)}" style="width:auto" ${r.clips.length < 2 ? "disabled" : ""}>🎬 ဖိုင်တစ်ခုတည်း ဆက်မည်</button>`}</div>
@@ -840,7 +846,9 @@ async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf
 const rollName = () => { const n = prompt("Roll (ဇာတ်လမ်း) နာမည်", `Roll ${rolls.length + 1}`); return n === null ? null : (n.trim() || `Roll ${rolls.length + 1}`); };
 $("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title }); };
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel],[data-rplay],[data-rplayall]"); if (!t) return;
+  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel],[data-rplay],[data-rplayall],[data-rtrans]"); if (!t) return;
+  // how the clips change into each other in the joined file (chosen before "join")
+  if (t.dataset.rtrans !== undefined) { const [rid, v] = t.dataset.rtrans.split("|"); rollTrans[rid] = v; return renderRolls(); }
   if (t.dataset.rplayall !== undefined) return rollPlay(t.dataset.rplayall, 0);
   // tap a clip: play from that clip on
   if (t.dataset.rplay !== undefined) { const [rid, i] = t.dataset.rplay.split("|"); return rollPlay(rid, Number(i)); }
@@ -865,7 +873,8 @@ document.addEventListener("click", async ev => {
     if (dir === 0) ids.splice(k, 1); else { const j = k + dir; [ids[k], ids[j]] = [ids[j], ids[k]]; }
     return rollDo({ action:"roll_update", id: rid, order: ids });
   }
-  if (t.dataset.rjoin !== undefined) { t.disabled = true; return rollDo({ action:"roll_join", id: t.dataset.rjoin }); }
+  if (t.dataset.rjoin !== undefined) { t.disabled = true; const r = rolls.find(x => x.id === t.dataset.rjoin);
+    return rollDo({ action:"roll_join", id: t.dataset.rjoin, transition: rollTrans[t.dataset.rjoin] ?? r?.transition ?? "cut" }); }
   if (t.dataset.rdel !== undefined) { if (confirm("ဒီ Roll ကို ဖျက်မလား? (video တွေကတော့ မပျက်ပါ)")) return rollDo({ action:"roll_delete", id: t.dataset.rdel }); }
 });
 document.addEventListener("change", ev => { const el = ev.target.closest("[data-rtitle]"); if (el) rollDo({ action:"roll_update", id: el.dataset.rtitle, title: el.value }); });

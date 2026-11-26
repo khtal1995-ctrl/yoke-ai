@@ -222,3 +222,8 @@ Checks that caught real problems
 
 ## 26 Nov — "plan does not match" (ပုံပါတဲ့ video) ပြင်
 - sameRefs က JSON.stringify နဲ့ နှိုင်းတာ — DB jsonb က key အစဉ် {name,path} ပြန်ပေး၊ cleanRefs က {path,name}။ ပုံပါတိုင်း create ငြင်းခဲ့။ အခု path|name တန်ဖိုးနဲ့ နှိုင်း။
+
+## 26 Nov — Roll ဆက်ရာမှာ ကူးပြောင်းမှု (AI မသုံး)
+- Owner: AI ကြား video (~၃၂၀ ကျပ်/နေရာ) များတယ် → ffmpeg ကူးပြောင်းမှုပဲ။ rolls.transition = cut | dissolve (xfade fade) | fadeblack (xfade fadeblack)၊ 0.5 s၊ အသံ acrossfade 0.5 s။
+- Clip တိုင်းကို ကြေညာထားတဲ့ စက္ကန့်အတိုင်း တိတိ (tpad + trim / apad + atrim) ပြင်ပြီးမှ xfade offset တွက်။ ffmpeg နဲ့ စမ်းပြီး (5 + 4.9 + 10 s, အသံမပါ clip ပါ) ၃ မျိုးလုံး ✓။
+- ကူးပြောင်းမှု တစ်ခုစီမှာ 0.5 s ထပ်လို့ စုစုပေါင်း ကြာချိန် 0.5 s စီ တိုတယ်။

@@ -574,11 +574,27 @@ async function joinRoll(admin: any, roll: any) {
   const argv: string[] = ["ffmpeg", "-y"];
   urls.forEach((_, i) => argv.push("-i", `{input${i}}`));
   const fc: string[] = [];
+  // transition between clips (owner, 26 Nov): cut | dissolve (one picture melts into the next) | fadeblack (dip to black).
+  // For the soft ones every clip is first made exactly its own length (last frame held a moment if it is a little short),
+  // so the 0.5 s overlaps land at the right times; the sound crossfades over the same 0.5 s.
+  const tr = roll.transition === "dissolve" ? "fade" : roll.transition === "fadeblack" ? "fadeblack" : null, T = 0.5;
+  const D = clips.map((c: any) => Number(c.g.duration) || 10);
   clips.forEach((c: any, i: number) => {
-    fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p[v${i}]`);
-    fc.push(c.g.audio === false ? `aevalsrc=0:c=stereo:s=48000:d=${Number(c.g.duration) || 10}[a${i}]` : `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+    const fit = tr ? `,tpad=stop_mode=clone:stop_duration=1,trim=duration=${D[i]},setpts=PTS-STARTPTS` : "";
+    const afit = tr ? `,apad,atrim=duration=${D[i]},asetpts=PTS-STARTPTS` : "";
+    fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p${fit}[v${i}]`);
+    fc.push(c.g.audio === false ? `aevalsrc=0:c=stereo:s=48000:d=${D[i]}[a${i}]` : `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${afit}[a${i}]`);
   });
-  fc.push(clips.map((_: any, i: number) => `[v${i}][a${i}]`).join("") + `concat=n=${clips.length}:v=1:a=1[v][a]`);
+  if (!tr) fc.push(clips.map((_: any, i: number) => `[v${i}][a${i}]`).join("") + `concat=n=${clips.length}:v=1:a=1[v][a]`);
+  else {
+    let vPrev = "v0", aPrev = "a0", t = D[0];
+    for (let i = 1; i < clips.length; i++) {
+      const vo = i === clips.length - 1 ? "v" : `vx${i}`, ao = i === clips.length - 1 ? "a" : `ax${i}`;
+      fc.push(`[${vPrev}][v${i}]xfade=transition=${tr}:duration=${T}:offset=${(t - T).toFixed(2)}[${vo}]`);
+      fc.push(`[${aPrev}][a${i}]acrossfade=d=${T}[${ao}]`);
+      vPrev = vo; aPrev = ao; t = t - T + D[i];
+    }
+  }
   argv.push("-filter_complex", fc.join(";"), "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
     "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "{output}");
   const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabsHeaders(admin),
@@ -862,8 +878,9 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       if (r.status === "joining") return json({ ok: true });
       const clips = await rollClips(admin, r);
       if (clips.length < 2) return json({ error: "video ၂ ခု အနည်းဆုံး ထည့်ပါ" }, 400);
-      await admin.from("rolls").update({ status: "joining", join_id: null, join_tries: 0, error: null, updated_at: new Date().toISOString() }).eq("id", r.id);
-      bg(joinRoll(admin, { ...r, status: "idle", join_tries: 0 }).catch(async (e) => {
+      const transition = ["cut", "dissolve", "fadeblack"].includes(body.transition) ? body.transition : (r.transition ?? "cut");
+      await admin.from("rolls").update({ status: "joining", join_id: null, join_tries: 0, error: null, transition, updated_at: new Date().toISOString() }).eq("id", r.id);
+      bg(joinRoll(admin, { ...r, transition, status: "idle", join_tries: 0 }).catch(async (e) => {
         console.error("roll join", r.id, e);
         await admin.from("rolls").update({ status: "failed", error: "ဆက်လို့ မရပါ — ပြန်ကြိုးစားပါ" }).eq("id", r.id);
       }));
