@@ -154,6 +154,10 @@
             <div id="tplPick" class="hidden">
               <label class="lbl">👤 <span id="tplName"></span> — ကိုယ့်ပုံ ထည့်ပါ</label>
               <div id="tplSlots"></div>
+              <div id="tplOutfitBox" class="hidden">
+                <label class="lbl">👕 အဝတ်အစား</label>
+                <select id="tplOutfit"><option value="photo">ကိုယ့်ပုံထဲက အဝတ်အစားအတိုင်း</option><option value="video">Template video ထဲက အဝတ်အစားအတိုင်း</option></select>
+              </div>
               <div class="tip" id="tplTip"></div>
             </div>
           </div>
@@ -538,6 +542,7 @@ function pickTemplate(id){
   $("tplTip").textContent = tpl.kind === "video"
     ? "📸 လူတစ်ယောက်ချင်းအတွက် ခေါင်းကနေ ခြေထိ မြင်ရတဲ့ တစ်ကိုယ်လုံးပုံ ထည့်ပါ — မျက်နှာ ရှေ့တည့်၊ အလင်းကောင်း၊ လူတစ်ယောက်တည်း။ Video ထဲမှာ ပုံထဲကအတိုင်း (မျက်နှာ၊ ဆံပင်၊ အဝတ်အစား) ဖြစ်မယ်။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။"
     : "📸 ပုံတစ်ပုံမှာ လူတစ်ယောက်တည်း၊ မျက်နှာ ရှေ့တည့်၊ အလင်းကောင်းတဲ့ပုံ။ ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့သူ့ပုံသာ သုံးပါ။ နာမည်က ဇာတ်လမ်းထဲ ခေါ်မယ့်နာမည်ပါ။";
+  $("tplOutfitBox").classList.toggle("hidden", tpl.kind !== "video"); $("tplOutfit").value = "photo";
   syncTplUi();
   $("tplPick").classList.remove("hidden"); renderTplSlots();
   $("tplPick").scrollIntoView({ behavior:"smooth", block:"center" });
@@ -891,7 +896,7 @@ async function runRecreate(){
   showJob("⏳ စတင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>ပုံတွေ တင်နေပါတယ်…</p>`);
   try {
     for (const c of tplSlots) if (!c.path) c.path = await uploadTo("inputs", c.file);
-    const { data, error } = await sb.functions.invoke("recreate", { body: { action:"create", template_id: tpl.id, face_paths: tplSlots.map(c => c.path) } });
+    const { data, error } = await sb.functions.invoke("recreate", { body: { action:"create", template_id: tpl.id, face_paths: tplSlots.map(c => c.path), outfit: $("tplOutfit").value } });
     if (error) { const ctx = await error.context?.json?.().catch(()=>null); throw new Error(ctx?.error || error.message); }
     loadProfile();
     watchRecreate(data.id, true);

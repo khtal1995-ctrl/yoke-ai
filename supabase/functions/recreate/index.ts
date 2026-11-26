@@ -29,15 +29,19 @@ const ERR: [RegExp, string][] = [
 ];
 
 // the hidden instructions: who becomes whom, everything else unchanged
-function buildPrompt(t: any): string {
+function buildPrompt(t: any, outfit = "photo"): string {
   const slots: any[] = Array.isArray(t.slots) ? t.slots : [];
   const kling = t.engine === "kling-o3";
   const ref = (i: number) => (kling ? `@Element${i + 1}` : `@Image ${i + 1}`);
   const who = slots.map((s, i) => `Replace ${String(s.who || (slots.length === 1 ? "the main person" : `person ${i + 1}`)).slice(0, 120)} with the person in ${ref(i)}.`).join(" ");
-  return `${kling ? "In @Video1: " : ""}${who} Each new person must look exactly as in their photo: the same face, skin, hairstyle, ` +
-    `glasses only if the photo has them, accessories, and the same clothes and shoes as in the photo. ` +
+  // outfit (owner, 26 Nov): the customer chooses their photo's clothes or the template video's clothes
+  const clothes = outfit === "video"
+    ? `glasses only if the photo has them. Keep the clothes, shoes and accessories exactly as worn in the source video. `
+    : `glasses only if the photo has them, accessories, and the same clothes and shoes as in the photo. `;
+  return `${kling ? "In @Video1: " : ""}${who} Each new person must look exactly as in their photo: the same face, skin, hairstyle, ` + clothes +
     `Everything else must stay identical to the source video in every frame: the same background, place, objects, sky, effects, ` +
-    `every shot change, the camera framing and movement, the colours and the lighting. Keep every body movement, gesture and the timing exactly as in the source video.` +
+    `every shot change, the camera framing and movement, the colours and the lighting. Keep every body movement, gesture and the timing exactly as in the source video. ` +
+    `Every hand action and every object a person holds must match the source video: what is held, how it is held, and when it is held, thrown or put down.` +
     (t.prompt_extra ? " " + String(t.prompt_extra).slice(0, 1500) : "");
 }
 
@@ -64,10 +68,10 @@ Deno.serve(async (req) => {
       let model: string, input: any;
       if (t.engine === "kling-o3") {
         model = "kling-o3-standard-video-to-video-edit";
-        input = { video_url: video, prompt: buildPrompt(t), keep_audio: true, elements: faces.map((u) => ({ frontal_image_url: u, reference_image_urls: [u] })) };
+        input = { video_url: video, prompt: buildPrompt(t, r.outfit), keep_audio: true, elements: faces.map((u) => ({ frontal_image_url: u, reference_image_urls: [u] })) };
       } else {
         model = t.engine === "genjutsu" ? "genjutsu-motion-transfer" : "genjutsu-light-motion-transfer";
-        input = { video_url: video, image_urls: faces, prompt: buildPrompt(t), resolution: t.resolution === "480p" ? "480p" : "720p" };
+        input = { video_url: video, image_urls: faces, prompt: buildPrompt(t, r.outfit), resolution: t.resolution === "480p" ? "480p" : "720p" };
       }
       const res = await fetch(EACH, { method: "POST", headers: h, body: JSON.stringify({ model, version: "0.0.1", input }) });
       const j: any = await res.json().catch(() => ({}));
@@ -125,6 +129,7 @@ Deno.serve(async (req) => {
     const faces = Array.isArray(body.face_paths) ? body.face_paths.map(String).slice(0, 8) : [];
     const { data: id, error } = await userDb.rpc("start_recreate", { p_template: body.template_id, p_faces: faces });
     if (error) { const m = ERR.find(([r]) => r.test(error.message)); return json({ error: m ? m[1] : error.message }, 400); }
+    if (body.outfit === "video") await admin.from("recreates").update({ outfit: "video" }).eq("id", id);
     const work = submit(id);
     // @ts-ignore EdgeRuntime is provided by Supabase
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(work); else await work;
