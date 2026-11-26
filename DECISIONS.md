@@ -212,3 +212,7 @@ Checks that caught real problems
 - နမူနာပုံ ပါရင် Omni image→video က ပုံထပ် မယူလို့ reference→video ကို သုံး: image_urls = [အစပုံ (Image 1), နမူနာပုံ… (Image 2…)]။ အစပုံက "အတိအကျ ပထမ frame" မဟုတ်တော့ဘဲ နမူနာ ဖြစ်သွားတယ် (~90% တူ)။
 - နမူနာပုံ + အဆုံးပုံ တွဲမရ (Omni ref→video မှာ end frame မရှိ) — app က တားတယ်၊ api က end_image_path null ထားတယ်။
 - api plan: i2v မှာလည်း refs လက်ခံ; create: omni i2v refs သိမ်း။
+
+## 26 Nov — ဒါရိုက်တာ: အစပုံ မပါဘဲ နမူနာပုံ သက်သက်နဲ့ ရ
+- အစပုံ မပါ + နမူနာပုံ ပါ → app က mode t2v + raw + refs နဲ့ ပို့ (Omni reference→video၊ ပုံတွေ = Image 1…)။ Ratio = ပထမ နမူနာပုံ အချိုး။
+- ဒါရိုက်တာမှာ ပုံနာမည် မထည့်လည်း ရ (Image N အလိုအလျောက်)။ အဆုံးပုံ သုံးရင် အစပုံ လို။

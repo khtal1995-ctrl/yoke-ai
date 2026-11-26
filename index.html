@@ -481,7 +481,7 @@ function setMode(m){
   $("imageBox").classList.toggle("hidden", opt.mode !== "i2v");
   $("ratioBox").classList.toggle("hidden", opt.mode !== "t2v");   // i2v follows the image shape, templates have their own
   $("castBox").classList.toggle("hidden", opt.mode === "tpl");
-  $("castLbl").innerHTML = opt.mode === "i2v" ? `🖼️ နမူနာပုံ <span class="muted">(ကား၊ လူ၊ နေရာ — အစပုံ = Image 1၊ ဒီပုံတွေ = Image 2…)</span>` : CAST_LBL;
+  $("castLbl").innerHTML = opt.mode === "i2v" ? `🖼️ နမူနာပုံ <span class="muted">(ကား၊ လူ၊ နေရာ — အစပုံ ပါရင် အစပုံ = Image 1၊ ဒီပုံတွေ = Image 2…။ အစပုံ မပါရင် ဒီပုံတွေ = Image 1…)</span>` : CAST_LBL;
   $("storyBox").classList.toggle("hidden", opt.mode === "tpl");
   $("tplBox").classList.toggle("hidden", opt.mode !== "tpl");
   // the writing style follows the tab, never shown
@@ -500,7 +500,8 @@ function syncTplUi(){
   $("ratioBox").classList.toggle("hidden", opt.mode !== "t2v");
   updateCost();
 }
-const apiMode = () => opt.mode === "tpl" ? "t2v" : opt.mode;
+const castFiles = () => cast.filter(c => c.file).length;
+const apiMode = () => opt.mode === "tpl" ? "t2v" : opt.mode === "i2v" && !opt.imageFile ? "t2v" : opt.mode;
 
 /* ---------- templates: our own tested stories; the customer adds photos (+ names) ---------- */
 let templates = [], tpl = null, tplSlots = [];
@@ -559,7 +560,7 @@ async function tplRefs(){
 }
 // what the customer is asking for right now, in any mode
 const curPrompt = () => opt.mode === "tpl" ? tplStory() : $("prompt").value.trim();
-const curRatio = () => opt.mode === "tpl" && tpl ? tpl.ratio : opt.mode === "i2v" ? (opt.imgRatio || "9:16") : opt.ratio;
+const curRatio = () => opt.mode === "tpl" && tpl ? tpl.ratio : opt.mode === "i2v" ? (opt.imgRatio || cast.find(c => c.file)?.ratio || "9:16") : opt.ratio;
 const curRefsNow = () => opt.mode === "tpl" ? tplSlots.map(c => ({ path: c.path, name: slotName(c) }))
   : opt.mode === "t2v" ? cast.filter(c => c.file || c.name.trim()).map(c => ({ path: c.path, name: c.name.trim().replace(/\s+/g, " ") })) : [];
 $("howToEx").onclick = (e) => { e.preventDefault(); const t = $("prompt"); t.value = e.target.textContent.trim(); t.dispatchEvent(new Event("input")); t.focus(); };
@@ -595,13 +596,15 @@ $("endClear").onclick = () => { opt.endFile = null; $("endInput").value = ""; $(
 function renderCast(){
   $("castList").innerHTML = cast.map((c, i) => `<div class="cast">
       <label class="ph">${c.file ? `<img src="${c.url}" alt="">` : "📷"}<input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" data-i="${i}"></label>
-      <input type="text" maxlength="30" placeholder="နာမည် (ဥပမာ မောင်မောင်)" value="${esc(c.name)}" data-n="${i}">
+      <input type="text" maxlength="30" placeholder="${opt.mode === "i2v" ? "နာမည် (မထည့်လည်း ရ)" : "နာမည် (ဥပမာ မောင်မောင်)"}" value="${esc(c.name)}" data-n="${i}">
       <button class="x" type="button" data-x="${i}">✕</button></div>`).join("");
   $("castAdd").classList.toggle("hidden", cast.length >= 9);
   document.querySelectorAll("#castList input[type=file]").forEach(inp => inp.onchange = () => {
     const f = inp.files[0]; if (!f) return;
     if (f.size > 10*1024*1024) return toast("ဖိုင် 10MB ထက် မကျော်ရ");
-    const c = cast[inp.dataset.i]; c.file = f; c.url = URL.createObjectURL(f); c.path = null; renderCast();
+    const c = cast[inp.dataset.i]; c.file = f; c.url = URL.createObjectURL(f); c.path = null; c.ratio = null; renderCast();
+    // with no start photo the first reference photo decides 16:9 or 9:16
+    const im = new Image(); im.onload = () => { c.ratio = im.naturalWidth > im.naturalHeight ? "16:9" : "9:16"; }; im.src = c.url;
   });
   document.querySelectorAll("#castList input[type=text]").forEach(inp => inp.oninput = () => { cast[inp.dataset.n].name = inp.value; });
   document.querySelectorAll("#castList [data-x]").forEach(b => b.onclick = () => { cast.splice(Number(b.dataset.x), 1); renderCast(); });
@@ -610,6 +613,7 @@ $("castAdd").onclick = () => { if (cast.length < 9) { cast.push({ file:null, url
 // upload the photos once (cached per file) and return [{path, name}] for the API
 async function castRefs(){
   const used = cast.filter(c => c.file || c.name.trim());
+  if (opt.mode === "i2v") used.forEach((c, i) => { if (!c.name.trim()) c.name = `Image ${i + (opt.imageFile ? 2 : 1)}`; });
   for (const c of used) {
     if (!c.file) throw new Error("ဇာတ်ကောင်ပုံ ထည့်ပါ (သို့) ✕ နှိပ်ပြီး ဖယ်ပါ");
     if (!c.name.trim()) throw new Error("ဇာတ်ကောင်ပုံတိုင်းမှာ နာမည် ထည့်ပါ");
@@ -637,7 +641,8 @@ $("genBtn").onclick = async () => {
   const prompt = curPrompt();
   if (profile && profile.credits < costOf()) return go("buyPage");
   if (!prompt) return toast("ဘာ video လိုချင်လဲ အရင်ရေးပါ");
-  if (opt.mode === "i2v" && !opt.imageFile) return toast("ပုံ အရင်တင်ပါ");
+  if (opt.mode === "i2v" && !opt.imageFile && !castFiles()) return toast("အစပုံ (သို့) နမူနာပုံ အရင်တင်ပါ");
+  if (opt.mode === "i2v" && !opt.imageFile && opt.endFile) return toast("အဆုံးပုံ သုံးရင် အစပုံ လိုပါတယ်");
   $("genBtn").disabled = true;
   let refs = [];
   showJob("📝 ပြင်ဆင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>ခဏစောင့်ပါ</p>`);
@@ -694,7 +699,7 @@ async function createFromPlan(){
   try {
     let image_path = null;
     let end_image_path = null;
-    if (opt.mode === "i2v") image_path = await uploadTo("inputs", opt.imageFile);
+    if (opt.mode === "i2v" && opt.imageFile) image_path = await uploadTo("inputs", opt.imageFile);
     if (opt.mode === "i2v" && opt.endFile) end_image_path = await uploadTo("inputs", opt.endFile);
     const { data, error } = await sb.functions.invoke("api", { body: {
       action:"create", plan_id: currentPlan.id, mode:apiMode(), prompt, quality:opt.quality, duration:opt.duration, ratio:curRatio(), sfx: opt.sfx === 1, image_path, end_image_path, refs: currentPlan.refs, template_id: currentPlan.template_id } });
