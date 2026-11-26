@@ -216,3 +216,6 @@ Checks that caught real problems
 ## 26 Nov — ဒါရိုက်တာ: အစပုံ မပါဘဲ နမူနာပုံ သက်သက်နဲ့ ရ
 - အစပုံ မပါ + နမူနာပုံ ပါ → app က mode t2v + raw + refs နဲ့ ပို့ (Omni reference→video၊ ပုံတွေ = Image 1…)။ Ratio = ပထမ နမူနာပုံ အချိုး။
 - ဒါရိုက်တာမှာ ပုံနာမည် မထည့်လည်း ရ (Image N အလိုအလျောက်)။ အဆုံးပုံ သုံးရင် အစပုံ လို။
+
+## 26 Nov — Roll "ဆက်နေပါတယ်" မပြီးတာ ပြင်
+- episode-tick cron က episodes producing/stitching ရှိမှ project tick ခေါ်တာ — rolls joining ကို ဘယ်တော့မှ မကောက်ခဲ့ (Roll 2 ၈ နာရီ ပိတ်မိ)။ အခု planning episodes + joining rolls အတွက်လည်း ခေါ်တယ်။
