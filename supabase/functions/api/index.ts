@@ -530,9 +530,16 @@ async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string,
   else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution };
     if (endUrl) input.end_image_url = endUrl; } // Omni: with an end image the longest is 10s
   else { model = OMNI_T2V; input = { prompt: prompt.slice(0, 19000), aspect_ratio: ratio, duration, resolution }; }
-  const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
-    body: JSON.stringify({ model, version: "0.0.1", input }) });
-  const j: any = await r.json().catch(() => ({}));
+  // Eachlabs busy (429: only 2 jobs at once while the balance is $10 or less) → wait and try again for up to ~2 minutes
+  // instead of failing the customer's video (owner, 26 Nov: "it refused 3 times, worked on the 4th")
+  let r: Response, j: any;
+  for (let i = 0; ; i++) {
+    r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabs(admin),
+      body: JSON.stringify({ model, version: "0.0.1", input }) });
+    j = await r.json().catch(() => ({}));
+    if (r.status !== 429 || i >= 8) break;
+    await new Promise((res) => setTimeout(res, 15000));
+  }
   const id = j.predictionID ?? j.prediction_id ?? j.id;
   if (!r.ok || !id) throw new Error(`submit ${model} failed (${r.status}): ${JSON.stringify(j).slice(0, 300)}`);
   return { id, model };
