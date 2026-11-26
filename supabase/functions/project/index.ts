@@ -882,7 +882,9 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       await admin.from("rolls").update({ status: "joining", join_id: null, join_tries: 0, error: null, transition, updated_at: new Date().toISOString() }).eq("id", r.id);
       bg(joinRoll(admin, { ...r, transition, status: "idle", join_tries: 0 }).catch(async (e) => {
         console.error("roll join", r.id, e);
-        await admin.from("rolls").update({ status: "failed", error: "ဆက်လို့ မရပါ — ပြန်ကြိုးစားပါ" }).eq("id", r.id);
+        // Eachlabs busy (429: only 2 jobs at once while the balance is low): stay "joining"; the next cron tick tries again
+        if (/ 429 /.test(String(e?.message ?? e))) await admin.from("rolls").update({ updated_at: new Date(0).toISOString() }).eq("id", r.id);
+        else await admin.from("rolls").update({ status: "failed", error: "ဆက်လို့ မရပါ — ပြန်ကြိုးစားပါ" }).eq("id", r.id);
       }));
       return json({ ok: true });
     }
