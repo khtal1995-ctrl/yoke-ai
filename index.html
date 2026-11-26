@@ -562,7 +562,7 @@ async function tplRefs(){
 const curPrompt = () => opt.mode === "tpl" ? tplStory() : $("prompt").value.trim();
 const curRatio = () => opt.mode === "tpl" && tpl ? tpl.ratio : opt.mode === "i2v" ? (opt.imgRatio || cast.find(c => c.file)?.ratio || "9:16") : opt.ratio;
 const curRefsNow = () => opt.mode === "tpl" ? tplSlots.map(c => ({ path: c.path, name: slotName(c) }))
-  : opt.mode === "t2v" ? cast.filter(c => c.file || c.name.trim()).map(c => ({ path: c.path, name: c.name.trim().replace(/\s+/g, " ") })) : [];
+  : cast.filter(c => c.file || c.name.trim()).map(c => ({ path: c.path, name: c.name.trim().replace(/\s+/g, " ") }));   // 📝 and 🎬 both send photos (26 Nov)
 $("howToEx").onclick = (e) => { e.preventDefault(); const t = $("prompt"); t.value = e.target.textContent.trim(); t.dispatchEvent(new Event("input")); t.focus(); };
 function seg(id, key, num){
   document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
