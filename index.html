@@ -313,16 +313,20 @@
           <label class="lbl">Template video (TikTok က တိုက်ရိုက် save — screen recording မဟုတ်ရ၊ Kling ဆို ၃–၁၀ စက္ကန့်၊ Genjutsu ဆို ၄–၁၅ စက္ကန့်)</label>
           <input type="file" id="taVideo" accept="video/mp4,video/quicktime">
           <div id="taVCur" class="muted" style="font-size:12.5px"></div>
-          <label class="lbl">လဲမယ့် လူများ — တစ်ကြောင်းတစ်ယောက်: customer မြင်ရမယ့်နာမည် | AI အတွက် English (ဘယ်လူလဲ)</label>
-          <textarea id="taVSlots" style="min-height:70px" placeholder="ရှေ့ဆုံးကလူ | the man closest to the camera in the white T-shirt&#10;အလယ်ကလူ | the young man in the middle in the number 77 jersey"></textarea>
+          <label class="lbl">Video ထဲက လူ ဘယ်နှစ်ယောက်ကို customer မျက်နှာနဲ့ လဲမလဲ</label>
+          <select id="taVN"><option value="1">၁ ယောက်</option><option value="2">၂ ယောက်</option><option value="3">၃ ယောက်</option></select>
+          <div id="taVPeople"></div>
+          <textarea id="taVSlots" class="hidden"></textarea>
+          <details style="margin-top:10px"><summary class="muted">⚙️ ထပ်ပြင်ချင်ရင် (မပြင်လည်း ရ)</summary>
           <label class="lbl">AI · Resolution</label>
           <div style="display:flex;gap:8px"><select id="taEngine"><option value="genjutsu-light">Genjutsu Light (၈ ယောက်အထိ၊ သက်သာ)</option><option value="kling-o3">Kling O3 (၃ ယောက်အထိ၊ နောက်ခံ ပိုတိကျ)</option><option value="genjutsu">Genjutsu (၈ ယောက်အထိ၊ ဈေးကြီး)</option></select>
             <select id="taRes" style="width:100px;flex:none"><option>720p</option><option>480p</option></select></div>
-          <div id="taCostHint" class="muted" style="font-size:12.5px;margin-top:4px"></div>
-          <label class="lbl">Customer စျေး (credits — ၁ credit = ၁၀၀ ကျပ်)</label>
-          <input type="text" id="taPrice" inputmode="numeric" placeholder="ဥပမာ 80">
           <label class="lbl">AI ကို ထပ်ပြောချင်တာ (English, မထည့်လည်း ရ)</label>
           <textarea id="taExtra" style="min-height:60px" maxlength="1500" placeholder="e.g. Keep the explosions behind him."></textarea>
+          </details>
+          <label class="lbl">Customer စျေး (credits — ၁ credit = ၁၀၀ ကျပ်)</label>
+          <input type="text" id="taPrice" inputmode="numeric" placeholder="ဥပမာ 50">
+          <div id="taCostHint" class="muted" style="font-size:12.5px;margin-top:4px"></div>
           </div>
           <label class="lbl">အရွယ်အစား · အစဉ် (နည်းလေ ရှေ့ရောက်လေ)</label>
           <div style="display:flex;gap:8px"><select id="taRatio"><option>9:16</option><option>16:9</option><option>1:1</option></select><input type="text" id="taSort" inputmode="numeric" style="width:90px;flex:none"></div>
@@ -1356,13 +1360,36 @@ function taSync(){
   const t = taList.find(x => x.id === $("taPick").value);
   const sec = taSeconds ?? t?.seconds;
   const usd = ENGINE_USD[$("taEngine").value]?.[$("taRes").value] ?? 0;
-  $("taCostHint").textContent = sec ? `AI ခ ≈ ${fmt(Math.round(Math.ceil(sec) * usd * 4500))} ကျပ် / video (${Math.ceil(sec)} စက္ကန့်)` : "Video ရွေးရင် AI ခ တွက်ပြမယ်";
+  const ks = sec ? Math.round(Math.ceil(sec) * usd * 4500) : 0, pr = Math.round(Number($("taPrice").value)) || 0;
+  $("taCostHint").textContent = !sec ? "Video ရွေးရင် AI ခ တွက်ပြမယ်"
+    : `AI ခ ≈ ${fmt(ks)} ကျပ် / video (${Math.ceil(sec)} စက္ကန့်)` + (pr ? ` · အမြတ် ≈ ${fmt(pr * 100 - ks)} ကျပ်` : ` · အကြံပြု ${Math.ceil(ks * 1.5 / 1000) * 10} cr`);
 }
 ["taKind","taEngine","taRes"].forEach(i => $(i).onchange = taSync);
+$("taPrice").oninput = taSync;
+/* simple people picker (owner, 26 Nov): how many people + where each one stands; fills the hidden taVSlots */
+const TA_POS = [["ရှေ့ဆုံးကလူ","the person closest to the camera"],["ဘယ်ဘက်ကလူ","the person on the left"],["အလယ်ကလူ","the person in the middle"],["ညာဘက်ကလူ","the person on the right"],["နောက်ဘက်ကလူ","the person in the background"]];
+function taPeopleDraw(slots){
+  const n = Number($("taVN").value);
+  if (n === 1) { $("taVPeople").innerHTML = `<div class="muted" style="font-size:12.5px;margin-top:4px">Video ထဲက အဓိက လူကို customer ပုံနဲ့ လဲပါမယ်</div>`; return taPeopleSync(); }
+  $("taVPeople").innerHTML = Array.from({ length: n }, (_, i) => {
+    const cur = slots?.[i]?.who;
+    return `<label class="lbl">လူ ${i + 1} — video ထဲမှာ ဘယ်နေရာက လူလဲ</label><select class="taPos">${TA_POS.map(([mm, en], k) =>
+      `<option value="${k}"${(cur ? cur === en : k === [1, 3, 2][i]) ? " selected" : ""}>${mm}</option>`).join("")}</select>`;
+  }).join("");
+  document.querySelectorAll(".taPos").forEach(e => e.onchange = taPeopleSync);
+  taPeopleSync();
+}
+function taPeopleSync(){
+  const n = Number($("taVN").value);
+  $("taVSlots").value = n === 1 ? "ကိုယ်တိုင် | the main person"
+    : [...document.querySelectorAll(".taPos")].map(e => TA_POS[+e.value].join(" | ")).join("\n");
+}
+$("taVN").onchange = () => taPeopleDraw();
 $("taVideo").onchange = () => {
   const f = $("taVideo").files[0]; taSeconds = null; if (!f) return taSync();
   const v = document.createElement("video"); v.preload = "metadata";
-  v.onloadedmetadata = () => { taSeconds = v.duration; URL.revokeObjectURL(v.src); $("taVCur").textContent = `${v.duration.toFixed(1)} စက္ကန့် · ${v.videoWidth}×${v.videoHeight}`; taSync(); };
+  v.onloadedmetadata = () => { taSeconds = v.duration; URL.revokeObjectURL(v.src); const kl = $("taEngine").value === "kling-o3", bad = kl ? (v.duration < 3 || v.duration > 10.05) : (v.duration < 4 || v.duration > 15.05);
+    $("taVCur").innerHTML = `${v.duration.toFixed(1)} စက္ကန့် · ${v.videoWidth}×${v.videoHeight}` + (bad ? ` · <b style="color:#f87171">⚠️ ${kl ? "၃–၁၀" : "၄–၁၅"} စက္ကန့် ဖြစ်ရပါမယ် — ဖုန်းမှာ နည်းနည်း ဖြတ်ပြီး ပြန်ရွေးပါ</b>` : ""); taSync(); };
   v.src = URL.createObjectURL(f);
 };
 function fillTplForm(id){
@@ -1370,7 +1397,9 @@ function fillTplForm(id){
   taSeconds = null; $("taVideo").value = "";
   $("taKind").value = t?.kind ?? "story"; $("taEngine").value = t?.engine ?? "genjutsu-light"; $("taRes").value = t?.resolution ?? "720p";
   $("taPrice").value = t?.price ?? ""; $("taExtra").value = t?.prompt_extra ?? "";
-  $("taVSlots").value = t?.kind === "video" ? (t.slots ?? []).map(s => `${s.label} | ${s.who ?? ""}`).join("\n") : "";
+  const vs = t?.kind === "video" ? (t.slots ?? []) : [];
+  $("taVN").value = String(Math.min(3, Math.max(1, vs.length || 1))); taPeopleDraw(vs);
+  if (vs.length > 3) $("taVSlots").value = vs.map(s => `${s.label} | ${s.who ?? ""}`).join("\n");
   $("taVCur").innerHTML = t?.video_path ? `လက်ရှိ video: <a href="${esc(tplUrl(t.video_path))}" target="_blank" rel="noopener" style="color:inherit">ကြည့်ရန်</a> · ${t.seconds ?? "?"} စက္ကန့်` : "";
   $("taPick").value = id; $("taEmoji").value = t?.emoji ?? "🎬"; $("taTitle").value = t?.title ?? ""; $("taStory").value = t?.story ?? "";
   $("taSlots").value = (t?.slots ?? []).map(s => `${s.label} | ${s.name} | ${s.gender}`).join("\n");
