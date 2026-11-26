@@ -1226,14 +1226,17 @@ function srBind(){
 /* ================= VIDEOS ================= */
 const ST = { queued:"စောင့်ဆိုင်း", running:"ဖန်တီးနေ", succeeded:"ပြီးပြီ", failed:"မအောင်မြင်" };
 const RST = { running:"running", done:"succeeded", failed:"failed" };
+/* older videos (owner, 26 Nov: "my early videos are gone"): show 30, then "ပိုကြည့်ရန်" loads 30 more */
+let vLimit = 30;
 async function loadVideos(){
   const [{ data: gens }, { data: rcs }] = await Promise.all([
-    sb.from("generations").select("*").is("episode_id", null).order("created_at",{ascending:false}).limit(30),
-    sb.from("recreates").select("*, templates(title, emoji)").eq("user_id", me.id).order("created_at",{ascending:false}).limit(30)]);
+    sb.from("generations").select("*").is("episode_id", null).order("created_at",{ascending:false}).limit(vLimit),
+    sb.from("recreates").select("*, templates(title, emoji)").eq("user_id", me.id).order("created_at",{ascending:false}).limit(vLimit)]);
+  const more = (gens?.length ?? 0) >= vLimit || (rcs?.length ?? 0) >= vLimit;
   // recreates look like generations in the list
   const data = [...(gens || []), ...(rcs || []).map(r => ({ id: r.id, rc: true, status: RST[r.status], cost: r.cost, created_at: r.created_at,
     video_path: r.result_path, duration: "🎬", prompt_mm: `Recreate — ${r.templates?.emoji ?? ""} ${r.templates?.title ?? ""}` }))]
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 40);
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, vLimit);
   if (!data.length) { $("vlist").innerHTML = `<p class="muted">Video မရှိသေးပါ။</p>`; return; }
   const paths = data.filter(g => g.status==="succeeded" && g.video_path).map(g => g.video_path);
   const urls = {};
@@ -1255,7 +1258,8 @@ async function loadVideos(){
       ${g.rc ? "" : `<button class="btn ghost sm" type="button" data-vprompt="${esc(g.id)}" style="width:auto;padding:4px 10px">📄 Prompt</button>`}</div>
       ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g, posters[g.image_path]) + (g.rc ? "" : rollAddBtn(g.id)) : ""}
       ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
-    </div>`).join("");
+    </div>`).join("") + (more ? `<button class="btn ghost" type="button" id="vMore">⬇️ အရင် video တွေ ပိုကြည့်ရန်</button>` : "");
+  if (more) $("vMore").onclick = () => { vLimit += 30; $("vMore").disabled = true; loadVideos(); };
   data.filter(g => !g.rc && (g.status==="queued"||g.status==="running")).forEach(g => watchJob(g.id,false));
   data.filter(g => g.rc && g.status==="running").forEach(g => watchRecreate(g.id,false));
 }
