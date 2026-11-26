@@ -227,3 +227,10 @@ Checks that caught real problems
 - Owner: AI ကြား video (~၃၂၀ ကျပ်/နေရာ) များတယ် → ffmpeg ကူးပြောင်းမှုပဲ။ rolls.transition = cut | dissolve (xfade fade) | fadeblack (xfade fadeblack)၊ 0.5 s၊ အသံ acrossfade 0.5 s။
 - Clip တိုင်းကို ကြေညာထားတဲ့ စက္ကန့်အတိုင်း တိတိ (tpad + trim / apad + atrim) ပြင်ပြီးမှ xfade offset တွက်။ ffmpeg နဲ့ စမ်းပြီး (5 + 4.9 + 10 s, အသံမပါ clip ပါ) ၃ မျိုးလုံး ✓။
 - ကူးပြောင်းမှု တစ်ခုစီမှာ 0.5 s ထပ်လို့ စုစုပေါင်း ကြာချိန် 0.5 s စီ တိုတယ်။
+
+## 26 Nov 13:40 — 🎬 Recreate (video) templates: facts from the first real test (owner)
+- Engine Genjutsu Light 480p costs $0.05/s on Eachlabs (measured: 15 s = $0.75 ≈ 3,400 Ks). 5 s ≈ 1,100 Ks, 10 s ≈ 2,250 Ks.
+- Owner remembers "AI cost ~1,000+ Ks, selling ~3,000 Ks" for templates; no earlier record was found in this file. Ask the owner before setting a template price.
+- Owner: Kling O3 (~5,700 Ks / 10 s) is too expensive — not wanted.
+- Test "Money power" (cash stack, 15 s): queue ~5 min + 7 min render. Clothes came from the customer photo (prompt says so) and the money handling changed (money put down on a seat) — owner said it must match the template. Simple motion (firewalk) matched well.
+- Fixed: recreate tick could not save results (service_role lacked EXECUTE on claim_recreate/finish_recreate).
