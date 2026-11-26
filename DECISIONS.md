@@ -207,3 +207,8 @@ Checks that caught real problems
 
 ## 26 Nov — 5 s ထုတ်လို့ မရခဲ့တာ ပြင်
 - create_generation RPC ထဲ "p_duration <> 10" ကျန်နေခဲ့ (25 Nov က gen_cost ပဲ စစ်ခဲ့လို့ မတွေ့)။ အခု 5 | 10။ credit မဖြတ်ခဲ့ (RPC ထဲမှာ ဖြတ်ခင် ရပ်တာ)။
+
+## 26 Nov — 🎬 ဒါရိုက်တာ မှာ နမူနာပုံ (ကား၊ လူ၊ နေရာ) ၉ ပုံအထိ
+- နမူနာပုံ ပါရင် Omni image→video က ပုံထပ် မယူလို့ reference→video ကို သုံး: image_urls = [အစပုံ (Image 1), နမူနာပုံ… (Image 2…)]။ အစပုံက "အတိအကျ ပထမ frame" မဟုတ်တော့ဘဲ နမူနာ ဖြစ်သွားတယ် (~90% တူ)။
+- နမူနာပုံ + အဆုံးပုံ တွဲမရ (Omni ref→video မှာ end frame မရှိ) — app က တားတယ်၊ api က end_image_path null ထားတယ်။
+- api plan: i2v မှာလည်း refs လက်ခံ; create: omni i2v refs သိမ်း။

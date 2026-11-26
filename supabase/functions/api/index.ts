@@ -522,7 +522,9 @@ async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string,
   let model: string; let input: any;
   // always made at 360p: HD (720p) is the same video sharpened by an upscaler afterwards (owner's choice, 24 Nov)
   const resolution = "360p";
-  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: refUrls.slice(0, 10), aspect_ratio: ratio, duration, resolution }; }
+  // 🎬 director tab with extra photos (car, people, place; 26 Nov): Omni's image→video takes no extra photos, so the start
+  // photo goes first (Image 1) and the extra photos follow (Image 2…) into reference→video. The end photo can't be used here.
+  if (refUrls.length) { model = OMNI_REF; input = { prompt: prompt.slice(0, 19000), image_urls: (imageUrl ? [imageUrl, ...refUrls] : refUrls).slice(0, 10), aspect_ratio: ratio, duration, resolution }; }
   else if (imageUrl) { model = OMNI_I2V; input = { prompt: prompt.slice(0, 19000), image_url: imageUrl, aspect_ratio: ratio, duration, resolution };
     if (endUrl) input.end_image_url = endUrl; } // Omni: with an end image the longest is 10s
   else { model = OMNI_T2V; input = { prompt: prompt.slice(0, 19000), aspect_ratio: ratio, duration, resolution }; }
@@ -900,8 +902,8 @@ Deno.serve(async (req) => {
     if (!prompt) return json({ error: "empty prompt" }, 400);
     const { count } = await admin.from("plans").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 3600000).toISOString());
     if ((count ?? 0) >= 20) return json({ error: "too many plans, please wait a little" }, 429);
-    const refs = body.mode === "i2v" ? [] : cleanRefs(body.refs, user.id);
-    if (refs === null) return json({ error: "ဇာတ်ကောင်ပုံ ၃ ပုံအထိ၊ ပုံတိုင်းမှာ မတူတဲ့ နာမည် ထည့်ပါ" }, 400);
+    const refs = cleanRefs(body.refs, user.id);
+    if (refs === null) return json({ error: "ပုံ ၉ ပုံအထိ၊ ပုံတိုင်းမှာ မတူတဲ့ နာမည် ထည့်ပါ" }, 400);
     const { data: p, error } = await admin.from("plans").insert({ user_id: user.id, prompt_mm: prompt, duration, mode: body.mode === "i2v" ? "i2v" : "t2v", refs: refs.length ? refs : null,
       exact: body.exact === true }).select("id").single();
     if (error) return json({ error: error.message }, 400);
@@ -952,7 +954,7 @@ Deno.serve(async (req) => {
     // optional last frame for image→video (Omni only); must be the customer's own upload
     const endPath = String(body.end_image_path ?? "");
     const end_image_path = body.mode === "i2v" && engine === "omni" && endPath.startsWith(user.id + "/") && !endPath.includes("..") ? endPath.slice(0, 300) : null;
-    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" ? null : planRefs, template_id: tplId, engine, end_image_path }).eq("id", id);
+    await admin.from("generations").update({ plan_id: planId, sfx: body.sfx === true, refs: body.mode === "i2v" && engine !== "omni" ? null : planRefs, template_id: tplId, engine, end_image_path: planRefs?.length ? null : end_image_path }).eq("id", id);
 
     // submit in the background (old clients without a plan_id: plan first, ~1 minute)
     const work = startGeneration(admin, id);

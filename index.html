@@ -172,9 +172,9 @@
             <div style="margin-top:6px;line-height:1.7"><a href="#" id="howToEx" style="color:inherit;text-decoration:underline">နေဝင်ချိန် ကမ်းခြေမှာ မောင်မောင်နဲ့ မမ ရည်းစားနှစ်ယောက် လက်တွဲလမ်းလျှောက်နေတယ်။ မမက ရှက်ရှက်နဲ့ "မောင် ချစ်လား" လို့မေးတယ်။ မောင်မောင်က ပြုံးပြီး "အရမ်းချစ်တာပေါ့ ချစ်လေးရဲ့" လို့ဖြေတယ်။</a></div>
           </details>
           <div id="castBox">
-            <label class="lbl">👤 ပုံများ <span class="muted">(မထည့်လည်း ရ — ၉ ပုံအထိ)</span></label>
+            <label class="lbl" id="castLbl">👤 ပုံများ <span class="muted">(မထည့်လည်း ရ — ၉ ပုံအထိ)</span></label>
             <div id="castList"></div>
-            <button class="btn ghost" id="castAdd" type="button" style="margin-top:8px">＋ ဇာတ်ကောင်ပုံ ထည့်မည်</button>
+            <button class="btn ghost" id="castAdd" type="button" style="margin-top:8px">＋ ပုံ ထည့်မည်</button>
             <div class="tip">📸 ကိုယ့်ပုံ (သို့) ခွင့်ပြုချက်ရထားတဲ့ပုံသာ သုံးပါ။</div>
           </div>
           </div>
@@ -472,6 +472,7 @@ function go(p, tplView = false){
 const opt = { mode:"t2v", quality:"std", duration:10, ratio:"9:16", sfx:0, imageFile:null, style:"rough" };
 const cast = [];   // character photos for the story: [{ file, name, path }] → Image 1..3
 let lastMode = "t2v";
+const CAST_LBL = document.getElementById("castLbl").innerHTML;
 const PH_STORY = document.getElementById("prompt").placeholder;   // the ✨ create tab to come back to after 🔥 Template
 document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => setMode(t.dataset.mode));
 function setMode(m){
@@ -479,7 +480,8 @@ function setMode(m){
   document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x.dataset.mode === m));
   $("imageBox").classList.toggle("hidden", opt.mode !== "i2v");
   $("ratioBox").classList.toggle("hidden", opt.mode !== "t2v");   // i2v follows the image shape, templates have their own
-  $("castBox").classList.toggle("hidden", opt.mode === "i2v");
+  $("castBox").classList.toggle("hidden", opt.mode === "tpl");
+  $("castLbl").innerHTML = opt.mode === "i2v" ? `🖼️ နမူနာပုံ <span class="muted">(ကား၊ လူ၊ နေရာ — အစပုံ = Image 1၊ ဒီပုံတွေ = Image 2…)</span>` : CAST_LBL;
   $("storyBox").classList.toggle("hidden", opt.mode === "tpl");
   $("tplBox").classList.toggle("hidden", opt.mode !== "tpl");
   // the writing style follows the tab, never shown
@@ -487,7 +489,7 @@ function setMode(m){
   $("howTo").classList.toggle("hidden", m === "i2v");
   $("prompt").maxLength = m === "i2v" ? 8000 : 2000;
   $("promptLbl").textContent = m === "i2v" ? "English prompt" : "ဘာ video လိုချင်လဲ";
-  $("prompt").placeholder = m === "i2v" ? "Start exactly from Image 1… (end on Image 2)" : PH_STORY;
+  $("prompt").placeholder = m === "i2v" ? "Start exactly from Image 1…" : PH_STORY;
   if (opt.mode === "tpl") loadTemplates();
   syncTplUi();
 }
@@ -640,7 +642,9 @@ $("genBtn").onclick = async () => {
   let refs = [];
   showJob("📝 ပြင်ဆင်နေပါတယ်…", `<p class="muted"><span class="spin"></span>ခဏစောင့်ပါ</p>`);
   try {
-    if (opt.mode === "t2v") refs = await castRefs();
+    if (opt.mode !== "tpl") refs = await castRefs();
+    // Omni can't use an end photo together with extra photos
+    if (opt.mode === "i2v" && refs.length && opt.endFile) throw new Error("နမူနာပုံ ထည့်ရင် အဆုံးပုံ မသုံးနိုင်ပါ — တစ်ခုခု ဖယ်ပါ");
     if (opt.mode === "tpl") refs = await tplRefs();
     const exact = opt.mode !== "tpl" && opt.style === "exact", raw = opt.mode !== "tpl" && opt.style === "raw";
     const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:apiMode(), refs, exact, raw } });
