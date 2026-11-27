@@ -512,7 +512,7 @@ async function advance(admin: any, ep: any) {
       urls.forEach((_, i) => argv.push("-i", `{input${i}}`));
       const fc: string[] = [];
       urls.forEach((_, i) => {
-        fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p[v${i}]`);
+        fc.push(`[${i}:v]${vtrim}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p[v${i}]`);
         fc.push(`[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
       });
       fc.push(urls.map((_, i) => `[v${i}][a${i}]`).join("") + `concat=n=${urls.length}:v=1:a=1[v][a]`);
@@ -541,7 +541,7 @@ async function advance(admin: any, ep: any) {
 
 // ---------- 🎞️ Rolls (owner, 25 Nov): a customer's own videos collected in order and joined into one, free ----------
 async function rollClips(admin: any, roll: any) {
-  const { data: items } = await admin.from("roll_items").select("id,generation_id,sort").eq("roll_id", roll.id).order("sort");
+  const { data: items } = await admin.from("roll_items").select("id,generation_id,sort,trim_start,trim_end").eq("roll_id", roll.id).order("sort");
   const ids = (items ?? []).map((x: any) => x.generation_id);
   const { data: gens } = ids.length ? await admin.from("generations").select("id,user_id,video_path,ratio,quality,duration,audio,prompt_mm,status").in("id", ids) : { data: [] };
   return (items ?? []).map((x: any) => ({ item: x, g: (gens ?? []).find((g: any) => g.id === x.generation_id) }))
@@ -578,16 +578,21 @@ async function joinRoll(admin: any, roll: any) {
   // For the soft ones every clip is first made exactly its own length (last frame held a moment if it is a little short),
   // so the 0.5 s overlaps land at the right times; the sound crossfades over the same 0.5 s.
   const tr = roll.transition === "dissolve" ? "fade" : roll.transition === "fadeblack" ? "fadeblack" : null, T = 0.5;
-  const D = clips.map((c: any) => Number(c.g.duration) || 10);
+  // ✂️ trim (owner, 27 Nov): each clip may keep only a part (start → end seconds); the original video is not touched
+  const span = (c: any) => { const full = Number(c.g.duration) || 10, s0 = Math.max(0, Number(c.item.trim_start) || 0);
+    const e0 = c.item.trim_end == null ? full : Math.min(full, Number(c.item.trim_end)); return e0 - s0 >= 0.5 ? [s0, e0] : [0, full]; };
+  const D = clips.map((c: any) => { const [a, b] = span(c); return Math.round((b - a) * 100) / 100; });
   clips.forEach((c: any, i: number) => {
+    const [ts, te] = span(c), cutv = ts > 0 || te < (Number(c.g.duration) || 10);
+    const vtrim = cutv ? `trim=start=${ts}:end=${te},setpts=PTS-STARTPTS,` : "", atrim = cutv ? `atrim=start=${ts}:end=${te},asetpts=PTS-STARTPTS,` : "";
     const fit = tr ? `,tpad=stop_mode=clone:stop_duration=1,trim=duration=${D[i]},setpts=PTS-STARTPTS` : "";
     const afit = tr ? `,apad,atrim=duration=${D[i]},asetpts=PTS-STARTPTS` : "";
-    fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p${fit}[v${i}]`);
+    fc.push(`[${i}:v]${vtrim}scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p${fit}[v${i}]`);
     // sound (owner, 27 Nov: backgrounds jump at the joins): every clip is brought to the same loudness; on a plain cut each
     // clip's sound also fades in/out over 0.25 s (the picture still cuts) so the change of background is not a hard jump
     const lev = `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,`;
     const soft = tr ? "" : `,afade=t=in:d=0.25,areverse,afade=t=in:d=0.25,areverse`;
-    fc.push(c.g.audio === false ? `aevalsrc=0:c=stereo:s=48000:d=${D[i]}[a${i}]` : `[${i}:a]${lev}aformat=sample_fmts=fltp:channel_layouts=stereo${afit}${soft}[a${i}]`);
+    fc.push(c.g.audio === false ? `aevalsrc=0:c=stereo:s=48000:d=${D[i]}[a${i}]` : `[${i}:a]${atrim}${lev}aformat=sample_fmts=fltp:channel_layouts=stereo${afit}${soft}[a${i}]`);
   });
   if (!tr) fc.push(clips.map((_: any, i: number) => `[v${i}][a${i}]`).join("") + `concat=n=${clips.length}:v=1:a=1[v][a]`);
   else {
@@ -826,7 +831,8 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
         const { data: signed } = paths.length ? await admin.storage.from("videos").createSignedUrls(paths, 3600) : { data: [] };
         const url = (p: string) => (signed ?? []).find((x: any) => x.path === p)?.signedUrl ?? null;
         out.push({ ...r, video_url: r.video_path ? url(r.video_path) : null,
-          clips: clips.map((c: any) => ({ id: c.g.id, prompt_mm: c.g.prompt_mm, duration: c.g.duration, url: url(c.g.video_path) })) });
+          clips: clips.map((c: any) => ({ id: c.g.id, prompt_mm: c.g.prompt_mm, duration: c.g.duration, url: url(c.g.video_path),
+            trim_start: c.item.trim_start ?? 0, trim_end: c.item.trim_end ?? null })) });
       }
       return json({ rolls: out });
     }
@@ -872,6 +878,22 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
         upd.status = "idle";
       }
       await admin.from("rolls").update(upd).eq("id", r.id);
+      return json({ ok: true });
+    }
+    case "roll_trim": {
+      // ✂️ keep only start → end seconds of one clip in this roll (owner, 27 Nov)
+      const { data: r } = await admin.from("rolls").select("id,status").eq("id", body.id).eq("user_id", uid).maybeSingle();
+      if (!r) return json({ error: "not found" }, 404);
+      if (r.status === "joining") return json({ error: "ဆက်နေတုန်း ခဏစောင့်ပါ" }, 400);
+      if (!isId(body.generation_id)) return json({ error: "bad clip" }, 400);
+      const { data: g } = await admin.from("generations").select("duration").eq("id", body.generation_id).eq("user_id", uid).maybeSingle();
+      if (!g) return json({ error: "not found" }, 404);
+      const full = Number(g.duration) || 10;
+      let st = Math.max(0, Math.min(full, Number(body.start) || 0)), en = body.end == null ? full : Math.max(0, Math.min(full, Number(body.end)));
+      if (en - st < 0.5) return json({ error: "အနည်းဆုံး 0.5 စက္ကန့် ချန်ထားပါ" }, 400);
+      st = Math.round(st * 10) / 10; en = Math.round(en * 10) / 10;
+      await admin.from("roll_items").update({ trim_start: st, trim_end: en >= full ? null : en }).eq("roll_id", r.id).eq("generation_id", body.generation_id);
+      await admin.from("rolls").update({ status: "idle", updated_at: new Date().toISOString() }).eq("id", r.id);
       return json({ ok: true });
     }
     case "roll_delete": {

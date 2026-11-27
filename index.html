@@ -30,8 +30,8 @@
   .progfill{background:linear-gradient(90deg,var(--accent),#4f8cff);background-size:200% 100%;position:relative;overflow:hidden}
   .progfill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);animation:progshine 1.4s linear infinite}
   .rstrip{display:flex;gap:10px;overflow-x:auto;padding:10px 2px 4px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
-  .rclip{flex:none;width:96px;scroll-snap-align:start}
-  .rthumb{position:relative;width:96px;height:96px;border-radius:10px;overflow:hidden;cursor:pointer;background:#000}
+  .rclip{flex:none;width:116px;scroll-snap-align:start}
+  .rthumb{position:relative;width:116px;height:116px;border-radius:10px;overflow:hidden;cursor:pointer;background:#000}
   .rthumb video{width:100%;height:100%;object-fit:cover;pointer-events:none}
   .rnum{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.7);border-radius:6px;padding:0 6px;font-size:13px}
   .rdur{position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.7);border-radius:6px;padding:0 5px;font-size:11px}
@@ -850,19 +850,57 @@ function renderRollsIn(){
     ${r.clips.length ? `<div class="rstrip">${r.clips.map((c, i) => `<div class="rclip">
         <div data-rplay="${esc(r.id)}|${i}" class="rthumb">
           <video src="${esc(c.url ? c.url + "#t=0.5" : "")}" muted playsinline preload="metadata"></video>
-          <b class="rnum">${i + 1}</b><span class="rdur">${c.duration}s</span></div>
-        <div class="rbtns"><button type="button" data-rmove="${esc(r.id)}|${i}|-1" ${i === 0 ? "disabled" : ""}>◀</button><button type="button" data-rmove="${esc(r.id)}|${i}|0">✕</button><button type="button" data-rmove="${esc(r.id)}|${i}|1" ${i === r.clips.length - 1 ? "disabled" : ""}>▶</button></div>
+          <b class="rnum">${i + 1}</b><span class="rdur">${clipCut(c) ? "✂️ " : ""}${clipLen(c)}s</span></div>
+        <div class="rbtns"><button type="button" data-rmove="${esc(r.id)}|${i}|-1" ${i === 0 ? "disabled" : ""}>◀</button><button type="button" data-rtrim="${esc(r.id)}|${i}" title="ဖြတ်">✂️</button><button type="button" data-rmove="${esc(r.id)}|${i}|0">✕</button><button type="button" data-rmove="${esc(r.id)}|${i}|1" ${i === r.clips.length - 1 ? "disabled" : ""}>▶</button></div>
       </div>`).join("")}</div>`
       : `<p class="muted" style="font-size:13px">Video အောက်က "➕ Roll ထဲ ထည့်" နှိပ်ပါ။</p>`}
     <div data-rplayer="${esc(r.id)}"></div>
     ${r.clips.length >= 2 ? `<div class="rtrans">${[["cut","✂️ ဖြတ်"],["dissolve","🌫️ ရော"],["fadeblack","⚫ အမည်း"]].map(([v, l]) =>
       `<button type="button" data-rtrans="${esc(r.id)}|${v}" class="${(rollTrans[r.id] ?? r.transition ?? "cut") === v ? "on" : ""}">${l}</button>`).join("")}</div>` : ""}
-    <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><span class="muted" style="font-size:12px;flex:1">${r.clips.length} ခု · ${r.clips.reduce((t, c) => t + (Number(c.duration) || 0), 0)} စက္ကန့်</span>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><span class="muted" style="font-size:12px;flex:1">${r.clips.length} ခု · ${Math.round(r.clips.reduce((t, c) => t + clipLen(c), 0) * 10) / 10} စက္ကန့်</span>
     ${r.status === "joining" ? `<span class="muted" style="font-size:13px"><span class="spin"></span>ဆက်နေပါတယ်…</span>`
       : `<button class="btn ghost sm" type="button" data-rjoin="${esc(r.id)}" style="width:auto" ${r.clips.length < 2 ? "disabled" : ""}>🎬 ဖိုင်တစ်ခုတည်း ဆက်မည်</button>`}</div>
     ${r.status === "failed" && r.error ? `<div class="status bad" style="font-size:13px">${esc(r.error)}</div>` : ""}
     ${r.status === "done" && r.video_url ? `<div style="margin-top:8px">${videoHtml(r.video_url, { id: r.id })}</div>` : ""}
   </div>`).join("");
+}
+// ✂️ trim (owner, 27 Nov): a clip may keep only start → end seconds; the original video is not changed
+const clipS = c => Number(c.trim_start) || 0, clipE = c => c.trim_end == null ? (Number(c.duration) || 10) : Number(c.trim_end);
+const clipLen = c => Math.round((clipE(c) - clipS(c)) * 10) / 10, clipCut = c => clipS(c) > 0 || c.trim_end != null;
+function rollTrim(rid, k){
+  const r = rolls.find(x => x.id === rid), box = $q(`[data-rplayer="${rid}"]`), c = r?.clips[k]; if (!c || !box || !c.url) return;
+  const full = Number(c.duration) || 10;
+  box.innerHTML = `<div class="trimbox" style="margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card2)">
+    <div style="font-weight:600;margin-bottom:6px">✂️ အခန်း ${k + 1} ကို ဖြတ်မယ်</div>
+    <video playsinline muted style="width:100%;border-radius:10px;background:#000" src="${esc(c.url)}"></video>
+    <label class="lbl">စမယ့်နေရာ — <b data-tsv>${clipS(c).toFixed(1)}</b> စက္ကန့်</label>
+    <input type="range" min="0" max="${full}" step="0.1" value="${clipS(c)}" data-ts style="width:100%">
+    <label class="lbl">ဆုံးမယ့်နေရာ — <b data-tev>${clipE(c).toFixed(1)}</b> စက္ကန့်</label>
+    <input type="range" min="0" max="${full}" step="0.1" value="${clipE(c)}" data-te style="width:100%">
+    <div class="muted" style="font-size:13px;margin:6px 0">ကျန်မယ့် အရှည်: <b data-tlen>${clipLen(c)}</b> စက္ကန့်</div>
+    <div style="display:flex;gap:8px"><button class="btn ghost sm" type="button" data-tplay style="flex:1">▶️ ကြည့်ရန်</button>
+      <button class="btn ghost sm" type="button" data-treset style="flex:1">↺ မူလအတိုင်း</button>
+      <button class="btn sm" type="button" data-tsave style="flex:1">✅ သိမ်း</button></div></div>`;
+  const v = box.querySelector("video"), ts = box.querySelector("[data-ts]"), te = box.querySelector("[data-te]");
+  let stopAt = null;
+  const upd = (which) => {
+    let a = Number(ts.value), b = Number(te.value);
+    if (b - a < 0.5) { if (which === "s") { a = Math.max(0, b - 0.5); ts.value = a; } else { b = Math.min(full, a + 0.5); te.value = b; } }
+    box.querySelector("[data-tsv]").textContent = a.toFixed(1); box.querySelector("[data-tev]").textContent = b.toFixed(1);
+    box.querySelector("[data-tlen]").textContent = (Math.round((b - a) * 10) / 10).toString();
+    stopAt = null; v.pause(); try { v.currentTime = which === "e" ? b : a; } catch {}
+  };
+  ts.oninput = () => upd("s"); te.oninput = () => upd("e");
+  v.addEventListener("loadedmetadata", () => { try { v.currentTime = Number(ts.value); } catch {} }, { once: true });
+  v.ontimeupdate = () => { if (stopAt != null && v.currentTime >= stopAt) { v.pause(); stopAt = null; } };
+  box.querySelector("[data-tplay]").onclick = () => { v.muted = false; v.currentTime = Number(ts.value); stopAt = Number(te.value); v.play().catch(() => {}); };
+  box.querySelector("[data-treset]").onclick = () => { ts.value = 0; te.value = full; upd("s"); };
+  box.querySelector("[data-tsave]").onclick = async (ev) => {
+    ev.target.disabled = true;
+    try { await srCall({ action:"roll_trim", id: rid, generation_id: c.id, start: Number(ts.value), end: Number(te.value) }); toast("✂️ ဖြတ်ပြီးပါပြီ"); await loadRolls(); }
+    catch (e) { toast(msgOf(e)); ev.target.disabled = false; }
+  };
+  box.scrollIntoView({ behavior:"smooth", block:"nearest" });
 }
 // play a roll's clips one after another in one player, starting at clip k
 function rollPlay(rid, k){
@@ -872,8 +910,12 @@ function rollPlay(rid, k){
     <video controls autoplay playsinline style="width:100%;border-radius:10px;margin-top:4px;background:#000"></video>`;
   const v = box.querySelector("video"), now = box.querySelector("[data-rnow]");
   let i = k;
-  const load = () => { now.textContent = `▶️ ${i + 1} / ${clips.length}`; v.src = clips[i].url; v.play().catch(() => {}); };
-  v.onended = () => { if (i < clips.length - 1) { i++; load(); } };
+  // trimmed clips play only their kept part
+  const load = () => { now.textContent = `▶️ ${i + 1} / ${clips.length}`; v.src = clips[i].url;
+    v.addEventListener("loadedmetadata", () => { try { v.currentTime = clipS(clips[i]); } catch {} }, { once: true }); v.play().catch(() => {}); };
+  const next = () => { if (i < clips.length - 1) { i++; load(); } else v.pause(); };
+  v.onended = next;
+  v.ontimeupdate = () => { const c = clips[i]; if (c && c.trim_end != null && v.currentTime >= clipE(c)) next(); };
   load(); box.scrollIntoView({ behavior:"smooth", block:"nearest" });
 }
 async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf(e)); } await loadRolls(); }
@@ -881,12 +923,13 @@ async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf
 const rollName = () => { const n = prompt("Roll (ဇာတ်လမ်း) နာမည်", `Roll ${rolls.length + 1}`); return n === null ? null : (n.trim() || `Roll ${rolls.length + 1}`); };
 $("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title, section: rollSec() }); };
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel],[data-rplay],[data-rplayall],[data-rtrans]"); if (!t) return;
+  const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rtrim],[data-rjoin],[data-rdel],[data-rplay],[data-rplayall],[data-rtrans]"); if (!t) return;
   // how the clips change into each other in the joined file (chosen before "join")
   if (t.dataset.rtrans !== undefined) { const [rid, v] = t.dataset.rtrans.split("|"); rollTrans[rid] = v; return renderRolls(); }
   if (t.dataset.rplayall !== undefined) return rollPlay(t.dataset.rplayall, 0);
   // tap a clip: play from that clip on
   if (t.dataset.rplay !== undefined) { const [rid, i] = t.dataset.rplay.split("|"); return rollPlay(rid, Number(i)); }
+  if (t.dataset.rtrim !== undefined) { const [rid, i] = t.dataset.rtrim.split("|"); return rollTrim(rid, Number(i)); }
   if (t.dataset.rolladd !== undefined) {
     const gid = t.dataset.rolladd, box = $q(`[data-rolladd-box="${gid}"]`), sec = t.dataset.rmode || "t2v";
     if (!rolls.length) { try { rolls = (await srCall({ action:"roll_list" })).rolls || []; } catch {} }
