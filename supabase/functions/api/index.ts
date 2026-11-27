@@ -728,7 +728,7 @@ async function startGeneration(admin: any, id: string) {
     // "🅿️ Prompt တိုက်ရိုက်" (owner, 25 Nov): the customer's own prompt goes to Omni exactly, nothing added
     const sub = await submitVideo(g, plan.raw ? en : en + MYANMAR_LOOK, imageUrl, refUrls, endUrl);
     await admin.from("generations").update({
-      status: "running", prompt_en: en, provider_request_id: sub.id, ...(plan.raw ? { post_data: { raw: true } } : {}),
+      status: "running", prompt_en: en, provider_request_id: sub.id, ...(plan.raw ? { post_data: { raw: true }, director: true } : {}), // director: 🎬 tab, its rolls stay there (owner 27 Nov)
       provider: sub.model === "kie" ? `kie:${KIE_MODEL}` : omni || sub.model === GROUP_MODEL ? `eachlabs:${sub.model}` : `yotta:${sub.model}`,
       // Omni speaks the lines itself: nothing to dub (keep the lines only as a record)
       dialogue: omni ? null : plan.lines?.length || (g.sfx && plan.stingers?.length)

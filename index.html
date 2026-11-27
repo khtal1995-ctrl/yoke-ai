@@ -748,7 +748,7 @@ async function watchJob(id, showOnCreate){
       if (showOnCreate) {
         if (g.status === "succeeded") {
           clearInterval(progTimer);
-          showJob("✅ ပြီးပါပြီ", videoHtml(data.video_url, g) + rollAddBtn(g.id, g.mode));
+          showJob("✅ ပြီးပါပြီ", videoHtml(data.video_url, g) + rollAddBtn(g.id, g.director ? "i2v" : "t2v"));
         } else if (g.status === "failed") {
           clearInterval(progTimer);
           showJob("⚠️ မအောင်မြင်ပါ", `<div class="status bad">AI က video မထုတ်နိုင်ပါ။ ${g.cost} credits ပြန်ထည့်ပေးပြီးပါပြီ။ Prompt ပြင်ပြီး ထပ်စမ်းပါ။</div>`);
@@ -1282,7 +1282,7 @@ async function loadVideos(){
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="badge ${g.status}">${ST[g.status]}</span>
       <span class="muted" style="font-size:12px;flex:1">${g.rc ? "🎬" : g.duration + "s"} · ${new Date(g.created_at).toLocaleString()}</span>
       ${g.rc ? "" : `<button class="btn ghost sm" type="button" data-vprompt="${esc(g.id)}" style="width:auto;padding:4px 10px">📄 Prompt</button>`}</div>
-      ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g, posters[g.image_path]) + (g.rc ? "" : rollAddBtn(g.id, g.mode)) : ""}
+      ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g, posters[g.image_path]) + (g.rc ? "" : rollAddBtn(g.id, g.director ? "i2v" : "t2v")) : ""}
       ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
     </div>`).join("") + (more ? `<button class="btn ghost" type="button" id="vMore">⬇️ အရင် video တွေ ပိုကြည့်ရန်</button>` : "");
   if (more) $("vMore").onclick = () => { vLimit += 30; $("vMore").disabled = true; loadVideos(); };
