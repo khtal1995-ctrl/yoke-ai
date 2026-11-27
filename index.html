@@ -812,10 +812,23 @@ document.addEventListener("click", async (e) => {
 /* ================= 🎞️ ROLLS ================= */
 let rolls = [], rollPoll = null;
 const rollAddBtn = gid => `<div data-rolladd-box="${esc(gid)}" style="margin-top:8px"><button class="btn ghost sm" type="button" data-rolladd="${esc(gid)}">➕ Roll ထဲ ထည့်</button></div>`;
+/* speed (owner, 27 Nov: "everything is very slow"): every list refresh used to get NEW signed links, so the phone
+   downloaded every video again (and a joining roll redrew all its videos every 8 s). Keep one link per file for 50 min
+   so the phone's cache is used, and redraw the rolls only when something in them really changed. */
+const urlKeep = {};
+function stableUrl(u){
+  if (!u) return u;
+  const k = String(u).split("?")[0], h = urlKeep[k];
+  if (h && Date.now() - h.t < 50 * 60 * 1000) return h.u;
+  urlKeep[k] = { u, t: Date.now() }; return u;
+}
+let rollsSig = "";
 async function loadRolls(){
   clearTimeout(rollPoll);
   try { rolls = (await srCall({ action:"roll_list" })).rolls || []; } catch (e) { $("rollList").innerHTML = `<p class="muted">${esc(msgOf(e))}</p>`; return; }
-  renderRolls();
+  rolls.forEach(r => { r.video_url = stableUrl(r.video_url); (r.clips || []).forEach(c => { c.url = stableUrl(c.url); }); });
+  const sig = JSON.stringify(rolls);
+  if (sig !== rollsSig || !$("rollList").innerHTML.trim()) { rollsSig = sig; renderRolls(); }
   if (rolls.some(r => r.status === "joining")) rollPoll = setTimeout(() => { if (!$("createPage").classList.contains("hidden")) loadRolls(); }, 8000);
 }
 const rollTrans = {};
@@ -1247,13 +1260,13 @@ async function loadVideos(){
   const urls = {};
   if (paths.length) {
     const { data: s } = await sb.storage.from("videos").createSignedUrls(paths, 3600);
-    (s||[]).forEach(x => { if (x.signedUrl) urls[x.path] = x.signedUrl; });
+    (s||[]).forEach(x => { if (x.signedUrl) urls[x.path] = stableUrl(x.signedUrl); });
   }
   // the photo a video started from doubles as its cover until the video loads (owner, 26 Nov: no black boxes)
   const pimg = data.filter(g => g.status==="succeeded" && g.image_path).map(g => g.image_path), posters = {};
   if (pimg.length) {
     const { data: s } = await sb.storage.from("inputs").createSignedUrls(pimg, 3600);
-    (s||[]).forEach(x => { if (x.signedUrl) posters[x.path] = x.signedUrl; });
+    (s||[]).forEach(x => { if (x.signedUrl) posters[x.path] = stableUrl(x.signedUrl); });
   }
   data.forEach(g => vPrompts[g.id] = g.prompt_en && g.post_data?.raw ? g.prompt_en : g.prompt_mm);
   $("vlist").innerHTML = data.map(g => `
