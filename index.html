@@ -948,8 +948,14 @@ document.addEventListener("click", async ev => {
   if (t.dataset.rmove !== undefined) {
     const [rid, i, d] = t.dataset.rmove.split("|"), r = rolls.find(x => x.id === rid); if (!r) return;
     const ids = r.clips.map(c => c.id), k = Number(i), dir = Number(d);
+    if (r.status === "joining") return toast("ဆက်နေတုန်း ခဏစောင့်ပါ");
     if (dir === 0) ids.splice(k, 1); else { const j = k + dir; [ids[k], ids[j]] = [ids[j], ids[k]]; }
-    return rollDo({ action:"roll_update", id: rid, order: ids });
+    // move / remove shows at once (owner, 27 Nov: "the arrows hang"); the server is told in the background
+    const before = r.clips.slice();
+    r.clips = ids.map(id => before.find(c => c.id === id)).filter(Boolean); r.status = "idle";
+    rollsSig = ""; renderRolls();
+    srCall({ action:"roll_update", id: rid, order: ids }).catch(e => { toast(msgOf(e)); loadRolls(); });
+    return;
   }
   if (t.dataset.rjoin !== undefined) { t.disabled = true; const r = rolls.find(x => x.id === t.dataset.rjoin);
     return rollDo({ action:"roll_join", id: t.dataset.rjoin, transition: rollTrans[t.dataset.rjoin] ?? r?.transition ?? "cut" }); }

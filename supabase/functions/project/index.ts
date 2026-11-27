@@ -560,6 +560,10 @@ async function joinRoll(admin: any, roll: any) {
       await admin.from("rolls").update({ status: "done", video_path: path, join_id: null, error: null, updated_at: new Date().toISOString() }).eq("id", roll.id);
     } else if (j.status === "error" || j.status === "failed") {
       await admin.from("rolls").update(roll.join_tries >= 2 ? { status: "failed", join_id: null, error: "ဆက်လို့ မရပါ — ပြန်ကြိုးစားပါ" } : { join_id: null, updated_at: new Date(0).toISOString() }).eq("id", roll.id);
+    } else if ((j.status === "created" || j.status === "queued" || j.status === "starting") && Date.now() - new Date(roll.updated_at).getTime() > 8 * 60 * 1000) {
+      // stuck in Eachlabs' queue (owner, 27 Nov: a roll "joining" for 30 min, never started): cancel it and send it again
+      await fetch(`https://api.eachlabs.ai/v1/prediction/${roll.join_id}/cancel`, { method: "POST", headers: await eachlabsHeaders(admin) }).catch(() => {});
+      await admin.from("rolls").update({ join_id: null, join_tries: 0, updated_at: new Date(0).toISOString() }).eq("id", roll.id);
     }
     return;
   }
