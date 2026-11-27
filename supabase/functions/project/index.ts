@@ -836,7 +836,7 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
         const { data: signed } = paths.length ? await admin.storage.from("videos").createSignedUrls(paths, 3600) : { data: [] };
         const url = (p: string) => (signed ?? []).find((x: any) => x.path === p)?.signedUrl ?? null;
         out.push({ ...r, video_url: r.video_path ? url(r.video_path) : null,
-          clips: clips.map((c: any) => ({ id: c.g.id, prompt_mm: c.g.prompt_mm, duration: c.g.duration, url: url(c.g.video_path),
+          clips: clips.map((c: any) => ({ id: c.g.id, iid: c.item.id, prompt_mm: c.g.prompt_mm, duration: c.g.duration, url: url(c.g.video_path),
             trim_start: c.item.trim_start ?? 0, trim_end: c.item.trim_end ?? null })) });
       }
       return json({ rolls: out });
@@ -858,6 +858,8 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       const { data: r } = await admin.from("rolls").select("id").eq("id", body.id).eq("user_id", uid).maybeSingle();
       const { data: g } = await admin.from("generations").select("id").eq("id", body.generation_id).eq("user_id", uid).eq("status", "succeeded").maybeSingle();
       if (!r || !g) return json({ error: "not found" }, 404);
+      const { count: dup } = await admin.from("roll_items").select("id", { count: "exact", head: true }).eq("roll_id", r.id).eq("generation_id", g.id);
+      if ((dup ?? 0) > 0) return json({ error: "ဒီ video က ဒီ Roll ထဲမှာ ရှိပြီးသားပါ" }, 400);
       const { data: last } = await admin.from("roll_items").select("sort").eq("roll_id", r.id).order("sort", { ascending: false }).limit(1);
       const { count } = await admin.from("roll_items").select("id", { count: "exact", head: true }).eq("roll_id", r.id);
       if ((count ?? 0) >= 30) return json({ error: "Roll တစ်ခုမှာ video ၃၀ ထက် မများရ" }, 400);
@@ -871,12 +873,22 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
       const upd: any = { updated_at: new Date().toISOString() };
       // editing a roll that is still being joined (owner, 27 Nov: ✕ kept coming back): stop that join — the clips changed,
       // so the customer joins again when ready
-      if (r.status === "joining" && Array.isArray(body.order)) {
+      if (r.status === "joining" && (Array.isArray(body.order) || Array.isArray(body.items))) {
         if (r.join_id) await fetch(`https://api.eachlabs.ai/v1/prediction/${r.join_id}/cancel`, { method: "POST", headers: await eachlabsHeaders(admin) }).catch(() => {});
         upd.join_id = null; upd.join_tries = 0;
       } else if (r.status === "joining") return json({ error: "ဆက်နေတုန်း ခဏစောင့်ပါ" }, 400);
       if (typeof body.title === "string") upd.title = clip(body.title, 60) || r.title;
-      if (Array.isArray(body.order)) {
+      if (Array.isArray(body.items)) {
+        // the new order of roll ITEM ids (owner, 27 Nov: the same video twice in a roll could not be removed by video id)
+        const keep = body.items.filter((x: any) => isId(x)).slice(0, 30);
+        const { data: items } = await admin.from("roll_items").select("id").eq("roll_id", r.id);
+        for (const it of items ?? []) {
+          const i = keep.indexOf(it.id);
+          if (i < 0) await admin.from("roll_items").delete().eq("id", it.id);
+          else await admin.from("roll_items").update({ sort: i }).eq("id", it.id);
+        }
+        upd.status = "idle";
+      } else if (Array.isArray(body.order)) {
         // the new order of generation ids; ids not in the list are removed from the roll
         const keep = body.order.filter((x: any) => isId(x)).slice(0, 30);
         const { data: items } = await admin.from("roll_items").select("id,generation_id").eq("roll_id", r.id);

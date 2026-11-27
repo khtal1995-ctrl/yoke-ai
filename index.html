@@ -976,14 +976,14 @@ document.addEventListener("click", async ev => {
   }
   if (t.dataset.rmove !== undefined) {
     const [rid, i, d] = t.dataset.rmove.split("|"), r = rolls.find(x => x.id === rid); if (!r) return;
-    const ids = r.clips.map(c => c.id), k = Number(i), dir = Number(d);
+    const ids = r.clips.map(c => c.iid || c.id), k = Number(i), dir = Number(d);
     if (dir === 0) ids.splice(k, 1); else { const j = k + dir; [ids[k], ids[j]] = [ids[j], ids[k]]; }
     // move / remove shows at once (owner, 27 Nov: "the arrows hang"); the server is told in the background
     const before = r.clips.slice();
-    r.clips = ids.map(id => before.find(c => c.id === id)).filter(Boolean); r.status = "idle";
+    r.clips = ids.map(id => before.find(c => (c.iid || c.id) === id)).filter(Boolean); r.status = "idle";
     rollsSig = ""; renderRolls();
     rollBusy++;
-    srCall({ action:"roll_update", id: rid, order: ids }).catch(e => toast(msgOf(e))).finally(() => { rollBusy--; if (!rollBusy) loadRolls(); });
+    srCall({ action:"roll_update", id: rid, ...(before.every(c => c.iid) ? { items: ids } : { order: ids }) }).catch(e => toast(msgOf(e))).finally(() => { rollBusy--; if (!rollBusy) loadRolls(); });
     return;
   }
   if (t.dataset.rjoin !== undefined) { t.disabled = true; const r = rolls.find(x => x.id === t.dataset.rjoin);
