@@ -489,6 +489,7 @@ const PH_STORY = document.getElementById("prompt").placeholder;   // the ✨ cre
 document.querySelectorAll("[data-mode]").forEach(t => t.onclick = () => setMode(t.dataset.mode));
 function setMode(m){
   opt.mode = m; if (m !== "tpl") lastMode = m;
+  if (m !== "tpl") try { renderRolls(); } catch {} // the roll list follows the 📝 / 🎬 tab
   document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x.dataset.mode === m));
   $("imageBox").classList.toggle("hidden", opt.mode !== "i2v");
   $("ratioBox").classList.toggle("hidden", opt.mode !== "t2v");   // i2v follows the image shape, templates have their own
@@ -747,7 +748,7 @@ async function watchJob(id, showOnCreate){
       if (showOnCreate) {
         if (g.status === "succeeded") {
           clearInterval(progTimer);
-          showJob("✅ ပြီးပါပြီ", videoHtml(data.video_url, g) + rollAddBtn(g.id));
+          showJob("✅ ပြီးပါပြီ", videoHtml(data.video_url, g) + rollAddBtn(g.id, g.mode));
         } else if (g.status === "failed") {
           clearInterval(progTimer);
           showJob("⚠️ မအောင်မြင်ပါ", `<div class="status bad">AI က video မထုတ်နိုင်ပါ။ ${g.cost} credits ပြန်ထည့်ပေးပြီးပါပြီ။ Prompt ပြင်ပြီး ထပ်စမ်းပါ။</div>`);
@@ -811,7 +812,10 @@ document.addEventListener("click", async (e) => {
 
 /* ================= 🎞️ ROLLS ================= */
 let rolls = [], rollPoll = null;
-const rollAddBtn = gid => `<div data-rolladd-box="${esc(gid)}" style="margin-top:8px"><button class="btn ghost sm" type="button" data-rolladd="${esc(gid)}">➕ Roll ထဲ ထည့်</button></div>`;
+const rollAddBtn = (gid, mode) => `<div data-rolladd-box="${esc(gid)}" style="margin-top:8px"><button class="btn ghost sm" type="button" data-rolladd="${esc(gid)}" data-rmode="${mode === "i2v" ? "i2v" : "t2v"}">➕ Roll ထဲ ထည့်</button></div>`;
+// rolls belong to a section (owner, 27 Nov): 📝 ဇာတ်လမ်း rolls show only on that tab, 🎬 ဒါရိုက်တာ rolls only on theirs
+const rollSec = () => (opt.mode === "i2v" ? "i2v" : "t2v");
+const secRolls = sec => rolls.filter(r => (r.section || "t2v") === sec);
 /* speed (owner, 27 Nov: "everything is very slow"): every list refresh used to get NEW signed links, so the phone
    downloaded every video again (and a joining roll redrew all its videos every 8 s). Keep one link per file for 50 min
    so the phone's cache is used, and redraw the rolls only when something in them really changed. */
@@ -833,7 +837,11 @@ async function loadRolls(){
 }
 const rollTrans = {};
 function renderRolls(){
-  if (!rolls.length) { $("rollList").innerHTML = `<p class="muted">Roll မရှိသေးပါ။</p>`; return; }
+  const all = rolls, sec = rollSec(); rolls = secRolls(sec);
+  try { renderRollsIn(); } finally { rolls = all; }
+}
+function renderRollsIn(){
+  if (!rolls.length) { $("rollList").innerHTML = `<p class="muted">${rollSec() === "i2v" ? "🎬 ဒါရိုက်တာ" : "📝 ဇာတ်လမ်း"} Roll မရှိသေးပါ။</p>`; return; }
   // one title, the clips side by side in order (swipe), ▶️ plays them one after another (owner, 26 Nov)
   $("rollList").innerHTML = rolls.map(r => `<div class="vitem" data-roll="${esc(r.id)}">
     <div style="display:flex;gap:8px;align-items:center"><input type="text" maxlength="60" value="${esc(r.title)}" data-rtitle="${esc(r.id)}" placeholder="ဇာတ်လမ်း နာမည်" style="flex:1;font-weight:600">
@@ -871,7 +879,7 @@ function rollPlay(rid, k){
 async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf(e)); } await loadRolls(); }
 // a new roll asks for its name (the story's title); empty → "Roll N"
 const rollName = () => { const n = prompt("Roll (ဇာတ်လမ်း) နာမည်", `Roll ${rolls.length + 1}`); return n === null ? null : (n.trim() || `Roll ${rolls.length + 1}`); };
-$("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title }); };
+$("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title, section: rollSec() }); };
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rjoin],[data-rdel],[data-rplay],[data-rplayall],[data-rtrans]"); if (!t) return;
   // how the clips change into each other in the joined file (chosen before "join")
@@ -880,16 +888,16 @@ document.addEventListener("click", async ev => {
   // tap a clip: play from that clip on
   if (t.dataset.rplay !== undefined) { const [rid, i] = t.dataset.rplay.split("|"); return rollPlay(rid, Number(i)); }
   if (t.dataset.rolladd !== undefined) {
-    const gid = t.dataset.rolladd, box = $q(`[data-rolladd-box="${gid}"]`);
+    const gid = t.dataset.rolladd, box = $q(`[data-rolladd-box="${gid}"]`), sec = t.dataset.rmode || "t2v";
     if (!rolls.length) { try { rolls = (await srCall({ action:"roll_list" })).rolls || []; } catch {} }
-    box.innerHTML = `<div style="display:flex;gap:8px"><select data-rollsel="${esc(gid)}" style="flex:1">${rolls.map(r => `<option value="${esc(r.id)}">${esc(r.title)} (${r.clips.length})</option>`).join("")}<option value="new">＋ Roll အသစ်</option></select>
+    box.innerHTML = `<div style="display:flex;gap:8px"><select data-rollsel="${esc(gid)}" data-rsec="${sec}" style="flex:1">${secRolls(sec).map(r => `<option value="${esc(r.id)}">${esc(r.title)} (${r.clips.length})</option>`).join("")}<option value="new">＋ Roll အသစ်</option></select>
       <button class="btn sm" type="button" data-rollpick="${esc(gid)}">ထည့်</button></div>`;
     return;
   }
   if (t.dataset.rollpick !== undefined) {
-    const gid = t.dataset.rollpick, v = $q(`[data-rollsel="${gid}"]`).value; t.disabled = true;
+    const gid = t.dataset.rollpick, sel = $q(`[data-rollsel="${gid}"]`), v = sel.value, sec = sel.dataset.rsec || "t2v"; t.disabled = true;
     let title = null; if (v === "new") { title = rollName(); if (!title) { t.disabled = false; return; } }
-    try { if (v === "new") await srCall({ action:"roll_create", title, generation_id: gid }); else await srCall({ action:"roll_add", id: v, generation_id: gid });
+    try { if (v === "new") await srCall({ action:"roll_create", title, generation_id: gid, section: sec }); else await srCall({ action:"roll_add", id: v, generation_id: gid });
       $q(`[data-rolladd-box="${gid}"]`).innerHTML = `<span class="muted">✅ Roll ထဲ ထည့်ပြီးပါပြီ</span>`; loadRolls(); }
     catch (e) { toast(msgOf(e)); t.disabled = false; }
     return;
@@ -1274,7 +1282,7 @@ async function loadVideos(){
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="badge ${g.status}">${ST[g.status]}</span>
       <span class="muted" style="font-size:12px;flex:1">${g.rc ? "🎬" : g.duration + "s"} · ${new Date(g.created_at).toLocaleString()}</span>
       ${g.rc ? "" : `<button class="btn ghost sm" type="button" data-vprompt="${esc(g.id)}" style="width:auto;padding:4px 10px">📄 Prompt</button>`}</div>
-      ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g, posters[g.image_path]) + (g.rc ? "" : rollAddBtn(g.id)) : ""}
+      ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g, posters[g.image_path]) + (g.rc ? "" : rollAddBtn(g.id, g.mode)) : ""}
       ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
     </div>`).join("") + (more ? `<button class="btn ghost" type="button" id="vMore">⬇️ အရင် video တွေ ပိုကြည့်ရန်</button>` : "");
   if (more) $("vMore").onclick = () => { vLimit += 30; $("vMore").disabled = true; loadVideos(); };

@@ -833,7 +833,9 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
     case "roll_create": {
       const { count } = await admin.from("rolls").select("id", { count: "exact", head: true }).eq("user_id", uid);
       if ((count ?? 0) >= 30) return json({ error: "Roll ၃၀ ထက် မများရပါ — မလိုတာ ဖျက်ပါ" }, 400);
-      const { data: r, error } = await admin.from("rolls").insert({ user_id: uid, title: clip(body.title, 60) || "Roll" }).select("id").single();
+      // section (owner, 27 Nov): 📝 story rolls and 🎬 director rolls are kept apart
+      const section = body.section === "i2v" ? "i2v" : "t2v";
+      const { data: r, error } = await admin.from("rolls").insert({ user_id: uid, title: clip(body.title, 60) || "Roll", section }).select("id").single();
       if (error) return json({ error: error.message }, 400);
       if (isId(body.generation_id)) {
         const { data: g } = await admin.from("generations").select("id").eq("id", body.generation_id).eq("user_id", uid).eq("status", "succeeded").maybeSingle();
