@@ -520,7 +520,7 @@ async function submitOmni(admin: any, g: any, prompt: string, imageUrl?: string,
     try { return { id: await submitKie(admin, g, prompt, refUrls), model: "kie" }; }
     catch (e) { console.error("kie submit failed, using eachlabs:", e); }
   }
-  const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(10, Math.max(3, Number(g.duration) || 10))}s`;
+  const ratio = g.ratio === "16:9" ? "16:9" : "9:16"; const duration = `${Math.min(endUrl ? 10 : 15, Math.max(3, Number(g.duration) || 10))}s`; // Omni: 3–15 s, with an end photo 10 s
   let model: string; let input: any;
   // always made at 360p: HD (720p) is the same video sharpened by an upscaler afterwards (owner's choice, 24 Nov)
   const resolution = "360p";
@@ -907,7 +907,7 @@ Deno.serve(async (req) => {
   if (body.action === "plan") {
     const raw = body.raw === true && CUSTOMER_ENGINE === "omni"; // ✨ create and 🖼️ image→video (owner, 25 Nov 15:14)
     const prompt = String(body.prompt ?? "").trim().slice(0, raw ? 8000 : 2000);
-    const duration = Number(body.duration) === 5 ? 5 : 10;
+    const duration = [5, 15].includes(Number(body.duration)) ? Number(body.duration) : 10; // 15 s added 27 Nov (owner)
     if (!prompt) return json({ error: "empty prompt" }, 400);
     const { count } = await admin.from("plans").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", new Date(Date.now() - 3600000).toISOString());
     if ((count ?? 0) >= 20) return json({ error: "too many plans, please wait a little" }, 429);

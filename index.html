@@ -191,6 +191,7 @@
           <div class="seg" id="durSeg">
             <button data-v="5">5 စက္ကန့်</button>
             <button data-v="10" class="on">10 စက္ကန့်</button>
+            <button data-v="15">15 စက္ကန့်</button>
           </div>
           <label class="lbl">အရည်အသွေး</label>
           <div class="seg" id="qualSeg">
@@ -265,7 +266,7 @@
       <section id="buyPage" class="hidden">
         <div class="card">
           <h2>Credit ဝယ်ရန်</h2>
-          <p class="muted" style="margin-top:0">Video 10 စက္ကန့် = 30 credits (3,000 ကျပ်) · HD 40 credits (4,000 ကျပ်)</p>
+          <p class="muted" style="margin-top:0">Video 10 စက္ကန့် = 30 credits (3,000 ကျပ်) · HD 40 credits (4,000 ကျပ်) · 15 စက္ကန့် 45 / HD 65 credits</p>
           <div id="packs"></div>
         </div>
         <div class="card hidden" id="payCard">
@@ -583,9 +584,12 @@ function seg(id, key, num){
   });
 }
 seg("durSeg","duration",true); seg("ratioSeg","ratio"); seg("sfxSeg","sfx",true); seg("qualSeg","quality");
-const PRICE = { std: { 5: 15, 10: 30 }, hd: { 5: 25, 10: 40 } }; // credits; must match DB gen_cost (owner, 24 Nov)
-const costOf = () => PRICE[opt.quality]?.[opt.duration >= 10 ? 10 : 5] ?? 30;
+const PRICE = { std: { 5: 15, 10: 30, 15: 45 }, hd: { 5: 25, 10: 40, 15: 65 } }; // credits; must match DB gen_cost (owner, 24 Nov; 15 s 27 Nov)
+const costOf = () => PRICE[opt.quality]?.[opt.duration >= 15 ? 15 : opt.duration >= 10 ? 10 : 5] ?? 30;
 function updateCost(){
+  const dk = opt.duration >= 15 ? 15 : opt.duration >= 10 ? 10 : 5; // quality buttons show the price for the chosen length
+  document.querySelectorAll("#qualSeg button").forEach(b => { const sm = b.querySelector("small");
+    if (sm) sm.textContent = `${PRICE[b.dataset.v]?.[dk]} cr · ${b.dataset.v === "hd" ? "720p" : "360p"}`; });
   const c = isRec() ? (tpl.price ?? 0) : costOf(); $("costCr").textContent = c; $("costKs").textContent = fmt(c * KS_PER_CREDIT);
   const enough = !profile || profile.credits >= c;
   $("genBtn").textContent = !enough ? "⚡ Credit မလောက် — ဝယ်ရန်" : isRec() ? "🎬 Recreate လုပ်မည်" : "✨ အစီအစဉ် ကြည့်မည်";
@@ -662,6 +666,7 @@ $("genBtn").onclick = async () => {
     if (opt.mode !== "tpl") refs = await castRefs();
     // Omni can't use an end photo together with extra photos
     if (opt.mode === "i2v" && refs.length && opt.endFile) throw new Error("နမူနာပုံ ထည့်ရင် အဆုံးပုံ မသုံးနိုင်ပါ — တစ်ခုခု ဖယ်ပါ");
+    if (opt.mode === "i2v" && opt.endFile && opt.duration > 10) throw new Error("အဆုံးပုံ ထည့်ရင် 10 စက္ကန့်အထိပဲ ရပါတယ် — 5 / 10 ကို ရွေးပါ");
     if (opt.mode === "tpl") refs = await tplRefs();
     const exact = opt.mode !== "tpl" && opt.style === "exact", raw = opt.mode !== "tpl" && opt.style === "raw";
     const { data, error } = await sb.functions.invoke("api", { body: { action:"plan", prompt, duration:opt.duration, mode:apiMode(), refs, exact, raw } });

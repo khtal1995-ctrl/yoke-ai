@@ -234,3 +234,8 @@ Checks that caught real problems
 - Owner: Kling O3 (~5,700 Ks / 10 s) is too expensive — not wanted.
 - Test "Money power" (cash stack, 15 s): queue ~5 min + 7 min render. Clothes came from the customer photo (prompt says so) and the money handling changed (money put down on a seat) — owner said it must match the template. Simple motion (firewalk) matched well.
 - Fixed: recreate tick could not save results (service_role lacked EXECUTE on claim_recreate/finish_recreate).
+
+## 27 Nov 13:45 — 15-second videos in ✨ create (owner)
+- Durations 5 / 10 / 15 s. Owner: 15 s = 10 s price + 5 s price → HD 65 cr (6,500 Ks), 360p 45 cr (4,500 Ks). DB gen_cost + client PRICE match.
+- Omni 1.2 accepts 3–15 s; with an end photo only up to 10 s (the app blocks 15 s + end photo). AI cost 15 s ≈ 1,600 Ks 360p, ≈ 2,400 Ks with HD upscale.
+- Series scenes stay 5 / 10 s.
