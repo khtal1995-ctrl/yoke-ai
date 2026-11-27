@@ -583,7 +583,11 @@ async function joinRoll(admin: any, roll: any) {
     const fit = tr ? `,tpad=stop_mode=clone:stop_duration=1,trim=duration=${D[i]},setpts=PTS-STARTPTS` : "";
     const afit = tr ? `,apad,atrim=duration=${D[i]},asetpts=PTS-STARTPTS` : "";
     fc.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p${fit}[v${i}]`);
-    fc.push(c.g.audio === false ? `aevalsrc=0:c=stereo:s=48000:d=${D[i]}[a${i}]` : `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo${afit}[a${i}]`);
+    // sound (owner, 27 Nov: backgrounds jump at the joins): every clip is brought to the same loudness; on a plain cut each
+    // clip's sound also fades in/out over 0.25 s (the picture still cuts) so the change of background is not a hard jump
+    const lev = `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,`;
+    const soft = tr ? "" : `,afade=t=in:d=0.25,areverse,afade=t=in:d=0.25,areverse`;
+    fc.push(c.g.audio === false ? `aevalsrc=0:c=stereo:s=48000:d=${D[i]}[a${i}]` : `[${i}:a]${lev}aformat=sample_fmts=fltp:channel_layouts=stereo${afit}${soft}[a${i}]`);
   });
   if (!tr) fc.push(clips.map((_: any, i: number) => `[v${i}][a${i}]`).join("") + `concat=n=${clips.length}:v=1:a=1[v][a]`);
   else {
