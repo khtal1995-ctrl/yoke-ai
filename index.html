@@ -224,6 +224,7 @@
         <!-- 🎞️ Rolls: the customer's videos collected in order and joined into one (free) -->
         <div class="card" id="rollCard">
           <h2>🎞️ Roll များ</h2>
+          <select id="rollPick" class="hidden" style="margin-bottom:10px"></select>
           <div id="rollList"></div>
           <button class="btn ghost sm" id="rollNew" type="button">＋ Roll အသစ်</button>
         </div>
@@ -836,20 +837,36 @@ function stableUrl(u){
   if (h && Date.now() - h.t < 50 * 60 * 1000) return h.u;
   urlKeep[k] = { u, t: Date.now() }; return u;
 }
-let rollsSig = "";
+let rollsSig = "", rollBusy = 0;
 async function loadRolls(){
   clearTimeout(rollPoll);
-  try { rolls = (await srCall({ action:"roll_list" })).rolls || []; } catch (e) { $("rollList").innerHTML = `<p class="muted">${esc(msgOf(e))}</p>`; return; }
+  // a move / ✕ still on its way to the server: don't draw the old list over it (owner, 27 Nov: ✕ clip came back)
+  if (rollBusy) { rollPoll = setTimeout(loadRolls, 1500); return; }
+  let fresh; try { fresh = (await srCall({ action:"roll_list" })).rolls || []; } catch (e) { $("rollList").innerHTML = `<p class="muted">${esc(msgOf(e))}</p>`; return; }
+  if (rollBusy) { rollPoll = setTimeout(loadRolls, 1500); return; }
+  rolls = fresh;
   rolls.forEach(r => { r.video_url = stableUrl(r.video_url); (r.clips || []).forEach(c => { c.url = stableUrl(c.url); }); });
   const sig = JSON.stringify(rolls);
   if (sig !== rollsSig || !$("rollList").innerHTML.trim()) { rollsSig = sig; renderRolls(); }
   if (rolls.some(r => r.status === "joining")) rollPoll = setTimeout(() => { if (!$("createPage").classList.contains("hidden")) loadRolls(); }, 8000);
 }
 const rollTrans = {};
+/* one roll at a time (owner, 27 Nov: "show only the roll I picked, the episodes all together are confusing"):
+   a picker lists this tab's rolls; only the picked one is drawn. The pick is remembered per tab. */
+const rollPicked = {};
+try { Object.assign(rollPicked, JSON.parse(localStorage.getItem("yokeRollPick") || "{}")); } catch {}
 function renderRolls(){
-  const all = rolls, sec = rollSec(); rolls = secRolls(sec);
+  const all = rolls, sec = rollSec(), mine = secRolls(sec), pk = $("rollPick");
+  let cur = mine.find(r => r.id === rollPicked[sec]) || mine[0];
+  if (cur) rollPicked[sec] = cur.id;
+  pk.classList.toggle("hidden", mine.length < 2);
+  pk.innerHTML = mine.map(r => `<option value="${esc(r.id)}"${cur && r.id === cur.id ? " selected" : ""}>🎞️ ${esc(r.title)} (${r.clips.length})</option>`).join("");
+  rolls = mine.length ? [cur] : [];
   try { renderRollsIn(); } finally { rolls = all; }
+  if (!mine.length) $("rollList").innerHTML = `<p class="muted">${sec === "i2v" ? "🎬 ဒါရိုက်တာ" : "📝 ဇာတ်လမ်း"} Roll မရှိသေးပါ။</p>`;
 }
+$("rollPick").onchange = () => { rollPicked[rollSec()] = $("rollPick").value;
+  try { localStorage.setItem("yokeRollPick", JSON.stringify(rollPicked)); } catch {} renderRolls(); };
 function renderRollsIn(){
   if (!rolls.length) { $("rollList").innerHTML = `<p class="muted">${rollSec() === "i2v" ? "🎬 ဒါရိုက်တာ" : "📝 ဇာတ်လမ်း"} Roll မရှိသေးပါ။</p>`; return; }
   // one title, the clips side by side in order (swipe), ▶️ plays them one after another (owner, 26 Nov)
@@ -931,7 +948,9 @@ function rollPlay(rid, k){
 async function rollDo(body){ try { await srCall(body); } catch (e) { toast(msgOf(e)); } await loadRolls(); }
 // a new roll asks for its name (the story's title); empty → "Roll N"
 const rollName = () => { const n = prompt("Roll (ဇာတ်လမ်း) နာမည်", `Roll ${rolls.length + 1}`); return n === null ? null : (n.trim() || `Roll ${rolls.length + 1}`); };
-$("rollNew").onclick = () => { const title = rollName(); if (title) rollDo({ action:"roll_create", title, section: rollSec() }); };
+$("rollNew").onclick = async () => { const title = rollName(); if (!title) return;
+  try { const r = await srCall({ action:"roll_create", title, section: rollSec() }); if (r?.id) { rollPicked[rollSec()] = r.id; try { localStorage.setItem("yokeRollPick", JSON.stringify(rollPicked)); } catch {} } }
+  catch (e) { toast(msgOf(e)); } rollsSig = ""; await loadRolls(); };
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("[data-rolladd],[data-rollpick],[data-rmove],[data-rtrim],[data-rjoin],[data-rdel],[data-rplay],[data-rplayall],[data-rtrans]"); if (!t) return;
   // how the clips change into each other in the joined file (chosen before "join")
@@ -964,7 +983,8 @@ document.addEventListener("click", async ev => {
     const before = r.clips.slice();
     r.clips = ids.map(id => before.find(c => c.id === id)).filter(Boolean); r.status = "idle";
     rollsSig = ""; renderRolls();
-    srCall({ action:"roll_update", id: rid, order: ids }).catch(e => { toast(msgOf(e)); loadRolls(); });
+    rollBusy++;
+    srCall({ action:"roll_update", id: rid, order: ids }).catch(e => toast(msgOf(e))).finally(() => { rollBusy--; if (!rollBusy) loadRolls(); });
     return;
   }
   if (t.dataset.rjoin !== undefined) { t.disabled = true; const r = rolls.find(x => x.id === t.dataset.rjoin);
