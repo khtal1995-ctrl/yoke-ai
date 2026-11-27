@@ -788,7 +788,7 @@ function showProgress(pg, g){
 }
 function videoHtml(url, g, poster){
   if (!url) return `<p class="muted">Video ဖိုင် ပြင်ဆင်နေပါတယ်…</p>`;
-  return `<video src="${esc(url)}#t=0.5" controls playsinline preload="metadata"${poster ? ` poster="${esc(poster)}"` : ""}></video>
+  return `<video data-lazy="${esc(url)}#t=0.5" controls playsinline preload="none"${poster ? ` poster="${esc(poster)}"` : ""}></video>
     <button class="btn ghost" type="button" style="margin-top:10px" data-dl="${esc(url)}" data-dlname="yoke-${esc(g.id.slice(0,8))}.mp4">⬇️ Download</button>`;
 }
 // ⬇️ Download (26 Nov): the video is on another site, so a plain link only opens it. Fetch the file, then on phones
@@ -819,6 +819,16 @@ const secRolls = sec => rolls.filter(r => (r.section || "t2v") === sec);
 /* speed (owner, 27 Nov: "everything is very slow"): every list refresh used to get NEW signed links, so the phone
    downloaded every video again (and a joining roll redrew all its videos every 8 s). Keep one link per file for 50 min
    so the phone's cache is used, and redraw the rolls only when something in them really changed. */
+/* lazy videos (owner, 27 Nov: videos kept spinning): a video starts loading only when it scrolls into view, so the phone
+   is not downloading dozens of videos at once and the one being watched gets the whole connection */
+const lazyIO = "IntersectionObserver" in window ? new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return; const v = e.target; lazyIO.unobserve(v);
+  if (v.dataset.lazy) { v.preload = "metadata"; v.src = v.dataset.lazy; delete v.dataset.lazy; }
+}), { rootMargin: "200px" }) : null;
+function lazyScan(){
+  document.querySelectorAll("video[data-lazy]").forEach(v => { if (lazyIO) lazyIO.observe(v); else { v.src = v.dataset.lazy; delete v.dataset.lazy; } });
+}
+new MutationObserver(() => lazyScan()).observe(document.body, { childList: true, subtree: true });
 const urlKeep = {};
 function stableUrl(u){
   if (!u) return u;
@@ -849,7 +859,7 @@ function renderRollsIn(){
       <button class="x" type="button" data-rdel="${esc(r.id)}" title="Roll ဖျက်">🗑️</button></div>
     ${r.clips.length ? `<div class="rstrip">${r.clips.map((c, i) => `<div class="rclip">
         <div data-rplay="${esc(r.id)}|${i}" class="rthumb">
-          <video src="${esc(c.url ? c.url + "#t=0.5" : "")}" muted playsinline preload="metadata"></video>
+          <video data-lazy="${esc(c.url ? c.url + "#t=0.5" : "")}" muted playsinline preload="none"></video>
           <b class="rnum">${i + 1}</b><span class="rdur">${clipCut(c) ? "✂️ " : ""}${clipLen(c)}s</span></div>
         <div class="rbtns"><button type="button" data-rmove="${esc(r.id)}|${i}|-1" ${i === 0 ? "disabled" : ""}>◀</button><button type="button" data-rtrim="${esc(r.id)}|${i}" title="ဖြတ်">✂️</button><button type="button" data-rmove="${esc(r.id)}|${i}|0">✕</button><button type="button" data-rmove="${esc(r.id)}|${i}|1" ${i === r.clips.length - 1 ? "disabled" : ""}>▶</button></div>
       </div>`).join("")}</div>`

@@ -608,8 +608,9 @@ async function joinRoll(admin: any, roll: any) {
       vPrev = vo; aPrev = ao; t = t - T + D[i];
     }
   }
-  argv.push("-filter_complex", fc.join(";"), "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
-    "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "{output}");
+  // crf 23 (owner, 27 Nov: joined files 10–35 MB played slowly on the phone): about half the size, no visible loss at 720p
+  argv.push("-filter_complex", fc.join(";"), "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "23", "-preset", "veryfast",
+    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "{output}");
   const r = await fetch("https://api.eachlabs.ai/v1/prediction/", { method: "POST", headers: await eachlabsHeaders(admin),
     body: JSON.stringify({ model: "eachlabs-video-api", version: "0.0.1", input: { mode: "run_ffmpeg", input_urls: urls, output_format: "mp4", argv } }) });
   const j: any = await r.json().catch(() => ({}));
