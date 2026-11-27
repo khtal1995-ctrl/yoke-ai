@@ -868,8 +868,13 @@ Return ONLY JSON: {"ideas": [{"title_mm": "<2-5 words with one emoji>", "idea_mm
     case "roll_update": {
       const { data: r } = await admin.from("rolls").select("*").eq("id", body.id).eq("user_id", uid).maybeSingle();
       if (!r) return json({ error: "not found" }, 404);
-      if (r.status === "joining") return json({ error: "ဆက်နေတုန်း ခဏစောင့်ပါ" }, 400);
       const upd: any = { updated_at: new Date().toISOString() };
+      // editing a roll that is still being joined (owner, 27 Nov: ✕ kept coming back): stop that join — the clips changed,
+      // so the customer joins again when ready
+      if (r.status === "joining" && Array.isArray(body.order)) {
+        if (r.join_id) await fetch(`https://api.eachlabs.ai/v1/prediction/${r.join_id}/cancel`, { method: "POST", headers: await eachlabsHeaders(admin) }).catch(() => {});
+        upd.join_id = null; upd.join_tries = 0;
+      } else if (r.status === "joining") return json({ error: "ဆက်နေတုန်း ခဏစောင့်ပါ" }, 400);
       if (typeof body.title === "string") upd.title = clip(body.title, 60) || r.title;
       if (Array.isArray(body.order)) {
         // the new order of generation ids; ids not in the list are removed from the roll
