@@ -62,6 +62,8 @@
   .drop{display:block;border:1.5px dashed var(--line);border-radius:12px;padding:18px;text-align:center;cursor:pointer;color:var(--muted)}
   .drop img{max-width:100%;max-height:200px;border-radius:10px;display:block;margin:0 auto}
   .hidden{display:none!important}
+  .vfav{background:none;border:1px solid var(--line);border-radius:10px;width:36px;height:32px;font-size:16px;cursor:pointer;color:var(--text)}
+  .vfav.on{border-color:#ff5c8a;background:rgba(255,92,138,.12)}
   .cast{display:flex;gap:8px;align-items:center;margin-top:8px}
   .cast .ph{width:56px;height:56px;flex:none;border:1.5px dashed var(--line);border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;color:var(--muted);font-size:22px}
   .cast .ph img{width:100%;height:100%;object-fit:cover}
@@ -260,7 +262,9 @@
 
       <!-- VIDEOS -->
       <section id="videosPage" class="hidden">
-        <div class="card"><h2>ကျွန်ုပ်၏ Video များ</h2><div id="vlist"></div></div>
+        <div class="card"><h2>ကျွန်ုပ်၏ Video များ</h2>
+          <div class="seg" id="vFilter" style="margin-bottom:12px"><button data-v="all" class="on">🎬 အားလုံး</button><button data-v="fav">❤️ Favourite</button></div>
+          <div id="vlist"></div></div>
       </section>
 
       <!-- BUY -->
@@ -1332,16 +1336,31 @@ const ST = { queued:"စောင့်ဆိုင်း", running:"ဖန်�
 const RST = { running:"running", done:"succeeded", failed:"failed" };
 /* older videos (owner, 26 Nov: "my early videos are gone"): show 30, then "ပိုကြည့်ရန်" loads 30 more */
 let vLimit = 30;
+$("vlist").addEventListener("click", async ev => {
+  const f = ev.target.closest("[data-vfav]"), h = ev.target.closest("[data-vhide]"); if (!f && !h) return;
+  const [kind, id] = (f || h).dataset[f ? "vfav" : "vhide"].split("|");
+  if (f) { const on = !f.classList.contains("on"); f.classList.toggle("on", on); f.textContent = on ? "❤️" : "♡";
+    const { error } = await sb.rpc("video_flag", { p_kind: kind, p_id: id, p_favorite: on }); if (error) toast(msgOf(error));
+    if (vFav && !on) loadVideos(); return; }
+  if (!confirm("ဒီ video ကို စာရင်းထဲက ဖယ်မလား?")) return;
+  h.closest(".vitem")?.remove();
+  const { error } = await sb.rpc("video_flag", { p_kind: kind, p_id: id, p_hidden: true }); if (error) { toast(msgOf(error)); loadVideos(); }
+});
+/* ❤️ favourites (owner, 27 Nov): mark the good ones, see them on their own; 🗑️ hides one; 🧹 hides every non-favourite */
+let vFav = false;
+document.querySelectorAll("#vFilter button").forEach(b => b.onclick = () => {
+  vFav = b.dataset.v === "fav"; document.querySelectorAll("#vFilter button").forEach(x => x.classList.toggle("on", x === b)); loadVideos(); });
 async function loadVideos(){
+  let qg = sb.from("generations").select("*").is("episode_id", null).eq("hidden", false), qr = sb.from("recreates").select("*, templates(title, emoji)").eq("user_id", me.id).eq("hidden", false);
+  if (vFav) { qg = qg.eq("favorite", true); qr = qr.eq("favorite", true); }
   const [{ data: gens }, { data: rcs }] = await Promise.all([
-    sb.from("generations").select("*").is("episode_id", null).order("created_at",{ascending:false}).limit(vLimit),
-    sb.from("recreates").select("*, templates(title, emoji)").eq("user_id", me.id).order("created_at",{ascending:false}).limit(vLimit)]);
+    qg.order("created_at",{ascending:false}).limit(vLimit), qr.order("created_at",{ascending:false}).limit(vLimit)]);
   const more = (gens?.length ?? 0) >= vLimit || (rcs?.length ?? 0) >= vLimit;
   // recreates look like generations in the list
   const data = [...(gens || []), ...(rcs || []).map(r => ({ id: r.id, rc: true, status: RST[r.status], cost: r.cost, created_at: r.created_at,
-    video_path: r.result_path, duration: "🎬", prompt_mm: `Recreate — ${r.templates?.emoji ?? ""} ${r.templates?.title ?? ""}` }))]
+    video_path: r.result_path, favorite: r.favorite, duration: "🎬", prompt_mm: `Recreate — ${r.templates?.emoji ?? ""} ${r.templates?.title ?? ""}` }))]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, vLimit);
-  if (!data.length) { $("vlist").innerHTML = `<p class="muted">Video မရှိသေးပါ။</p>`; return; }
+  if (!data.length) { $("vlist").innerHTML = `<p class="muted">${vFav ? "❤️ နှိပ်ထားတဲ့ video မရှိသေးပါ — ကြိုက်တဲ့ video ရဲ့ ♡ ကို နှိပ်ပါ။" : "Video မရှိသေးပါ။"}</p>`; return; }
   const paths = data.filter(g => g.status==="succeeded" && g.video_path).map(g => g.video_path);
   const urls = {};
   if (paths.length) {
@@ -1359,10 +1378,17 @@ async function loadVideos(){
     <div class="vitem">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span class="badge ${g.status}">${ST[g.status]}</span>
       <span class="muted" style="font-size:12px;flex:1">${g.rc ? "🎬" : g.duration + "s"} · ${new Date(g.created_at).toLocaleString()}</span>
-      ${g.rc ? "" : `<button class="btn ghost sm" type="button" data-vprompt="${esc(g.id)}" style="width:auto;padding:4px 10px">📄 Prompt</button>`}</div>
+      ${g.rc ? "" : `<button class="btn ghost sm" type="button" data-vprompt="${esc(g.id)}" style="width:auto;padding:4px 10px">📄 Prompt</button>`}
+      ${g.status==="succeeded" ? `<button class="vfav${g.favorite ? " on" : ""}" type="button" data-vfav="${g.rc ? "rc" : "g"}|${esc(g.id)}" aria-label="Favourite">${g.favorite ? "❤️" : "♡"}</button>` : ""}
+      <button class="vfav" type="button" data-vhide="${g.rc ? "rc" : "g"}|${esc(g.id)}" aria-label="ဖယ်">🗑️</button></div>
       ${g.status==="succeeded" ? videoHtml(urls[g.video_path], g, posters[g.image_path]) + (g.rc ? "" : rollAddBtn(g.id, g.director ? "i2v" : "t2v")) : ""}
       ${g.status==="failed" ? `<div class="muted">${g.cost} credits ပြန်အမ်းပြီး</div>` : ""}
-    </div>`).join("") + (more ? `<button class="btn ghost" type="button" id="vMore">⬇️ အရင် video တွေ ပိုကြည့်ရန်</button>` : "");
+    </div>`).join("") + (more ? `<button class="btn ghost" type="button" id="vMore">⬇️ အရင် video တွေ ပိုကြည့်ရန်</button>` : "")
+    + (vFav ? "" : `<button class="btn ghost" type="button" id="vClean" style="margin-top:10px">🧹 ❤️ မပေးထားတဲ့ video အကုန် ဖယ်မည်</button>`);
+  if (!vFav) $("vClean").onclick = async () => {
+    if (!confirm("❤️ မပေးထားတဲ့ video အားလုံးကို စာရင်းထဲက ဖယ်မှာပါ။ ဆက်လုပ်မလား?")) return;
+    const { data: n, error } = await sb.rpc("video_hide_nonfav"); if (error) return toast(msgOf(error));
+    toast(`🧹 video ${n ?? 0} ခု ဖယ်ပြီးပါပြီ`); loadVideos(); };
   if (more) $("vMore").onclick = () => { vLimit += 30; $("vMore").disabled = true; loadVideos(); };
   data.filter(g => !g.rc && (g.status==="queued"||g.status==="running")).forEach(g => watchJob(g.id,false));
   data.filter(g => g.rc && g.status==="running").forEach(g => watchRecreate(g.id,false));
