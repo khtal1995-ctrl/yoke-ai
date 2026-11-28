@@ -239,3 +239,16 @@ Checks that caught real problems
 - Durations 5 / 10 / 15 s. Owner: 15 s = 10 s price + 5 s price → HD 65 cr (6,500 Ks), 360p 45 cr (4,500 Ks). DB gen_cost + client PRICE match.
 - Omni 1.2 accepts 3–15 s; with an end photo only up to 10 s (the app blocks 15 s + end photo). AI cost 15 s ≈ 1,600 Ks 360p, ≈ 2,400 Ks with HD upscale.
 - Series scenes stay 5 / 10 s.
+
+## 28 Nov 08:59 — Episode endings (owner: "remember this flow; no two episodes alike")
+Made by Claude on its own computer (ffmpeg + Python/PIL), free. Scripts: tools/endings/.
+**Flow every episode keeps (owner):** 1) the episode's last scene → 2) a punchline about the key character → 3) a hook for the next episode (title card "EPISODE 0N").
+**Rules (owner):**
+- Every episode's ending must LOOK and SOUND different from all earlier ones: new design, new music, new text. Never reuse a previous episode's music, title-card line or layout.
+- Don't repeat dialogue the original video already contains (e.g. EP3: "ငါ ကယ်ပေးနိုင်တယ်" was cut).
+- Owner gave free hand on design and text ("မင်းစိတ်ကြိုက်"); still show it and take his feedback.
+**Used so far (do NOT reuse):**
+- EP1 — owner's own (not seen by Claude).
+- EP2 — owner's own: gold/black luxury, "WHAT CAN'T MONEY BUY?", Burmese line "အရာအားလုံး ပိုင်ဆိုင်ခဲ့တဲ့ ကောင်လေး", teaser "WHAT HAPPENED TO HIS PARENTS?" + EP2 music.
+- EP3 — APPROVED: "Case file" (EP03_Ending_CaseFile.mp4, 9.4 s): freeze → shutter → old photo on a dark desk, red marker circle, "UNKNOWN" stamp, typewriter note "သူ ဘယ်သူလဲ? / ဆရာဝန်တွေ လက်လျှော့တာကို ဘာကြောင့် သူ လာကူတာလဲ…", Kaung Khant photo + red string, label "NEXT FILE / EPISODE 04" + "မကြာခင်" stamp. Original music: ticking pizzicato, drone, piano, typewriter, stamps.
+- Rejected for EP3: silver ECG + "WHO IS THE OLD MAN?" (too plain); punch/glitch "ကယ်တင်ရှင်လား… မာရ်နတ်လား?" + EPISODE 04 light sweep (liked, but had copied EP2 music/line) — that punch/glitch look is now also used, don't reuse.
